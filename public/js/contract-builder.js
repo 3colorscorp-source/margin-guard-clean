@@ -2202,14 +2202,21 @@
     return Array.isArray(items) ? items : [];
   }
 
+  function authenticatedPaymentSource(source) {
+    const base = source || sourceSnapshot || {};
+    return {
+      ...base,
+      paymentSchedule: {
+        ...(base.paymentSchedule || {}),
+        items: currentPaymentItems(),
+      },
+    };
+  }
+
   function currentPaymentFooterPlan(busy) {
     return PaymentConfirm.paymentFooterPlan({
       confirmed: paymentConfigured(sourceSnapshot?.paymentSchedule),
-      items: currentPaymentItems(),
-      contractTotal: paymentDraftContractTotal(sourceSnapshot),
-      scheduleBundle: sourceSnapshot?.paymentSchedule,
-      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot?.depositRequired,
+      source: authenticatedPaymentSource(sourceSnapshot),
       busy: Boolean(busy),
     });
   }
@@ -2469,15 +2476,9 @@
   }
 
   function currentPaymentSummary() {
-    return PaymentConfirm.presentAuthenticatedPaymentArticle({
-      contractTotal: paymentDraftContractTotal(sourceSnapshot),
-      items: paymentDraftItems,
-      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot?.depositRequired,
-      currency: sourceSnapshot?.currency || DEFAULT_CURRENCY,
-      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-      readinessStatus: sourceSnapshot?.paymentSchedule?.readiness?.status,
-    });
+    return PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(
+      authenticatedPaymentSource(sourceSnapshot)
+    );
   }
 
   function paymentFutureDraftItems() {
@@ -3469,12 +3470,7 @@
     const warOk = warrantyConfigured(setup);
     let payOk = paymentConfigured(schedule);
     if (payOk) {
-      const paySummary = PaymentConfirm.presentPaymentSummary({
-        contractTotal: source?.contractTotal,
-        items: Array.isArray(schedule?.items) ? schedule.items : [],
-        verifiedDeposit: schedule?.deposit,
-        depositRequired: source?.depositRequired,
-      });
+      const paySummary = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(source);
       if (paySummary.blockConfirm) payOk = false;
     }
     const sigOk = signatureConfigured(setup);
@@ -4286,15 +4282,8 @@
     if (overallContractReadiness(sourceSnapshot, draftEdits) !== "configured") {
       throw new Error("Contract readiness must be 100% before freezing.");
     }
-    const freezePaySummary = PaymentConfirm.presentPaymentSummary({
-      contractTotal: sourceSnapshot.contractTotal,
-      items: Array.isArray(sourceSnapshot.paymentSchedule?.items)
-        ? sourceSnapshot.paymentSchedule.items
-        : [],
-      verifiedDeposit: sourceSnapshot.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot.depositRequired,
-      hideFutureStages: true,
-    });
+    const freezePaySummary =
+      PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(sourceSnapshot);
     if (freezePaySummary.blockConfirm) {
       throw new Error(
         freezePaySummary.verificationMessage ||
@@ -5066,15 +5055,9 @@
     const remainingRow = $("cbPayRemainingRow");
     const depositCopy = $("cbPayDepositCopy");
     const progressCopy = $("cbPayProgressCopy");
-    const payView = PaymentConfirm.presentAuthenticatedPaymentArticle({
-      contractTotal,
-      items,
-      verifiedDeposit: bundle.deposit,
-      depositRequired: source.depositRequired,
-      currency,
-      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-      readinessStatus: status,
-    });
+    const payView = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(
+      authenticatedPaymentSource(source)
+    );
     const paySummary = payView;
 
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);

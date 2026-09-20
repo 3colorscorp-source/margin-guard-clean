@@ -30,6 +30,7 @@ const depositSrc = fs.readFileSync(depositPath, "utf8");
 const signSrc = fs.readFileSync(signPath, "utf8");
 const scheduleSrc = fs.readFileSync(schedulePath, "utf8");
 const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
+const PaymentDefaults = require("../public/js/contract-payment-defaults.js");
 const Deposit = require("../netlify/functions/_lib/verified-contract-deposit.js");
 
 let passed = 0;
@@ -224,7 +225,8 @@ test("4b two-stage schedule does not render Remaining Payment Schedule", () => {
   assert.strictEqual(due.remainingItems.length, 0);
   assert.strictEqual(paid.remainingItems.length, 0);
   assert.ok(!html.includes("Remaining Payment Schedule"));
-  assert.ok(js.includes("hideFutureStages"));
+  assert.ok(helperSrc.includes("hideFutureStages: true"));
+  assert.ok(js.includes("presentAuthenticatedPaymentArticleFromBuilderSource"));
   assert.ok(pdfSrc.includes("showPaymentStages"));
   assert.ok(signSrc.includes("showPaymentStages"));
 });
@@ -776,7 +778,8 @@ test("6 frontend cannot falsify Paid via item_role or quote acceptance", () => {
   assert.ok(depositSrc.includes("paid_at"));
   assert.ok(!depositSrc.includes("accepted_at"));
   assert.ok(!/item_role\s*===/.test(depositSrc));
-  assert.ok(js.includes("verifiedDeposit: bundle.deposit"));
+  assert.ok(helperSrc.includes("verifiedDeposit: bundle.deposit"));
+  assert.ok(js.includes("presentAuthenticatedPaymentArticleFromBuilderSource"));
 });
 
 test("7 ledger helper requires a real deposit payment", () => {
@@ -1718,7 +1721,8 @@ async function testAsync(name, fn) {
       "Progress invoices are sent every two weeks based on completed work. If the project is completed sooner, the final invoice is sent when the work is complete."
     );
     assert.ok(html.includes("Billing Terms"));
-    assert.ok(js.includes("hideFutureStages"));
+    assert.ok(helperSrc.includes("hideFutureStages: true"));
+    assert.ok(js.includes("presentAuthenticatedPaymentArticleFromBuilderSource"));
     assert.ok(!scheduleSrc.includes("upsert-tenant-invoice"));
     assert.ok(!js.includes("record-tenant-payment"));
   });
@@ -1924,6 +1928,94 @@ async function testAsync(name, fn) {
     assert.ok(!js.includes("Payment amounts must equal the contract total"));
     assert.ok(!js.includes("MISSING — Payment schedule"));
     assert.ok(!js.includes('{ label: "Payment schedule"'));
+  });
+
+  test("32 authenticated Contract Builder source render path for unpaid deposit", () => {
+    const renderFn = slice(js, "function renderPaymentScheduleSection", "function renderWarrantySection");
+    assert.ok(renderFn.includes("presentAuthenticatedPaymentArticleFromBuilderSource"));
+    assert.ok(renderFn.includes("authenticatedPaymentSource(source)"));
+    assert.ok(!renderFn.includes("presentPaymentSummary("));
+    assert.ok(!renderFn.includes('paySummary.remainingLabel || "Remaining Contract Balance"'));
+    const summaryFn = slice(js, "function currentPaymentSummary", "function paymentFutureDraftItems");
+    assert.ok(summaryFn.includes("presentAuthenticatedPaymentArticleFromBuilderSource"));
+    const footerFn = slice(js, "function currentPaymentFooterPlan", "function paymentScheduleAllowsOwnerEdit");
+    assert.ok(footerFn.includes("authenticatedPaymentSource(sourceSnapshot)"));
+    const hydrate = slice(js, "function hydratePaymentDraftFromSource", "function paymentDraftContractTotal");
+    assert.ok(!hydrate.includes("ensureResidualBillingRow()"));
+    const readinessFn = slice(js, "function renderReadiness", "function renderLogo");
+    assert.ok(readinessFn.includes('i.label !== "Payment terms"'));
+    assert.ok(readinessFn.includes("NEEDS CONFIRMATION"));
+    assert.ok(html.includes("contract-builder.js?v=pt-src-2"));
+    assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-2"));
+
+    const source = {
+      contractTotal: 3265.49,
+      depositRequired: 1,
+      depositRequiredAmount: 1,
+      currency: "USD",
+      paymentSchedule: {
+        available: true,
+        items: [],
+        readiness: { status: "missing", contract_total: 3265.49 },
+        deposit: { status: "none", verified_paid: false, amount: null },
+      },
+    };
+    const seeded = PaymentDefaults.buildDefaultPaymentSchedule({
+      contractTotal: source.contractTotal,
+      depositRequired: source.depositRequiredAmount,
+      items: source.paymentSchedule.items,
+      readinessStatus: source.paymentSchedule.readiness.status,
+    });
+    assert.strictEqual(seeded.seeded, true);
+    source.paymentSchedule.items = seeded.items;
+
+    const view = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(source);
+    assert.strictEqual(view.contractTotal, 3265.49);
+    assert.strictEqual(view.depositLabel, "Deposit Due Now");
+    assert.strictEqual(view.depositAmount, 1);
+    assert.strictEqual(view.remainingLabel, "Balance After Deposit");
+    assert.strictEqual(view.remainingBalance, 3264.49);
+    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+    assert.strictEqual(view.readinessStatus, "needs_confirmation");
+    assert.strictEqual(view.errorMessage, "");
+    assert.strictEqual(view.sumError, "");
+    assert.strictEqual(view.showPaymentStages, false);
+    assert.ok(!String(view.errorMessage || "").includes("Payment amounts must equal"));
+
+    source.paymentSchedule.items = source.paymentSchedule.items.concat([
+      {
+        label: "Progress & Final Billing",
+        amount: 3265.49,
+        payment_type: "final",
+        due_rule: "custom",
+        item_role: "future_obligation",
+      },
+    ]);
+    const leftover = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(source);
+    assert.strictEqual(leftover.remainingLabel, "Balance After Deposit");
+    assert.strictEqual(leftover.remainingBalance, 3264.49);
+    assert.strictEqual(leftover.errorMessage, "");
+    assert.strictEqual(leftover.sumError, "");
+    assert.strictEqual(leftover.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+
+    const paymentReady = PaymentConfirm.paymentTermsReadiness(source.paymentSchedule.readiness.status);
+    const readinessItems = [
+      { label: "Payment terms", status: paymentReady.status, caption: paymentReady.caption },
+    ];
+    const missing = readinessItems.filter(
+      (i) => i.status === "missing" && i.label !== "Payment terms"
+    );
+    const warns = readinessItems.filter((i) => i.status === "needs_confirmation");
+    assert.deepStrictEqual(missing, []);
+    assert.strictEqual(warns[0].caption, "NEEDS CONFIRMATION — Payment terms");
+
+    const plan = PaymentConfirm.paymentFooterPlan({
+      confirmed: false,
+      source,
+    });
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Terms");
+    assert.strictEqual(plan.confirmEnabled, true);
+    assert.strictEqual(plan.errorMessage, "");
   });
 
   console.log("");

@@ -202,13 +202,17 @@
     var src = input || {};
     var kind = paymentKind(src);
     var busy = Boolean(src.busy);
-    var summary = presentPaymentSummary({
-      items: src.items,
-      contractTotal: src.contractTotal,
-      verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
-      depositRequired: src.depositRequired,
-      hideFutureStages: true,
-    });
+    var summary = src.source
+      ? presentAuthenticatedPaymentArticleFromBuilderSource(src.source)
+      : presentAuthenticatedPaymentArticle({
+          items: src.items,
+          contractTotal: src.contractTotal,
+          verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
+          depositRequired: src.depositRequired,
+          readinessStatus:
+            src.readinessStatus ||
+            (src.scheduleBundle && src.scheduleBundle.readiness && src.scheduleBundle.readiness.status),
+        });
     var depositBlocked = summary.blockConfirm === true;
     var confirmEnabled = kind !== "confirmed" && !busy && !depositBlocked;
     var buttons = [];
@@ -773,6 +777,40 @@
     });
   }
 
+  function resolveAuthenticatedBuilderPaymentInput(source) {
+    var src = source || {};
+    var bundle = src.paymentSchedule || {};
+    var readiness = bundle.readiness || {};
+    var status = String(readiness.status || "missing").toLowerCase();
+    var contractTotal = null;
+    if (readiness.contract_total != null && Number.isFinite(Number(readiness.contract_total))) {
+      contractTotal = Number(readiness.contract_total);
+    } else if (src.contractTotal != null && Number.isFinite(Number(src.contractTotal))) {
+      contractTotal = Number(src.contractTotal);
+    }
+    var depositRequired = src.depositRequired;
+    if (
+      (depositRequired == null || !Number.isFinite(Number(depositRequired))) &&
+      src.depositRequiredAmount != null &&
+      Number.isFinite(Number(src.depositRequiredAmount))
+    ) {
+      depositRequired = Number(src.depositRequiredAmount);
+    }
+    return {
+      contractTotal: contractTotal,
+      items: Array.isArray(bundle.items) ? bundle.items : [],
+      verifiedDeposit: bundle.deposit,
+      depositRequired: depositRequired,
+      currency: trimField(src.currency) || "USD",
+      dueRuleLabel: src.dueRuleLabel,
+      readinessStatus: status,
+    };
+  }
+
+  function presentAuthenticatedPaymentArticleFromBuilderSource(source) {
+    return presentAuthenticatedPaymentArticle(resolveAuthenticatedBuilderPaymentInput(source));
+  }
+
   function itemsMatchSource(payloadItems, sourceItems) {
     var src = cloneItems(sourceItems);
     var out = Array.isArray(payloadItems) ? payloadItems : [];
@@ -944,6 +982,8 @@
     presentPaymentSummaryFromSnapshot: presentPaymentSummaryFromSnapshot,
     paymentTermsReadiness: paymentTermsReadiness,
     presentAuthenticatedPaymentArticle: presentAuthenticatedPaymentArticle,
+    resolveAuthenticatedBuilderPaymentInput: resolveAuthenticatedBuilderPaymentInput,
+    presentAuthenticatedPaymentArticleFromBuilderSource: presentAuthenticatedPaymentArticleFromBuilderSource,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,
