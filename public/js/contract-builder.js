@@ -2345,7 +2345,7 @@
       mapScheduleItemToDraft(item, i, paymentConfigured(source?.paymentSchedule))
     );
     if (!paymentConfigured(source?.paymentSchedule)) {
-      ensureResidualBillingRow();
+      // Payment Terms do not invent future-stage amounts after load.
     }
     renumberPaymentDraftSequences();
     paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
@@ -2402,50 +2402,7 @@
   }
 
   function ensureResidualBillingRow() {
-    const summary = currentPaymentSummary();
-    const remainingCents =
-      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
-    if (remainingCents == null) return;
-    const residualIdx = paymentDraftItems.findIndex(
-      (row) => !PaymentConfirm.isDepositScheduleItem(row) && PaymentConfirm.isResidualProgressBilling(row)
-    );
-    let othersCents = 0;
-    let otherFutureCount = 0;
-    paymentDraftItems.forEach((row, index) => {
-      if (PaymentConfirm.isDepositScheduleItem(row)) return;
-      if (index === residualIdx) return;
-      otherFutureCount += 1;
-      if (PaymentConfirm.isPaymentStageValid(row)) {
-        othersCents += PaymentConfirm.parseMoneyInput(row.amount).cents;
-      }
-    });
-    const leftover = remainingCents - othersCents;
-    if (leftover > 0) {
-      const nextResidual = {
-        client_id: residualIdx >= 0 ? paymentDraftItems[residualIdx].client_id : nextPaymentClientId(),
-        sequence_number: paymentDraftItems.length + 1,
-        label: PaymentConfirm.PROGRESS_FINAL_LABEL,
-        payment_type: "final",
-        amount: PaymentConfirm.centsToMoneyNumber(leftover),
-        due_rule: PaymentConfirm.DEFAULT_REMAINING_DUE_RULE,
-        milestone_description: "",
-        fixed_due_date: "",
-        item_role: "future_obligation",
-        is_new: false,
-        residual: true,
-      };
-      if (residualIdx >= 0) {
-        paymentDraftItems[residualIdx] = {
-          ...paymentDraftItems[residualIdx],
-          ...nextResidual,
-          client_id: paymentDraftItems[residualIdx].client_id,
-        };
-      } else {
-        paymentDraftItems.push(nextResidual);
-      }
-    } else if (residualIdx >= 0 && otherFutureCount > 0) {
-      paymentDraftItems.splice(residualIdx, 1);
-    }
+    return;
   }
 
   function findPaymentDraftIndexByClientId(clientId) {
@@ -2512,14 +2469,14 @@
   }
 
   function currentPaymentSummary() {
-    return PaymentConfirm.presentPaymentSummary({
+    return PaymentConfirm.presentAuthenticatedPaymentArticle({
       contractTotal: paymentDraftContractTotal(sourceSnapshot),
       items: paymentDraftItems,
       verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
       depositRequired: sourceSnapshot?.depositRequired,
       currency: sourceSnapshot?.currency || DEFAULT_CURRENCY,
       dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-      hideFutureStages: true,
+      readinessStatus: sourceSnapshot?.paymentSchedule?.readiness?.status,
     });
   }
 
@@ -4119,6 +4076,9 @@
         ? "available"
         : "missing";
 
+    const paymentReady = PaymentConfirm.paymentTermsReadiness(
+      source.paymentSchedule?.readiness?.status
+    );
     const propertyStatus = readinessMapStatus("property", source);
     const warrantyStatus = readinessMapStatus("warranty", source);
     const paymentStatus = readinessMapStatus("payment", source);
@@ -4147,7 +4107,7 @@
         label: "Project address",
         status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
-      { label: "Payment terms", status: paymentStatus },
+      { label: "Payment terms", status: paymentReady.status, caption: paymentReady.caption },
       {
         label: "Estimated schedule",
         status: contractScheduleComplete(source, edits)
@@ -4440,7 +4400,7 @@
       ul.innerHTML = items
         .map((item) => {
           if (item.label === "Payment terms") {
-            return `<li>${escapeHtml(paymentTermsReadinessCaption(item.status))}</li>`;
+            return `<li>${escapeHtml(item.caption || paymentTermsReadinessCaption(item.status))}</li>`;
           }
           const extra = item.note ? ` (${item.note})` : "";
           return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
@@ -4457,7 +4417,9 @@
 
     const missingEl = $("cbMissingList");
     if (missingEl) {
-      const missing = items.filter((i) => i.status === "missing");
+      const missing = items.filter(
+        (i) => i.status === "missing" && i.label !== "Payment terms"
+      );
       missingEl.innerHTML = missing.length
         ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}${i.note ? ` (${escapeHtml(i.note)})` : ""}</span></li>`).join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No critical gaps listed</span></li>`;
@@ -5104,15 +5066,16 @@
     const remainingRow = $("cbPayRemainingRow");
     const depositCopy = $("cbPayDepositCopy");
     const progressCopy = $("cbPayProgressCopy");
-    const paySummary = PaymentConfirm.presentPaymentSummary({
+    const payView = PaymentConfirm.presentAuthenticatedPaymentArticle({
       contractTotal,
       items,
       verifiedDeposit: bundle.deposit,
       depositRequired: source.depositRequired,
       currency,
       dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-      hideFutureStages: true,
+      readinessStatus: status,
     });
+    const paySummary = payView;
 
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
     const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
@@ -5214,10 +5177,10 @@
       if (remainingRow) {
         if (paySummary.remainingBalance != null) {
           remainingRow.hidden = false;
-          setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
+          setText("cbPayRemainingLabel", payView.remainingLabel || "");
           setText(
             "cbPayRemainingBalance",
-            formatMoney(paySummary.remainingBalance, currency)
+            formatMoney(payView.remainingBalance, currency)
           );
         } else {
           remainingRow.hidden = true;
@@ -5260,9 +5223,9 @@
     }
 
     if (sumWarn) {
-      if (paySummary.blockConfirm && paySummary.verificationMessage) {
+      if (payView.errorMessage) {
         sumWarn.hidden = false;
-        sumWarn.textContent = paySummary.verificationMessage;
+        sumWarn.textContent = payView.errorMessage;
       } else {
         sumWarn.hidden = true;
         sumWarn.textContent = "";

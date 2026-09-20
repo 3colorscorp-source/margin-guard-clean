@@ -598,22 +598,20 @@
         src.frozenRemainingBalance == null || !Number.isFinite(Number(src.frozenRemainingBalance))
           ? null
           : moneyToCents(src.frozenRemainingBalance);
-    } else if (src.hideFutureStages === true) {
-      if (depositStatus === "due" && plannedDepositCents > 0) {
-        remainingLabel = BALANCE_AFTER_DEPOSIT_LABEL;
-        remainingCents =
-          contractCents == null ? null : contractCents - plannedDepositCents;
-      } else if (depositStatus === "paid") {
-        remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
-        remainingCents =
-          contractCents == null ? null : contractCents - verifiedCents;
-      } else {
-        remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
-        remainingCents = contractCents;
-      }
-    } else {
+    } else if (src.legacyRemaining === true) {
       remainingCents =
         contractCents == null ? null : contractCents - appliedDepositCents;
+    } else if (depositStatus === "due" && plannedDepositCents > 0) {
+      remainingLabel = BALANCE_AFTER_DEPOSIT_LABEL;
+      remainingCents =
+        contractCents == null ? null : contractCents - plannedDepositCents;
+    } else if (depositStatus === "paid") {
+      remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+      remainingCents =
+        contractCents == null ? null : contractCents - verifiedCents;
+    } else {
+      remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+      remainingCents = contractCents;
     }
     if (remainingCents != null && remainingCents < 0) {
       remainingCents = 0;
@@ -733,8 +731,45 @@
       currency: extras.currency,
       dueRuleLabel: extras.dueRuleLabel,
       hideFutureStages: Boolean(terms),
+      legacyRemaining: !terms,
       frozenRemainingLabel: terms && terms.remaining_label,
       frozenRemainingBalance: terms && terms.remaining_contract_balance,
+    });
+  }
+
+  function paymentTermsReadiness(status) {
+    if (String(status || "").toLowerCase() === "configured") {
+      return {
+        status: "available",
+        caption: "COMPLETE — Payment terms",
+      };
+    }
+    return {
+      status: "needs_confirmation",
+      caption: "NEEDS CONFIRMATION — Payment terms",
+    };
+  }
+
+  function presentAuthenticatedPaymentArticle(input) {
+    var src = input || {};
+    var summary = presentPaymentSummary({
+      contractTotal: src.contractTotal,
+      items: src.items,
+      verifiedDeposit: src.verifiedDeposit,
+      depositRequired: src.depositRequired,
+      currency: src.currency,
+      dueRuleLabel: src.dueRuleLabel,
+      hideFutureStages: true,
+      legacyRemaining: false,
+    });
+    var readiness = paymentTermsReadiness(src.readinessStatus);
+    return Object.assign({}, summary, {
+      showPaymentStages: false,
+      remainingItems: [],
+      errorMessage: summary.blockConfirm ? summary.verificationMessage : "",
+      readinessStatus: readiness.status,
+      readinessCaption: readiness.caption,
+      sumError: "",
     });
   }
 
@@ -907,6 +942,8 @@
     presentPaymentRows: presentPaymentRows,
     presentPaymentSummary: presentPaymentSummary,
     presentPaymentSummaryFromSnapshot: presentPaymentSummaryFromSnapshot,
+    paymentTermsReadiness: paymentTermsReadiness,
+    presentAuthenticatedPaymentArticle: presentAuthenticatedPaymentArticle,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,

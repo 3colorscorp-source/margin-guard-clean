@@ -158,3 +158,8 @@
   for = "/*.html"
   [headers.values]
     Content-Type = "text/html; charset=UTF-8"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

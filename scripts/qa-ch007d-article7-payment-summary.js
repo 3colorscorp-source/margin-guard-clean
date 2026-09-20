@@ -253,6 +253,7 @@ test("4c three-or-more-stage schedule renders compact Payment Stages", () => {
     verifiedDeposit: { verified_paid: false },
     currency: "USD",
     dueRuleLabel: dueLabel,
+    legacyRemaining: true,
   });
   assert.strictEqual(PaymentConfirm.isSimpleTwoStageSchedule(items), false);
   assert.strictEqual(PaymentConfirm.shouldShowPaymentStages(items), true);
@@ -1823,7 +1824,8 @@ async function testAsync(name, fn) {
     assert.ok(!js.includes("if (paySummary.scheduleMismatch)"));
     assert.ok(js.includes("NEEDS CONFIRMATION — Payment terms"));
     assert.ok(js.includes("COMPLETE — Payment terms"));
-    assert.ok(js.includes("paySummary.remainingLabel"));
+    assert.ok(js.includes("presentAuthenticatedPaymentArticle"));
+    assert.ok(js.includes("payView.remainingLabel"));
     assert.ok(helperSrc.includes("Balance After Deposit"));
     const due = PaymentConfirm.presentPaymentSummary({
       contractTotal: 5000,
@@ -1868,6 +1870,60 @@ async function testAsync(name, fn) {
     });
     assert.strictEqual(ready.confirmEnabled, true);
     assert.ok(!ready.buttons.some((b) => b.id === "customize"));
+  });
+
+  test("31 authenticated Contract Builder render path for unpaid deposit", () => {
+    assert.ok(js.includes("presentAuthenticatedPaymentArticle"));
+    assert.ok(js.includes("hydratePaymentDraftFromSource"));
+    assert.ok(js.includes("renderPaymentScheduleSection(source)"));
+    const hydrate = js.slice(
+      js.indexOf("function hydratePaymentDraftFromSource"),
+      js.indexOf("function paymentDraftContractTotal")
+    );
+    assert.ok(!hydrate.includes("ensureResidualBillingRow()"));
+    const view = PaymentConfirm.presentAuthenticatedPaymentArticle({
+      contractTotal: 3265.49,
+      depositRequired: 1,
+      items: [
+        {
+          label: "Initial Scheduling Payment",
+          amount: 1,
+          due_rule: "on_signature",
+          payment_type: "deposit",
+        },
+      ],
+      verifiedDeposit: { status: "none", verified_paid: false, amount: null },
+      readinessStatus: "missing",
+      currency: "USD",
+    });
+    assert.strictEqual(view.contractTotal, 3265.49);
+    assert.strictEqual(view.depositLabel, "Deposit Due Now");
+    assert.strictEqual(view.depositAmount, 1);
+    assert.strictEqual(view.remainingLabel, "Balance After Deposit");
+    assert.strictEqual(view.remainingBalance, 3264.49);
+    assert.strictEqual(
+      PaymentConfirm.moneyToCents(view.remainingBalance),
+      PaymentConfirm.moneyToCents(3265.49) - PaymentConfirm.moneyToCents(1)
+    );
+    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+    assert.strictEqual(view.readinessStatus, "needs_confirmation");
+    assert.strictEqual(view.showPaymentStages, false);
+    assert.strictEqual(view.blockConfirm, false);
+    assert.strictEqual(view.errorMessage, "");
+    assert.strictEqual(view.sumError, "");
+    const plan = PaymentConfirm.paymentFooterPlan({
+      contractTotal: 3265.49,
+      depositRequired: 1,
+      items: [{ label: "Initial Scheduling Payment", amount: 1, payment_type: "deposit" }],
+      verifiedDeposit: { verified_paid: false },
+      confirmed: false,
+    });
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Terms");
+    assert.strictEqual(plan.confirmEnabled, true);
+    assert.strictEqual(plan.errorMessage, "");
+    assert.ok(!js.includes("Payment amounts must equal the contract total"));
+    assert.ok(!js.includes("MISSING — Payment schedule"));
+    assert.ok(!js.includes('{ label: "Payment schedule"'));
   });
 
   console.log("");
