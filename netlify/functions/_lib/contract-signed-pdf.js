@@ -14,7 +14,7 @@ const {
   escapePdfText,
 } = require("./simple-pdf");
 const {
-  presentPaymentSummary,
+  presentPaymentSummaryFromSnapshot,
   paymentExplanationFromSnapshot,
   article7DueRuleLabel,
 } = require("../../../public/js/contract-payment-confirm.js");
@@ -388,17 +388,9 @@ function buildSignedContractLines({
   lines.push(blank(6));
 
   lines.push(heading("Payment Terms"));
-  const payTotal = snap?.price?.contract_total ?? snap?.quote?.total;
-  const paySummary = presentPaymentSummary({
-    contractTotal: payTotal,
-    items: Array.isArray(snap?.payment_schedule?.items)
-      ? snap.payment_schedule.items
-      : [],
-    verifiedDeposit: snap?.payment_schedule?.deposit,
-    depositRequired: snap?.price?.deposit_required ?? snap?.quote?.deposit_required,
+  const paySummary = presentPaymentSummaryFromSnapshot(snap, {
     currency,
-    dueRuleLabel: (rule, extras) =>
-      article7DueRuleLabel(rule, extras),
+    dueRuleLabel: (rule, extras) => article7DueRuleLabel(rule, extras),
   });
   if (paySummary.contractTotal != null) {
     lines.push(body(`Contract Total: ${money(paySummary.contractTotal, currency)}`));

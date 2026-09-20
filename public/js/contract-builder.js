@@ -568,7 +568,7 @@
       if (ok === false) return false;
     }
     workspaceBusy = true;
-    workspaceBusyLabel = articleId === "art-payment" ? "Saving Payment Plan…" : "Saving…";
+    workspaceBusyLabel = articleId === "art-payment" ? "Confirming…" : "Saving…";
     setArticleMode(articleId, WS_MODE.SAVING);
     renderWorkspaceChrome();
     try {
@@ -1133,6 +1133,7 @@
     updateIndexNavStatus();
     renderWorkspaceValidation(activeArticleId);
     renderWorkspaceFooter();
+    if (sourceSnapshot) syncAuthenticatedNextAction(sourceSnapshot, draftEdits);
   }
 
   async function handleWorkspaceBack() {
@@ -2202,14 +2203,21 @@
     return Array.isArray(items) ? items : [];
   }
 
+  function authenticatedPaymentSource(source) {
+    const base = source || sourceSnapshot || {};
+    return {
+      ...base,
+      paymentSchedule: {
+        ...(base.paymentSchedule || {}),
+        items: currentPaymentItems(),
+      },
+    };
+  }
+
   function currentPaymentFooterPlan(busy) {
     return PaymentConfirm.paymentFooterPlan({
       confirmed: paymentConfigured(sourceSnapshot?.paymentSchedule),
-      items: currentPaymentItems(),
-      contractTotal: paymentDraftContractTotal(sourceSnapshot),
-      scheduleBundle: sourceSnapshot?.paymentSchedule,
-      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot?.depositRequired,
+      source: authenticatedPaymentSource(sourceSnapshot),
       busy: Boolean(busy),
     });
   }
@@ -2345,7 +2353,7 @@
       mapScheduleItemToDraft(item, i, paymentConfigured(source?.paymentSchedule))
     );
     if (!paymentConfigured(source?.paymentSchedule)) {
-      ensureResidualBillingRow();
+      // Payment Terms do not invent future-stage amounts after load.
     }
     renumberPaymentDraftSequences();
     paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
@@ -2402,50 +2410,7 @@
   }
 
   function ensureResidualBillingRow() {
-    const summary = currentPaymentSummary();
-    const remainingCents =
-      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
-    if (remainingCents == null) return;
-    const residualIdx = paymentDraftItems.findIndex(
-      (row) => !PaymentConfirm.isDepositScheduleItem(row) && PaymentConfirm.isResidualProgressBilling(row)
-    );
-    let othersCents = 0;
-    let otherFutureCount = 0;
-    paymentDraftItems.forEach((row, index) => {
-      if (PaymentConfirm.isDepositScheduleItem(row)) return;
-      if (index === residualIdx) return;
-      otherFutureCount += 1;
-      if (PaymentConfirm.isPaymentStageValid(row)) {
-        othersCents += PaymentConfirm.parseMoneyInput(row.amount).cents;
-      }
-    });
-    const leftover = remainingCents - othersCents;
-    if (leftover > 0) {
-      const nextResidual = {
-        client_id: residualIdx >= 0 ? paymentDraftItems[residualIdx].client_id : nextPaymentClientId(),
-        sequence_number: paymentDraftItems.length + 1,
-        label: PaymentConfirm.PROGRESS_FINAL_LABEL,
-        payment_type: "final",
-        amount: PaymentConfirm.centsToMoneyNumber(leftover),
-        due_rule: PaymentConfirm.DEFAULT_REMAINING_DUE_RULE,
-        milestone_description: "",
-        fixed_due_date: "",
-        item_role: "future_obligation",
-        is_new: false,
-        residual: true,
-      };
-      if (residualIdx >= 0) {
-        paymentDraftItems[residualIdx] = {
-          ...paymentDraftItems[residualIdx],
-          ...nextResidual,
-          client_id: paymentDraftItems[residualIdx].client_id,
-        };
-      } else {
-        paymentDraftItems.push(nextResidual);
-      }
-    } else if (residualIdx >= 0 && otherFutureCount > 0) {
-      paymentDraftItems.splice(residualIdx, 1);
-    }
+    return;
   }
 
   function findPaymentDraftIndexByClientId(clientId) {
@@ -2512,14 +2477,9 @@
   }
 
   function currentPaymentSummary() {
-    return PaymentConfirm.presentPaymentSummary({
-      contractTotal: paymentDraftContractTotal(sourceSnapshot),
-      items: paymentDraftItems,
-      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot?.depositRequired,
-      currency: sourceSnapshot?.currency || DEFAULT_CURRENCY,
-      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-    });
+    return PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(
+      authenticatedPaymentSource(sourceSnapshot)
+    );
   }
 
   function paymentFutureDraftItems() {
@@ -2578,29 +2538,18 @@
 
   function validatePaymentWorkspace() {
     if (paymentConfigured(sourceSnapshot?.paymentSchedule)) {
-      return readinessValidation("available", "Payment schedule is confirmed.", "", "");
+      return readinessValidation("available", "Payment terms are confirmed.", "", "");
     }
-    const totals = computePaymentDraftTotals(
-      paymentDraftItems,
-      paymentDraftContractTotal(sourceSnapshot)
-    );
-    if (!paymentDraftItems.length) {
-      return readinessValidation("missing", "", "", "Payment schedule is missing.");
-    }
-    if (totals.balanced) {
+    const summary = currentPaymentSummary();
+    if (summary.blockConfirm) {
       return readinessValidation(
         "needs_confirmation",
         "",
-        "",
+        summary.verificationMessage || "",
         ""
       );
     }
-    return readinessValidation(
-      "needs_confirmation",
-      "",
-      PaymentConfirm.SUM_ERROR,
-      ""
-    );
+    return readinessValidation("needs_confirmation", "", "", "");
   }
 
   function validatePaymentDraftForSave(options = {}) {
@@ -2629,36 +2578,17 @@
       }
     }
     const summary = currentPaymentSummary();
-    const future = paymentFutureDraftItems();
-    const remainingCents =
-      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
-    const integrity = PaymentConfirm.paymentStageIntegrity(future, remainingCents);
-    if (integrity.incomplete) {
+    if (summary.blockConfirm) {
       return {
         level: "block",
         blocking: true,
-        message: PaymentConfirm.INCOMPLETE_STAGE_ERROR,
-      };
-    }
-    if (integrity.mismatch) {
-      return {
-        level: "block",
-        blocking: true,
-        message: PaymentConfirm.STAGES_SUM_ERROR,
+        message: summary.verificationMessage || "",
       };
     }
     return { level: "ok", blocking: false, message: "" };
   }
 
   function validatePaymentDraftForConfirm() {
-    readPaymentDraftFromGrid();
-    if (!paymentDraftItems.length) {
-      return {
-        level: "block",
-        blocking: true,
-        message: "Add at least one payment stage before confirming.",
-      };
-    }
     const saveCheck = validatePaymentDraftForSave({ syncFromDom: false });
     if (saveCheck.blocking) return saveCheck;
     return {
@@ -2768,7 +2698,7 @@
     }
     if (!res.ok || res.data?.ok !== true) {
       const msg = String(res.data?.error || "").trim();
-      throw new Error(msg || "Payment schedule could not be saved.");
+      throw new Error(msg || "Payment terms could not be saved.");
     }
     applyPaymentScheduleResponse(res.data);
   }
@@ -3334,11 +3264,7 @@
   function paymentStatusLabel(scheduleBundle) {
     const status = String(scheduleBundle?.readiness?.status || "missing").toLowerCase();
     if (status === "configured") return "Confirmed";
-    if (status === "draft") return "Payment schedule awaiting confirmation";
-    if (Array.isArray(scheduleBundle?.items) && scheduleBundle.items.length) {
-      return "Review generated payment schedule";
-    }
-    return "Not yet defined";
+    return "Payment terms awaiting confirmation";
   }
 
   function dueRuleLabel(raw, extras) {
@@ -3545,12 +3471,7 @@
     const warOk = warrantyConfigured(setup);
     let payOk = paymentConfigured(schedule);
     if (payOk) {
-      const paySummary = PaymentConfirm.presentPaymentSummary({
-        contractTotal: source?.contractTotal,
-        items: Array.isArray(schedule?.items) ? schedule.items : [],
-        verifiedDeposit: schedule?.deposit,
-        depositRequired: source?.depositRequired,
-      });
+      const paySummary = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(source);
       if (paySummary.blockConfirm) payOk = false;
     }
     const sigOk = signatureConfigured(setup);
@@ -3592,8 +3513,7 @@
     if (kind === "payment") {
       const st = String(source.paymentSchedule?.readiness?.status || "missing").toLowerCase();
       if (st === "configured") return "available";
-      if (st === "draft") return "needs_confirmation";
-      return "missing";
+      return "needs_confirmation";
     }
     if (kind === "signature") {
       return signatureConfigured(source.contractSetup) ? "available" : "missing";
@@ -4153,6 +4073,9 @@
         ? "available"
         : "missing";
 
+    const paymentReady = PaymentConfirm.paymentTermsReadiness(
+      source.paymentSchedule?.readiness?.status
+    );
     const propertyStatus = readinessMapStatus("property", source);
     const warrantyStatus = readinessMapStatus("warranty", source);
     const paymentStatus = readinessMapStatus("payment", source);
@@ -4181,7 +4104,7 @@
         label: "Project address",
         status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
-      { label: "Payment schedule", status: paymentStatus },
+      { label: "Payment terms", status: paymentReady.status, caption: paymentReady.caption },
       {
         label: "Estimated schedule",
         status: contractScheduleComplete(source, edits)
@@ -4221,6 +4144,11 @@
     return "Missing";
   }
 
+  function paymentTermsReadinessCaption(status) {
+    if (status === "available") return "COMPLETE — PAYMENT TERMS";
+    return "NEEDS CONFIRMATION — PAYMENT TERMS";
+  }
+
   function worstStatus(statuses) {
     if (statuses.includes("missing")) return "missing";
     if (statuses.includes("needs_confirmation")) return "needs_confirmation";
@@ -4245,16 +4173,14 @@
       byLabel("Existing scope"),
       byLabel("Approved quote"),
     ];
-    const commercialStatuses = [
-      byLabel("Contract total"),
-      byLabel("Payment schedule"),
-      byLabel("Estimated schedule"),
-    ];
     const legalStatuses = [
       byLabel("State-required legal notices"),
       byLabel("Warranty terms"),
     ];
     const signatureStatuses = [byLabel("Signature method")];
+    const paymentReady = PaymentConfirm.paymentTermsReadiness(
+      source.paymentSchedule?.readiness?.status
+    );
 
     // Soften insurance to needs_confirmation when profile exists but insurance empty
     if (!profile) {
@@ -4265,10 +4191,98 @@
       { id: "BUSINESS", label: "BUSINESS", status: worstStatus(businessStatuses), article: "art-contractor" },
       { id: "CUSTOMER", label: "CUSTOMER", status: worstStatus(customerStatuses), article: "art-customer" },
       { id: "PROJECT", label: "PROJECT", status: worstStatus(projectStatuses), article: "art-property" },
-      { id: "COMMERCIAL", label: "COMMERCIAL", status: worstStatus(commercialStatuses), article: "art-payment" },
+      {
+        id: "COMMERCIAL",
+        label: "PAYMENT TERMS",
+        status: paymentReady.status,
+        caption: paymentReady.caption,
+        article: "art-payment",
+      },
       { id: "LEGAL", label: "LEGAL", status: worstStatus(legalStatuses), article: "art-warranty" },
       { id: "SIGNATURE", label: "SIGNATURE", status: worstStatus(signatureStatuses), article: "art-signatures" },
     ];
+  }
+
+  function unhideNextActionBlock() {
+    const block = $("cbNextActionBlock");
+    if (!block) return;
+    block.hidden = false;
+    block.removeAttribute("hidden");
+    block.style.display = "";
+  }
+
+  function syncAuthenticatedNextAction(source, edits) {
+    if (!source || typeof PaymentConfirm.applyAuthenticatedPaymentNextActionDom !== "function") {
+      return;
+    }
+    const payChrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source: authenticatedPaymentSource(source),
+      confirmed: paymentConfigured(source.paymentSchedule),
+      activeArticleId,
+    });
+    if (lastFrozenPackage) {
+      PaymentConfirm.applyAuthenticatedPaymentNextActionDom(document, {
+        hideNextActionBlock: false,
+        nextCtaVisible: false,
+      });
+      unhideNextActionBlock();
+      renderFreezeSuccess(lastFrozenPackage, true);
+      return;
+    }
+    PaymentConfirm.applyAuthenticatedPaymentNextActionDom(document, payChrome);
+    if (payChrome.hideNextActionBlock) return;
+    const blocker = resolveNextBlocker(source, edits || draftEdits);
+    const next = $("cbNextStep");
+    const nextBtn = $("cbNextActionBtn");
+    const freezeBtn = $("cbFreezeBtn");
+    const continueLink = $("cbContinueSigning");
+    const freezeStatus = $("cbFreezeStatus");
+    if (freezeStatus) freezeStatus.hidden = true;
+    if (continueLink) continueLink.hidden = true;
+    if (blocker.paymentTerms) return;
+    unhideNextActionBlock();
+    if (blocker.freeze) {
+      if (next) {
+        next.hidden = false;
+        next.removeAttribute("hidden");
+        next.style.display = "";
+        next.textContent =
+          "All required sections are complete. Freeze the contract to create an immutable version for signature.";
+      }
+      if (nextBtn) {
+        nextBtn.hidden = true;
+        nextBtn.setAttribute("hidden", "hidden");
+        nextBtn.style.display = "none";
+        nextBtn.textContent = "";
+      }
+      if (freezeBtn) {
+        freezeBtn.hidden = false;
+        freezeBtn.removeAttribute("hidden");
+        freezeBtn.style.display = "";
+        freezeBtn.disabled = freezeBusy;
+        freezeBtn.textContent = freezeBusy ? "Freezing…" : "Freeze Contract";
+      }
+      return;
+    }
+    if (next) {
+      next.hidden = false;
+      next.removeAttribute("hidden");
+      next.style.display = "";
+      next.textContent = blocker.label || "";
+    }
+    if (freezeBtn) {
+      freezeBtn.hidden = true;
+      freezeBtn.setAttribute("hidden", "hidden");
+      freezeBtn.style.display = "none";
+    }
+    if (nextBtn) {
+      nextBtn.hidden = false;
+      nextBtn.removeAttribute("hidden");
+      nextBtn.style.display = "";
+      nextBtn.textContent = blocker.cta || "Open required section";
+      nextBtn.dataset.article = blocker.article || "";
+      nextBtn.dataset.external = blocker.external || "";
+    }
   }
 
   function resolveNextBlocker(source, edits) {
@@ -4307,6 +4321,7 @@
         label: "Confirm the payment terms",
         article: "art-payment",
         cta: "Open Payment Terms",
+        paymentTerms: true,
       };
     }
     if (!warrantyConfigured(source.contractSetup)) {
@@ -4355,34 +4370,12 @@
     if (overallContractReadiness(sourceSnapshot, draftEdits) !== "configured") {
       throw new Error("Contract readiness must be 100% before freezing.");
     }
-    const freezePaySummary = PaymentConfirm.presentPaymentSummary({
-      contractTotal: sourceSnapshot.contractTotal,
-      items: Array.isArray(sourceSnapshot.paymentSchedule?.items)
-        ? sourceSnapshot.paymentSchedule.items
-        : [],
-      verifiedDeposit: sourceSnapshot.paymentSchedule?.deposit,
-      depositRequired: sourceSnapshot.depositRequired,
-    });
+    const freezePaySummary =
+      PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(sourceSnapshot);
     if (freezePaySummary.blockConfirm) {
       throw new Error(
         freezePaySummary.verificationMessage ||
-          "Payment stages must equal the remaining contract balance."
-      );
-    }
-    const freezeDraftItems = paymentDraftItems.length
-      ? paymentDraftItems
-      : Array.isArray(sourceSnapshot.paymentSchedule?.items)
-        ? sourceSnapshot.paymentSchedule.items
-        : [];
-    const freezeIntegrity = PaymentConfirm.paymentStageIntegrity(
-      PaymentConfirm.futureStageItems(freezeDraftItems),
-      freezePaySummary.remainingBalance == null
-        ? null
-        : moneyToCents(freezePaySummary.remainingBalance)
-    );
-    if (freezeIntegrity.blockConfirm) {
-      throw new Error(
-        freezeIntegrity.error || "Complete or remove the unfinished payment stage."
+          "Deposit status could not be verified. Refresh before confirming."
       );
     }
     if (!extractApprovedScopeText(sourceSnapshot.scope).ok) {
@@ -4426,13 +4419,22 @@
   }
 
   function renderFreezeSuccess(pkg, idempotent) {
+    const block = $("cbNextActionBlock");
     const status = $("cbFreezeStatus");
     const freezeBtn = $("cbFreezeBtn");
     const nextBtn = $("cbNextActionBtn");
     const continueLink = $("cbContinueSigning");
     const next = $("cbNextStep");
     const version = pkg?.version != null ? `Version ${pkg.version}` : "Version ready";
+    if (block) {
+      block.hidden = false;
+      block.removeAttribute("hidden");
+      block.style.display = "";
+    }
     if (next) {
+      next.hidden = false;
+      next.removeAttribute("hidden");
+      next.style.display = "";
       next.textContent = `Contract Frozen · ${version} · Ready for Signature`;
     }
     if (status) {
@@ -4467,10 +4469,21 @@
     const items = readinessItems(source, edits);
     const groups = readinessGroups(source, edits);
     const overall = overallContractReadiness(source, edits);
+    const payChrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source: authenticatedPaymentSource(source),
+      confirmed: paymentConfigured(source.paymentSchedule),
+      activeArticleId,
+    });
     const list = $("cbReadiness");
     if (list) {
       list.innerHTML = groups
         .map((g) => {
+          if (g.label === "PAYMENT TERMS") {
+            return (
+              `<li><span class="cb-check-status ${statusClass(payChrome.readinessStatus)}">` +
+              `${escapeHtml(payChrome.readinessCaption)}</span></li>`
+            );
+          }
           return (
             `<li><span class="cb-check-status ${statusClass(g.status)}">${escapeHtml(statusLabel(g.status))}</span>` +
             `<span><strong>${escapeHtml(g.label)}</strong></span></li>`
@@ -4482,6 +4495,7 @@
     const ul = $("cbRequiredList");
     if (ul) {
       ul.innerHTML = items
+        .filter((item) => item.label !== "Payment terms")
         .map((item) => {
           const extra = item.note ? ` (${item.note})` : "";
           return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
@@ -4498,7 +4512,9 @@
 
     const missingEl = $("cbMissingList");
     if (missingEl) {
-      const missing = items.filter((i) => i.status === "missing");
+      const missing = items.filter(
+        (i) => i.status === "missing" && i.label !== "Payment terms"
+      );
       missingEl.innerHTML = missing.length
         ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}${i.note ? ` (${escapeHtml(i.note)})` : ""}</span></li>`).join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No critical gaps listed</span></li>`;
@@ -4506,9 +4522,16 @@
 
     const warnEl = $("cbWarningsList");
     if (warnEl) {
-      const warns = items.filter((i) => i.status === "needs_confirmation");
+      const warns = items.filter(
+        (i) => i.status === "needs_confirmation" && i.label !== "Payment terms"
+      );
       warnEl.innerHTML = warns.length
-        ? warns.map((i) => `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        ? warns
+            .map(
+              (i) =>
+                `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`
+            )
+            .join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No confirmation warnings</span></li>`;
     }
 
@@ -4526,42 +4549,17 @@
     setGate("cbReviewReady", reviewReady);
     setGate("cbSignReady", signReady);
 
-    const blocker = resolveNextBlocker(source, edits);
-    const next = $("cbNextStep");
-    const nextBtn = $("cbNextActionBtn");
-    const freezeBtn = $("cbFreezeBtn");
-    const continueLink = $("cbContinueSigning");
-    const freezeStatus = $("cbFreezeStatus");
-
     if (lastFrozenPackage) {
       renderFreezeSuccess(lastFrozenPackage, true);
       return;
     }
 
+    const freezeStatus = $("cbFreezeStatus");
+    const continueLink = $("cbContinueSigning");
     if (freezeStatus) freezeStatus.hidden = true;
     if (continueLink) continueLink.hidden = true;
 
-    if (blocker.freeze) {
-      if (next) {
-        next.textContent =
-          "All required sections are complete. Freeze the contract to create an immutable version for signature.";
-      }
-      if (nextBtn) nextBtn.hidden = true;
-      if (freezeBtn) {
-        freezeBtn.hidden = false;
-        freezeBtn.disabled = freezeBusy;
-        freezeBtn.textContent = freezeBusy ? "Freezing…" : "Freeze Contract";
-      }
-    } else {
-      if (next) next.textContent = blocker.label;
-      if (freezeBtn) freezeBtn.hidden = true;
-      if (nextBtn) {
-        nextBtn.hidden = false;
-        nextBtn.textContent = blocker.cta || "Open required section";
-        nextBtn.dataset.article = blocker.article || "";
-        nextBtn.dataset.external = blocker.external || "";
-      }
-    }
+    syncAuthenticatedNextAction(source, edits);
 
     const timeline = $("cbTimeline");
     if (timeline && !lastFrozenPackage) {
@@ -5138,15 +5136,10 @@
     const remainingRow = $("cbPayRemainingRow");
     const depositCopy = $("cbPayDepositCopy");
     const progressCopy = $("cbPayProgressCopy");
-    const paySummary = PaymentConfirm.presentPaymentSummary({
-      contractTotal,
-      items,
-      verifiedDeposit: bundle.deposit,
-      depositRequired: source.depositRequired,
-      currency,
-      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-      hideFutureStages: true,
-    });
+    const payView = PaymentConfirm.presentAuthenticatedPaymentArticleFromBuilderSource(
+      authenticatedPaymentSource(source)
+    );
+    const paySummary = payView;
 
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
     const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
@@ -5248,10 +5241,10 @@
       if (remainingRow) {
         if (paySummary.remainingBalance != null) {
           remainingRow.hidden = false;
-          setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
+          setText("cbPayRemainingLabel", payView.remainingLabel || "");
           setText(
             "cbPayRemainingBalance",
-            formatMoney(paySummary.remainingBalance, currency)
+            formatMoney(payView.remainingBalance, currency)
           );
         } else {
           remainingRow.hidden = true;
@@ -5294,9 +5287,9 @@
     }
 
     if (sumWarn) {
-      if (paySummary.blockConfirm && paySummary.verificationMessage) {
+      if (payView.errorMessage) {
         sumWarn.hidden = false;
-        sumWarn.textContent = paySummary.verificationMessage;
+        sumWarn.textContent = payView.errorMessage;
       } else {
         sumWarn.hidden = true;
         sumWarn.textContent = "";
@@ -5644,6 +5637,10 @@
         return;
       }
       const article = String(btn?.dataset?.article || "").trim();
+      if (article === "art-payment") {
+        setActiveArticle("art-payment", { confirmIfDirty: true, focus: true });
+        return;
+      }
       if (article) setActiveArticle(article, { confirmIfDirty: true, focus: true });
     });
 

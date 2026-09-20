@@ -60,6 +60,7 @@ test("no stage CRUD in tenant Payment Terms", () => {
 test("live totals come from ledger remaining", () => {
   const helper = fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8");
   assert.ok(helper.includes("Remaining Contract Balance"));
+  assert.ok(helper.includes("Balance After Deposit"));
   assert.ok(helper.includes("BILLING_TERMS_COPY"));
 });
 

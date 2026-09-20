@@ -203,7 +203,8 @@ async function testAsync(name, fn) {
     assert.strictEqual(summary.showPaymentStages, false);
     assert.strictEqual(summary.remainingItems.length, 0);
     assert.strictEqual(Number(summary.depositAmount), 1);
-    assert.strictEqual(Number(summary.remainingBalance), 3265.49);
+    assert.strictEqual(Number(summary.remainingBalance), 3264.49);
+    assert.strictEqual(summary.remainingLabel, "Balance After Deposit");
     assert.ok(!summary.explanationCopy.toLowerCase().includes("due upon completion"));
     assert.ok(!JSON.stringify(s.rows()).includes("Stage 1"));
     assert.ok(!JSON.stringify(s.rows()).includes("%"));

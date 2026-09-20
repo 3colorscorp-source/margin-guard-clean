@@ -544,15 +544,27 @@ function buildSnapshot({
   const startDate = normIsoDate(resolvedSchedule.start_date);
   const dueDate = normIsoDate(resolvedSchedule.due_date);
   const billingTermsCopy = trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY;
+  const requiredDeposit = moneyNumber(quote.deposit_required) || 0;
   const verifiedPaidAmount =
     depositVerified &&
     (trimField(depositVerified.status) === "paid" ||
       depositVerified.verified_paid === true)
       ? moneyNumber(depositVerified.amount)
       : 0;
-  const remainingCents =
-    (toMoneyCents(contractTotal) || 0) - (toMoneyCents(verifiedPaidAmount) || 0);
-  const remainingBalance = centsToNumber(remainingCents < 0 ? 0 : remainingCents);
+  const totalCents = toMoneyCents(contractTotal) || 0;
+  const paidCents = toMoneyCents(verifiedPaidAmount) || 0;
+  const requiredCents = toMoneyCents(requiredDeposit) || 0;
+  let remainingLabel = "Remaining Contract Balance";
+  let remainingCents = totalCents;
+  if (paidCents > 0) {
+    remainingLabel = "Remaining Contract Balance";
+    remainingCents = totalCents - paidCents;
+  } else if (requiredCents > 0) {
+    remainingLabel = "Balance After Deposit";
+    remainingCents = totalCents - requiredCents;
+  }
+  if (remainingCents < 0) remainingCents = 0;
+  const remainingBalance = centsToNumber(remainingCents);
   const paymentTermsConfirmed =
     trimField(paymentReadiness?.status) === "configured";
 
@@ -665,6 +677,7 @@ function buildSnapshot({
       deposit_required: moneyNumber(quote.deposit_required),
       deposit_paid_verified: verifiedPaidAmount || 0,
       remaining_contract_balance: remainingBalance,
+      remaining_label: remainingLabel,
       billing_terms_copy: billingTermsCopy,
       confirmed: paymentTermsConfirmed,
       confirmed_at:
@@ -843,7 +856,7 @@ async function freezeContractPackage({
     trimField(expectedScheduleUpdatedAt) !== trimField(schedule.updated_at)
   ) {
     return {
-      error: "Payment schedule changed. Reload before freezing.",
+      error: "Payment terms changed. Reload before freezing.",
       code: "schedule_version_conflict",
       status: 409,
     };

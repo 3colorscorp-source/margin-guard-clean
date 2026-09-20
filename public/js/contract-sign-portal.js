@@ -217,12 +217,8 @@
     var quote = (snap && snap.quote) || {};
     var currency = price.currency || quote.currency || "USD";
     var summary =
-      PaymentConfirm && typeof PaymentConfirm.presentPaymentSummary === "function"
-        ? PaymentConfirm.presentPaymentSummary({
-            contractTotal: price.contract_total != null ? price.contract_total : quote.total,
-            items: schedule.items || [],
-            verifiedDeposit: schedule.deposit,
-            depositRequired: price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+      PaymentConfirm && typeof PaymentConfirm.presentPaymentSummaryFromSnapshot === "function"
+        ? PaymentConfirm.presentPaymentSummaryFromSnapshot(snap, {
             currency: currency,
             dueRuleLabel: function (rule, extras) {
               return PaymentConfirm && typeof PaymentConfirm.article7DueRuleLabel === "function"
@@ -230,9 +226,23 @@
                 : "";
             },
           })
+        : PaymentConfirm && typeof PaymentConfirm.presentPaymentSummary === "function"
+          ? PaymentConfirm.presentPaymentSummary({
+              contractTotal: price.contract_total != null ? price.contract_total : quote.total,
+              items: schedule.items || [],
+              verifiedDeposit: schedule.deposit,
+              depositRequired:
+                price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+              currency: currency,
+              dueRuleLabel: function (rule, extras) {
+                return PaymentConfirm && typeof PaymentConfirm.article7DueRuleLabel === "function"
+                  ? PaymentConfirm.article7DueRuleLabel(rule, extras)
+                  : "";
+              },
+            })
         : null;
     if (!summary) {
-      return '<p class="cs-lead">No payment schedule items.</p>';
+      return '<p class="cs-lead">Payment terms are not available.</p>';
     }
     var html = '<div class="cs-pay-summary">';
     html +=

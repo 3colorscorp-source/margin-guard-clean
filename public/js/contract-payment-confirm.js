@@ -20,13 +20,12 @@
   "use strict";
 
   var SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
-  var SUM_ERROR = "Payment amounts must equal the contract total.";
-  var STAGES_SUM_ERROR = "Payment stages must equal the remaining contract balance.";
   var DEPOSIT_UNAVAILABLE_MESSAGE =
     "Deposit status could not be verified. Refresh before confirming.";
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
-  var SCHEDULE_MISMATCH_MESSAGE = STAGES_SUM_ERROR;
+  var BALANCE_AFTER_DEPOSIT_LABEL = "Balance After Deposit";
+  var REMAINING_CONTRACT_BALANCE_LABEL = "Remaining Contract Balance";
   var BILLING_TERMS_COPY =
     "Progress invoices are sent every two weeks based on completed work. If the project is completed sooner, the final invoice is sent when the work is complete.";
   var DEPOSIT_DUE_COPY = "The deposit is due now.";
@@ -127,14 +126,13 @@
       if (!isPaymentStageValid(list[i])) incomplete = true;
       else scheduledCents += parseMoneyInput(list[i].amount).cents;
     }
-    var mismatch = remainingCents != null && scheduledCents !== remainingCents;
     return {
       incomplete: incomplete,
       scheduledCents: scheduledCents,
       differenceCents: remainingCents == null ? null : remainingCents - scheduledCents,
-      mismatch: mismatch,
-      blockConfirm: incomplete || mismatch,
-      error: incomplete ? INCOMPLETE_STAGE_ERROR : mismatch ? STAGES_SUM_ERROR : "",
+      mismatch: false,
+      blockConfirm: false,
+      error: "",
     };
   }
 
@@ -204,12 +202,17 @@
     var src = input || {};
     var kind = paymentKind(src);
     var busy = Boolean(src.busy);
-    var summary = presentPaymentSummary({
-      items: src.items,
-      contractTotal: src.contractTotal,
-      verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
-      depositRequired: src.depositRequired,
-    });
+    var summary = src.source
+      ? presentAuthenticatedPaymentArticleFromBuilderSource(src.source)
+      : presentAuthenticatedPaymentArticle({
+          items: src.items,
+          contractTotal: src.contractTotal,
+          verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
+          depositRequired: src.depositRequired,
+          readinessStatus:
+            src.readinessStatus ||
+            (src.scheduleBundle && src.scheduleBundle.readiness && src.scheduleBundle.readiness.status),
+        });
     var depositBlocked = summary.blockConfirm === true;
     var confirmEnabled = kind !== "confirmed" && !busy && !depositBlocked;
     var buttons = [];
@@ -584,12 +587,39 @@
     }
 
     var appliedDepositCents = depositStatus === "paid" ? verifiedCents : 0;
+    var stillDueCents = 0;
+    if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
+      stillDueCents = plannedDepositCents - verifiedCents;
+    }
+    if (!(stillDueCents > 0)) stillDueCents = 0;
 
-    var remainingCents =
-      contractCents == null ? null : contractCents - appliedDepositCents;
+    var remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+    var remainingCents = contractCents;
+    var frozenLabel = trimField(src.frozenRemainingLabel);
+    if (frozenLabel) {
+      remainingLabel = frozenLabel;
+      remainingCents =
+        src.frozenRemainingBalance == null || !Number.isFinite(Number(src.frozenRemainingBalance))
+          ? null
+          : moneyToCents(src.frozenRemainingBalance);
+    } else if (src.legacyRemaining === true) {
+      remainingCents =
+        contractCents == null ? null : contractCents - appliedDepositCents;
+    } else if (depositStatus === "due" && plannedDepositCents > 0) {
+      remainingLabel = BALANCE_AFTER_DEPOSIT_LABEL;
+      remainingCents =
+        contractCents == null ? null : contractCents - plannedDepositCents;
+    } else if (depositStatus === "paid") {
+      remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+      remainingCents =
+        contractCents == null ? null : contractCents - verifiedCents;
+    } else {
+      remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+      remainingCents = contractCents;
+    }
     if (remainingCents != null && remainingCents < 0) {
       remainingCents = 0;
-      if (depositStatus === "paid") {
+      if (depositStatus === "paid" && !frozenLabel) {
         depositStatus = "inconsistent";
         blockConfirm = true;
         verificationMessage = DEPOSIT_INCONSISTENT_MESSAGE;
@@ -599,8 +629,6 @@
         depositAmount = null;
       }
     }
-
-    var remainingLabel = "Remaining Contract Balance";
     var remainingBalance =
       remainingCents == null ? null : centsToMoneyNumber(remainingCents);
     if (
@@ -610,12 +638,6 @@
       remainingLabel = "";
       remainingBalance = null;
     }
-    var stillDueCents = 0;
-    if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
-      stillDueCents = plannedDepositCents - verifiedCents;
-    }
-    if (!(stillDueCents > 0)) stillDueCents = 0;
-    if (stillDueCents > 0) remainingLabel = "Remaining Contract Balance";
 
     var showStages = src.hideFutureStages === true ? false : shouldShowPaymentStages(items);
     var stageSource = futureStageItems(items);
@@ -688,6 +710,247 @@
       blockConfirm: blockConfirm,
       verificationMessage: verificationMessage,
     };
+  }
+
+  function presentPaymentSummaryFromSnapshot(snap, extras) {
+    extras = extras || {};
+    var terms =
+      snap && snap.payment_terms && typeof snap.payment_terms === "object"
+        ? snap.payment_terms
+        : null;
+    var price = (snap && snap.price) || {};
+    var quote = (snap && snap.quote) || {};
+    var schedule = (snap && snap.payment_schedule) || {};
+    return presentPaymentSummary({
+      contractTotal:
+        extras.contractTotal != null
+          ? extras.contractTotal
+          : price.contract_total != null
+            ? price.contract_total
+            : quote.total,
+      items: Array.isArray(schedule.items) ? schedule.items : [],
+      verifiedDeposit: schedule.deposit,
+      depositRequired:
+        price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+      currency: extras.currency,
+      dueRuleLabel: extras.dueRuleLabel,
+      hideFutureStages: Boolean(terms),
+      legacyRemaining: !terms,
+      frozenRemainingLabel: terms && terms.remaining_label,
+      frozenRemainingBalance: terms && terms.remaining_contract_balance,
+    });
+  }
+
+  function paymentTermsReadiness(status) {
+    if (String(status || "").toLowerCase() === "configured") {
+      return {
+        status: "available",
+        caption: "COMPLETE — PAYMENT TERMS",
+        label: "PAYMENT TERMS",
+      };
+    }
+    return {
+      status: "needs_confirmation",
+      caption: "NEEDS CONFIRMATION — PAYMENT TERMS",
+      label: "PAYMENT TERMS",
+    };
+  }
+
+  function presentAuthenticatedPaymentArticle(input) {
+    var src = input || {};
+    var summary = presentPaymentSummary({
+      contractTotal: src.contractTotal,
+      items: src.items,
+      verifiedDeposit: src.verifiedDeposit,
+      depositRequired: src.depositRequired,
+      currency: src.currency,
+      dueRuleLabel: src.dueRuleLabel,
+      hideFutureStages: true,
+      legacyRemaining: false,
+    });
+    var readiness = paymentTermsReadiness(src.readinessStatus);
+    return Object.assign({}, summary, {
+      showPaymentStages: false,
+      remainingItems: [],
+      errorMessage: summary.blockConfirm ? summary.verificationMessage : "",
+      readinessStatus: readiness.status,
+      readinessCaption: readiness.caption,
+      sumError: "",
+    });
+  }
+
+  function resolveAuthenticatedBuilderPaymentInput(source) {
+    var src = source || {};
+    var bundle = src.paymentSchedule || {};
+    var readiness = bundle.readiness || {};
+    var status = String(readiness.status || "missing").toLowerCase();
+    var contractTotal = null;
+    if (readiness.contract_total != null && Number.isFinite(Number(readiness.contract_total))) {
+      contractTotal = Number(readiness.contract_total);
+    } else if (src.contractTotal != null && Number.isFinite(Number(src.contractTotal))) {
+      contractTotal = Number(src.contractTotal);
+    }
+    var depositRequired = src.depositRequired;
+    if (
+      (depositRequired == null || !Number.isFinite(Number(depositRequired))) &&
+      src.depositRequiredAmount != null &&
+      Number.isFinite(Number(src.depositRequiredAmount))
+    ) {
+      depositRequired = Number(src.depositRequiredAmount);
+    }
+    return {
+      contractTotal: contractTotal,
+      items: Array.isArray(bundle.items) ? bundle.items : [],
+      verifiedDeposit: bundle.deposit,
+      depositRequired: depositRequired,
+      currency: trimField(src.currency) || "USD",
+      dueRuleLabel: src.dueRuleLabel,
+      readinessStatus: status,
+    };
+  }
+
+  function presentAuthenticatedPaymentArticleFromBuilderSource(source) {
+    return presentAuthenticatedPaymentArticle(resolveAuthenticatedBuilderPaymentInput(source));
+  }
+
+  function presentAuthenticatedPaymentChrome(input) {
+    var src = input || {};
+    var source = src.source || src;
+    var article = presentAuthenticatedPaymentArticleFromBuilderSource(source);
+    var confirmed =
+      src.confirmed === true ||
+      String(
+        (source.paymentSchedule &&
+          source.paymentSchedule.readiness &&
+          source.paymentSchedule.readiness.status) ||
+          src.readinessStatus ||
+          ""
+      ).toLowerCase() === "configured";
+    var readiness = paymentTermsReadiness(confirmed ? "configured" : "needs_confirmation");
+    var activeArticleId = String(src.activeArticleId || "");
+    var articleOpen = activeArticleId === "art-payment";
+    var nextStepLabel = "";
+    var nextCta = "";
+    var nextCtaVisible = false;
+    var hideNextActionBlock = articleOpen;
+    var nextActionBlockVisible = !articleOpen && !confirmed;
+    if (!confirmed && !articleOpen) {
+      nextCta = "Open Payment Terms";
+      nextCtaVisible = true;
+    }
+    return {
+      article: article,
+      readinessStatus: readiness.status,
+      readinessCaption: readiness.caption,
+      readinessLabel: readiness.label,
+      showInWarnings: false,
+      showInMissing: false,
+      nextStepLabel: nextStepLabel,
+      nextCta: nextCta,
+      nextCtaVisible: nextCtaVisible,
+      hideNextActionBlock: hideNextActionBlock,
+      nextActionBlockVisible: nextActionBlockVisible,
+      nextCtaConfirms: false,
+      nextCtaPersists: false,
+      nextArticle: "art-payment",
+      openPaymentTermsVisible: nextCtaVisible,
+      footerPrimaryVisible: articleOpen && !confirmed,
+      footerPrimaryLabel: articleOpen && !confirmed ? "Confirm Payment Terms" : "",
+    };
+  }
+
+  function nextActionDomGet(root, id) {
+    if (!root) return null;
+    if (typeof root.getElementById === "function") return root.getElementById(id);
+    return null;
+  }
+
+  function setDomHidden(el, hide) {
+    if (!el) return;
+    el.hidden = hide === true;
+    if (hide) {
+      if (typeof el.setAttribute === "function") el.setAttribute("hidden", "hidden");
+      if (el.style) el.style.display = "none";
+    } else {
+      if (typeof el.removeAttribute === "function") el.removeAttribute("hidden");
+      if (el.style) el.style.display = "";
+    }
+  }
+
+  function inspectAuthenticatedPaymentNextActionDom(root) {
+    var block = nextActionDomGet(root, "cbNextActionBlock");
+    var step = nextActionDomGet(root, "cbNextStep");
+    var btn = nextActionDomGet(root, "cbNextActionBtn");
+    var blockHidden =
+      !block ||
+      block.hidden === true ||
+      (block.style && String(block.style.display).toLowerCase() === "none");
+    var btnText = btn ? String(btn.textContent || "").trim() : "";
+    var btnVisible =
+      Boolean(btn) &&
+      !blockHidden &&
+      btn.hidden !== true &&
+      !(btn.style && String(btn.style.display).toLowerCase() === "none") &&
+      btnText !== "";
+    var stepText = step ? String(step.textContent || "").trim() : "";
+    var paymentButtons = [];
+    if (btnVisible) paymentButtons.push(btnText);
+    return {
+      blockHidden: blockHidden,
+      blockDisplay: block && block.style ? String(block.style.display || "") : "",
+      buttonCount: btnVisible ? 1 : 0,
+      paymentButtonCount: paymentButtons.filter(function (label) {
+        return /payment terms/i.test(label);
+      }).length,
+      buttonLabel: btnVisible ? btnText : "",
+      stepText: blockHidden ? "" : stepText,
+    };
+  }
+
+  function applyAuthenticatedPaymentNextActionDom(root, chrome) {
+    var view = chrome || {};
+    var block = nextActionDomGet(root, "cbNextActionBlock");
+    var step = nextActionDomGet(root, "cbNextStep");
+    var btn = nextActionDomGet(root, "cbNextActionBtn");
+
+    if (step) step.textContent = "";
+    if (btn) {
+      btn.textContent = "";
+      if (btn.dataset) {
+        btn.dataset.article = "";
+        btn.dataset.external = "";
+      }
+      if (typeof btn.removeAttribute === "function") {
+        btn.removeAttribute("data-article");
+        btn.removeAttribute("data-external");
+      }
+    }
+    setDomHidden(step, true);
+    setDomHidden(btn, true);
+
+    if (view.hideNextActionBlock === true) {
+      setDomHidden(block, true);
+      setDomHidden(step, true);
+      setDomHidden(btn, true);
+      return inspectAuthenticatedPaymentNextActionDom(root);
+    }
+
+    if (view.nextCtaVisible === true && view.nextCta) {
+      setDomHidden(block, false);
+      setDomHidden(step, true);
+      setDomHidden(btn, false);
+      if (btn) {
+        btn.textContent = view.nextCta;
+        if (btn.dataset) btn.dataset.article = view.nextArticle || "art-payment";
+        if (typeof btn.setAttribute === "function") {
+          btn.setAttribute("data-article", view.nextArticle || "art-payment");
+        }
+      }
+      return inspectAuthenticatedPaymentNextActionDom(root);
+    }
+
+    setDomHidden(btn, true);
+    return inspectAuthenticatedPaymentNextActionDom(root);
   }
 
   function itemsMatchSource(payloadItems, sourceItems) {
@@ -825,11 +1088,10 @@
 
   return {
     SCHEDULE_API: SCHEDULE_API,
-    SUM_ERROR: SUM_ERROR,
-    STAGES_SUM_ERROR: STAGES_SUM_ERROR,
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
-    SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
+    BALANCE_AFTER_DEPOSIT_LABEL: BALANCE_AFTER_DEPOSIT_LABEL,
+    REMAINING_CONTRACT_BALANCE_LABEL: REMAINING_CONTRACT_BALANCE_LABEL,
     BILLING_TERMS_COPY: BILLING_TERMS_COPY,
     DEPOSIT_DUE_COPY: DEPOSIT_DUE_COPY,
     DEPOSIT_PAID_COPY: DEPOSIT_PAID_COPY,
@@ -849,10 +1111,6 @@
     paymentSaveControl: paymentSaveControl,
     paymentStageReorderActions: paymentStageReorderActions,
     centsToMoneyNumber: centsToMoneyNumber,
-    PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
-    PROGRESS_FINAL_NOTE: PROGRESS_FINAL_NOTE,
-    INCOMPLETE_STAGE_ERROR: INCOMPLETE_STAGE_ERROR,
-    DEFAULT_REMAINING_DUE_RULE: DEFAULT_REMAINING_DUE_RULE,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -863,6 +1121,14 @@
     buildPaymentConfirmPayload: buildPaymentConfirmPayload,
     presentPaymentRows: presentPaymentRows,
     presentPaymentSummary: presentPaymentSummary,
+    presentPaymentSummaryFromSnapshot: presentPaymentSummaryFromSnapshot,
+    paymentTermsReadiness: paymentTermsReadiness,
+    presentAuthenticatedPaymentArticle: presentAuthenticatedPaymentArticle,
+    resolveAuthenticatedBuilderPaymentInput: resolveAuthenticatedBuilderPaymentInput,
+    presentAuthenticatedPaymentArticleFromBuilderSource: presentAuthenticatedPaymentArticleFromBuilderSource,
+    presentAuthenticatedPaymentChrome: presentAuthenticatedPaymentChrome,
+    applyAuthenticatedPaymentNextActionDom: applyAuthenticatedPaymentNextActionDom,
+    inspectAuthenticatedPaymentNextActionDom: inspectAuthenticatedPaymentNextActionDom,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,

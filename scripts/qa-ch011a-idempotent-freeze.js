@@ -374,6 +374,7 @@ test("invoice_cadence_copy is frozen and included in content_hash", () => {
     PaymentConfirm.PROGRESS_INVOICE_COPY
   );
   assert.ok(Object.prototype.hasOwnProperty.call(snap.payment_terms, "remaining_contract_balance"));
+  assert.ok(Object.prototype.hasOwnProperty.call(snap.payment_terms, "remaining_label"));
   const termsMutated = {
     ...snap,
     payment_terms: {
