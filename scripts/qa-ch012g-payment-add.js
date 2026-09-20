@@ -191,8 +191,8 @@ test("10 Article 7 and right-rail readiness agree", () => {
   assert.ok(js.includes('return readinessMapStatus("payment", source)'));
   assert.ok(js.includes("paymentConfigured"));
   assert.ok(js.includes("Confirm the payment terms"));
-  assert.ok(js.includes("NEEDS CONFIRMATION — Payment terms"));
-  assert.ok(js.includes("COMPLETE — Payment terms"));
+  assert.ok(js.includes("NEEDS CONFIRMATION — PAYMENT TERMS"));
+  assert.ok(js.includes("COMPLETE — PAYMENT TERMS"));
   assert.ok(!js.includes("MISSING — Payment schedule"));
   assert.ok(!js.includes("Payment amounts must equal the contract total"));
   assert.ok(js.includes("overallContractReadiness"));

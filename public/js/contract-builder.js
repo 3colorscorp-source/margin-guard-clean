@@ -4144,8 +4144,8 @@
   }
 
   function paymentTermsReadinessCaption(status) {
-    if (status === "available") return "COMPLETE — Payment terms";
-    return "NEEDS CONFIRMATION — Payment terms";
+    if (status === "available") return "COMPLETE — PAYMENT TERMS";
+    return "NEEDS CONFIRMATION — PAYMENT TERMS";
   }
 
   function worstStatus(statuses) {
@@ -4172,16 +4172,14 @@
       byLabel("Existing scope"),
       byLabel("Approved quote"),
     ];
-    const commercialStatuses = [
-      byLabel("Contract total"),
-      byLabel("Payment terms"),
-      byLabel("Estimated schedule"),
-    ];
     const legalStatuses = [
       byLabel("State-required legal notices"),
       byLabel("Warranty terms"),
     ];
     const signatureStatuses = [byLabel("Signature method")];
+    const paymentReady = PaymentConfirm.paymentTermsReadiness(
+      source.paymentSchedule?.readiness?.status
+    );
 
     // Soften insurance to needs_confirmation when profile exists but insurance empty
     if (!profile) {
@@ -4192,7 +4190,13 @@
       { id: "BUSINESS", label: "BUSINESS", status: worstStatus(businessStatuses), article: "art-contractor" },
       { id: "CUSTOMER", label: "CUSTOMER", status: worstStatus(customerStatuses), article: "art-customer" },
       { id: "PROJECT", label: "PROJECT", status: worstStatus(projectStatuses), article: "art-property" },
-      { id: "COMMERCIAL", label: "COMMERCIAL", status: worstStatus(commercialStatuses), article: "art-payment" },
+      {
+        id: "COMMERCIAL",
+        label: "PAYMENT TERMS",
+        status: paymentReady.status,
+        caption: paymentReady.caption,
+        article: "art-payment",
+      },
       { id: "LEGAL", label: "LEGAL", status: worstStatus(legalStatuses), article: "art-warranty" },
       { id: "SIGNATURE", label: "SIGNATURE", status: worstStatus(signatureStatuses), article: "art-signatures" },
     ];
@@ -4234,6 +4238,7 @@
         label: "Confirm the payment terms",
         article: "art-payment",
         cta: "Open Payment Terms",
+        paymentTerms: true,
       };
     }
     if (!warrantyConfigured(source.contractSetup)) {
@@ -4372,10 +4377,21 @@
     const items = readinessItems(source, edits);
     const groups = readinessGroups(source, edits);
     const overall = overallContractReadiness(source, edits);
+    const payChrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source: authenticatedPaymentSource(source),
+      confirmed: paymentConfigured(source.paymentSchedule),
+      activeArticleId,
+    });
     const list = $("cbReadiness");
     if (list) {
       list.innerHTML = groups
         .map((g) => {
+          if (g.label === "PAYMENT TERMS") {
+            return (
+              `<li><span class="cb-check-status ${statusClass(payChrome.readinessStatus)}">` +
+              `${escapeHtml(payChrome.readinessCaption)}</span></li>`
+            );
+          }
           return (
             `<li><span class="cb-check-status ${statusClass(g.status)}">${escapeHtml(statusLabel(g.status))}</span>` +
             `<span><strong>${escapeHtml(g.label)}</strong></span></li>`
@@ -4387,10 +4403,8 @@
     const ul = $("cbRequiredList");
     if (ul) {
       ul.innerHTML = items
+        .filter((item) => item.label !== "Payment terms")
         .map((item) => {
-          if (item.label === "Payment terms") {
-            return `<li>${escapeHtml(item.caption || paymentTermsReadinessCaption(item.status))}</li>`;
-          }
           const extra = item.note ? ` (${item.note})` : "";
           return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
         })
@@ -4416,15 +4430,15 @@
 
     const warnEl = $("cbWarningsList");
     if (warnEl) {
-      const warns = items.filter((i) => i.status === "needs_confirmation");
+      const warns = items.filter(
+        (i) => i.status === "needs_confirmation" && i.label !== "Payment terms"
+      );
       warnEl.innerHTML = warns.length
         ? warns
-            .map((i) => {
-              if (i.label === "Payment terms") {
-                return `<li><span class="cb-check-status is-needs">NEEDS CONFIRMATION</span><span>Payment terms</span></li>`;
-              }
-              return `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`;
-            })
+            .map(
+              (i) =>
+                `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`
+            )
             .join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No confirmation warnings</span></li>`;
     }
@@ -4473,10 +4487,25 @@
       if (next) next.textContent = blocker.label;
       if (freezeBtn) freezeBtn.hidden = true;
       if (nextBtn) {
-        nextBtn.hidden = false;
-        nextBtn.textContent = blocker.cta || "Open required section";
-        nextBtn.dataset.article = blocker.article || "";
-        nextBtn.dataset.external = blocker.external || "";
+        if (blocker.paymentTerms) {
+          if (next) next.textContent = payChrome.nextStepLabel || "";
+          if (payChrome.nextCtaVisible) {
+            nextBtn.hidden = false;
+            nextBtn.textContent = payChrome.nextCta;
+            nextBtn.dataset.article = payChrome.nextArticle;
+            nextBtn.dataset.external = "";
+          } else {
+            nextBtn.hidden = true;
+            nextBtn.textContent = "";
+            nextBtn.dataset.article = "";
+            nextBtn.dataset.external = "";
+          }
+        } else {
+          nextBtn.hidden = false;
+          nextBtn.textContent = blocker.cta || "Open required section";
+          nextBtn.dataset.article = blocker.article || "";
+          nextBtn.dataset.external = blocker.external || "";
+        }
       }
     }
 
@@ -5556,6 +5585,10 @@
         return;
       }
       const article = String(btn?.dataset?.article || "").trim();
+      if (article === "art-payment") {
+        setActiveArticle("art-payment", { confirmIfDirty: true, focus: true });
+        return;
+      }
       if (article) setActiveArticle(article, { confirmIfDirty: true, focus: true });
     });
 

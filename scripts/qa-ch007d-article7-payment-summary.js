@@ -1826,8 +1826,8 @@ async function testAsync(name, fn) {
     assert.ok(!js.includes("items_required"));
     assert.ok(!helperSrc.includes("items_required"));
     assert.ok(!js.includes("if (paySummary.scheduleMismatch)"));
-    assert.ok(js.includes("NEEDS CONFIRMATION — Payment terms"));
-    assert.ok(js.includes("COMPLETE — Payment terms"));
+    assert.ok(js.includes("NEEDS CONFIRMATION — PAYMENT TERMS"));
+    assert.ok(js.includes("COMPLETE — PAYMENT TERMS"));
     assert.ok(js.includes("presentAuthenticatedPaymentArticle"));
     assert.ok(js.includes("payView.remainingLabel"));
     assert.ok(helperSrc.includes("Balance After Deposit"));
@@ -1909,7 +1909,7 @@ async function testAsync(name, fn) {
       PaymentConfirm.moneyToCents(view.remainingBalance),
       PaymentConfirm.moneyToCents(3265.49) - PaymentConfirm.moneyToCents(1)
     );
-    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — PAYMENT TERMS");
     assert.strictEqual(view.readinessStatus, "needs_confirmation");
     assert.strictEqual(view.showPaymentStages, false);
     assert.strictEqual(view.blockConfirm, false);
@@ -1943,10 +1943,10 @@ async function testAsync(name, fn) {
     const hydrate = slice(js, "function hydratePaymentDraftFromSource", "function paymentDraftContractTotal");
     assert.ok(!hydrate.includes("ensureResidualBillingRow()"));
     const readinessFn = slice(js, "function renderReadiness", "function renderLogo");
+    assert.ok(readinessFn.includes("presentAuthenticatedPaymentChrome"));
     assert.ok(readinessFn.includes('i.label !== "Payment terms"'));
-    assert.ok(readinessFn.includes("NEEDS CONFIRMATION"));
-    assert.ok(html.includes("contract-builder.js?v=pt-src-2"));
-    assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-2"));
+    assert.ok(html.includes("contract-builder.js?v=pt-src-3"));
+    assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-3"));
 
     const source = {
       contractTotal: 3265.49,
@@ -1975,7 +1975,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(view.depositAmount, 1);
     assert.strictEqual(view.remainingLabel, "Balance After Deposit");
     assert.strictEqual(view.remainingBalance, 3264.49);
-    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+    assert.strictEqual(view.readinessCaption, "NEEDS CONFIRMATION — PAYMENT TERMS");
     assert.strictEqual(view.readinessStatus, "needs_confirmation");
     assert.strictEqual(view.errorMessage, "");
     assert.strictEqual(view.sumError, "");
@@ -1996,7 +1996,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(leftover.remainingBalance, 3264.49);
     assert.strictEqual(leftover.errorMessage, "");
     assert.strictEqual(leftover.sumError, "");
-    assert.strictEqual(leftover.readinessCaption, "NEEDS CONFIRMATION — Payment terms");
+    assert.strictEqual(leftover.readinessCaption, "NEEDS CONFIRMATION — PAYMENT TERMS");
 
     const paymentReady = PaymentConfirm.paymentTermsReadiness(source.paymentSchedule.readiness.status);
     const readinessItems = [
@@ -2005,9 +2005,12 @@ async function testAsync(name, fn) {
     const missing = readinessItems.filter(
       (i) => i.status === "missing" && i.label !== "Payment terms"
     );
-    const warns = readinessItems.filter((i) => i.status === "needs_confirmation");
+    const warns = readinessItems.filter(
+      (i) => i.status === "needs_confirmation" && i.label !== "Payment terms"
+    );
     assert.deepStrictEqual(missing, []);
-    assert.strictEqual(warns[0].caption, "NEEDS CONFIRMATION — Payment terms");
+    assert.deepStrictEqual(warns, []);
+    assert.strictEqual(paymentReady.caption, "NEEDS CONFIRMATION — PAYMENT TERMS");
 
     const plan = PaymentConfirm.paymentFooterPlan({
       confirmed: false,
@@ -2016,6 +2019,115 @@ async function testAsync(name, fn) {
     assert.strictEqual(plan.primaryLabel, "Confirm Payment Terms");
     assert.strictEqual(plan.confirmEnabled, true);
     assert.strictEqual(plan.errorMessage, "");
+  });
+
+  function unpaidBuilderSource() {
+    const source = {
+      contractTotal: 3265.49,
+      depositRequired: 1,
+      depositRequiredAmount: 1,
+      currency: "USD",
+      paymentSchedule: {
+        available: true,
+        items: [],
+        readiness: { status: "missing", contract_total: 3265.49 },
+        deposit: { status: "none", verified_paid: false, amount: null },
+      },
+    };
+    const seeded = PaymentDefaults.buildDefaultPaymentSchedule({
+      contractTotal: source.contractTotal,
+      depositRequired: source.depositRequiredAmount,
+      items: source.paymentSchedule.items,
+      readinessStatus: source.paymentSchedule.readiness.status,
+    });
+    source.paymentSchedule.items = seeded.items;
+    return source;
+  }
+
+  test("33A Article 7 open pending: one PAYMENT TERMS readiness row, footer confirm only", () => {
+    const readinessFn = slice(js, "function renderReadiness", "function renderLogo");
+    assert.ok(readinessFn.includes("presentAuthenticatedPaymentChrome"));
+    assert.ok(readinessFn.includes('i.label !== "Payment terms"'));
+    assert.ok(!readinessFn.includes('span>Payment terms</span>'));
+    assert.ok(js.includes('label: "PAYMENT TERMS"'));
+    assert.ok(!js.includes('label: "COMMERCIAL"'));
+    const nextClick = slice(
+      js,
+      '$("cbNextActionBtn")?.addEventListener("click"',
+      '$("cbFreezeBtn")?.addEventListener("click"'
+    );
+    assert.ok(nextClick.includes('setActiveArticle("art-payment"'));
+    assert.ok(!nextClick.includes("workspaceConfirmPayment"));
+    assert.ok(!nextClick.includes("workspaceSave"));
+
+    const source = unpaidBuilderSource();
+    const chrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source,
+      confirmed: false,
+      activeArticleId: "art-payment",
+    });
+    const plan = PaymentConfirm.paymentFooterPlan({
+      confirmed: false,
+      source,
+    });
+    assert.strictEqual(chrome.readinessCaption, "NEEDS CONFIRMATION — PAYMENT TERMS");
+    assert.strictEqual(chrome.readinessLabel, "PAYMENT TERMS");
+    assert.strictEqual(chrome.showInWarnings, false);
+    assert.strictEqual(chrome.openPaymentTermsVisible, false);
+    assert.strictEqual(chrome.nextCtaVisible, false);
+    assert.ok(!String(chrome.nextCta || "").includes("Open Payment Terms"));
+    assert.strictEqual(chrome.footerPrimaryVisible, true);
+    assert.strictEqual(chrome.footerPrimaryLabel, "Confirm Payment Terms");
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Terms");
+    assert.strictEqual(plan.buttons.filter((b) => b.style === "primary").length, 1);
+    assert.ok(!plan.buttons.some((b) => b.label === "Open Payment Terms"));
+    assert.strictEqual(chrome.nextCtaConfirms, false);
+    assert.strictEqual(chrome.nextCtaPersists, false);
+  });
+
+  test("33B other article open pending: Next Action is only Open Payment Terms", () => {
+    const source = unpaidBuilderSource();
+    const chrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source,
+      confirmed: false,
+      activeArticleId: "art-price",
+    });
+    assert.strictEqual(chrome.readinessCaption, "NEEDS CONFIRMATION — PAYMENT TERMS");
+    assert.strictEqual(chrome.readinessLabel, "PAYMENT TERMS");
+    assert.strictEqual(chrome.showInWarnings, false);
+    assert.strictEqual(chrome.nextCtaVisible, true);
+    assert.strictEqual(chrome.nextCta, "Open Payment Terms");
+    assert.strictEqual(chrome.nextArticle, "art-payment");
+    assert.strictEqual(chrome.nextCtaConfirms, false);
+    assert.strictEqual(chrome.nextCtaPersists, false);
+    assert.strictEqual(chrome.footerPrimaryVisible, false);
+    assert.strictEqual(chrome.openPaymentTermsVisible, true);
+  });
+
+  test("33C Payment Terms confirmed: COMPLETE row, no warning, no confirm CTA", () => {
+    const source = unpaidBuilderSource();
+    source.paymentSchedule.readiness.status = "configured";
+    const chrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source,
+      confirmed: true,
+      activeArticleId: "art-payment",
+    });
+    const plan = PaymentConfirm.paymentFooterPlan({
+      confirmed: true,
+      source,
+    });
+    assert.strictEqual(chrome.readinessCaption, "COMPLETE — PAYMENT TERMS");
+    assert.strictEqual(chrome.readinessStatus, "available");
+    assert.strictEqual(chrome.showInWarnings, false);
+    assert.strictEqual(chrome.nextCtaVisible, false);
+    assert.strictEqual(chrome.openPaymentTermsVisible, false);
+    assert.strictEqual(chrome.footerPrimaryVisible, false);
+    assert.ok(!plan.buttons.some((b) => b.id === "confirm"));
+    assert.ok(!plan.confirmVisible);
+    assert.ok(!js.includes("Payment amounts must equal the contract total"));
+    assert.ok(!js.includes("Payment schedule"));
+    assert.ok(!js.includes("items_required"));
+    assert.ok(!helperSrc.includes("payment_stages_mismatch"));
   });
 
   console.log("");

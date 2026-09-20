@@ -745,12 +745,14 @@
     if (String(status || "").toLowerCase() === "configured") {
       return {
         status: "available",
-        caption: "COMPLETE — Payment terms",
+        caption: "COMPLETE — PAYMENT TERMS",
+        label: "PAYMENT TERMS",
       };
     }
     return {
       status: "needs_confirmation",
-      caption: "NEEDS CONFIRMATION — Payment terms",
+      caption: "NEEDS CONFIRMATION — PAYMENT TERMS",
+      label: "PAYMENT TERMS",
     };
   }
 
@@ -809,6 +811,52 @@
 
   function presentAuthenticatedPaymentArticleFromBuilderSource(source) {
     return presentAuthenticatedPaymentArticle(resolveAuthenticatedBuilderPaymentInput(source));
+  }
+
+  function presentAuthenticatedPaymentChrome(input) {
+    var src = input || {};
+    var source = src.source || src;
+    var article = presentAuthenticatedPaymentArticleFromBuilderSource(source);
+    var confirmed =
+      src.confirmed === true ||
+      String(
+        (source.paymentSchedule &&
+          source.paymentSchedule.readiness &&
+          source.paymentSchedule.readiness.status) ||
+          src.readinessStatus ||
+          ""
+      ).toLowerCase() === "configured";
+    var readiness = paymentTermsReadiness(confirmed ? "configured" : "needs_confirmation");
+    var activeArticleId = String(src.activeArticleId || "");
+    var articleOpen = activeArticleId === "art-payment";
+    var nextStepLabel = "";
+    var nextCta = "";
+    var nextCtaVisible = false;
+    if (!confirmed) {
+      if (articleOpen) {
+        nextStepLabel = "Confirm Payment Terms";
+      } else {
+        nextCta = "Open Payment Terms";
+        nextCtaVisible = true;
+      }
+    }
+    return {
+      article: article,
+      readinessStatus: readiness.status,
+      readinessCaption: readiness.caption,
+      readinessLabel: readiness.label,
+      showInWarnings: false,
+      showInMissing: false,
+      nextStepLabel: nextStepLabel,
+      nextCta: nextCta,
+      nextCtaVisible: nextCtaVisible,
+      nextCtaConfirms: false,
+      nextCtaPersists: false,
+      nextArticle: "art-payment",
+      openPaymentTermsVisible: nextCtaVisible,
+      footerPrimaryVisible: articleOpen && !confirmed,
+      footerPrimaryLabel: articleOpen && !confirmed ? "Confirm Payment Terms" : "",
+    };
   }
 
   function itemsMatchSource(payloadItems, sourceItems) {
@@ -984,6 +1032,7 @@
     presentAuthenticatedPaymentArticle: presentAuthenticatedPaymentArticle,
     resolveAuthenticatedBuilderPaymentInput: resolveAuthenticatedBuilderPaymentInput,
     presentAuthenticatedPaymentArticleFromBuilderSource: presentAuthenticatedPaymentArticleFromBuilderSource,
+    presentAuthenticatedPaymentChrome: presentAuthenticatedPaymentChrome,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,
