@@ -34,6 +34,9 @@ const {
   serializeDepositForSnapshot,
   assertDepositReadyForFreeze,
 } = require("./verified-contract-deposit");
+const {
+  presentPaymentSummary,
+} = require("../../../public/js/contract-payment-confirm.js");
 
 const API_VERSION = "ch-011a-v1";
 const SNAPSHOT_SCHEMA = "ch-011a-v1";
@@ -886,6 +889,19 @@ async function freezeContractPackage({
     return {
       error: depositGate.error,
       code,
+      status: 422,
+    };
+  }
+  const paySummary = presentPaymentSummary({
+    contractTotal: moneyNumber(quote.total),
+    items: sources.items,
+    verifiedDeposit: depositVerified,
+    depositRequired: moneyNumber(quote.deposit_required),
+  });
+  if (paySummary.scheduleMismatch) {
+    return {
+      error: paySummary.verificationMessage,
+      code: "payment_stages_mismatch",
       status: 422,
     };
   }

@@ -22,6 +22,8 @@
     "Deposit status could not be verified. Refresh before confirming.";
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
+  var SCHEDULE_MISMATCH_MESSAGE =
+    "Future payments do not equal the remaining contract balance. Edit the payment schedule before confirming.";
   var confirmLock = false;
 
   function trimField(value) {
@@ -211,7 +213,99 @@
   }
 
   function isDepositScheduleItem(item) {
-    return trimField(item && item.payment_type).toLowerCase() === "deposit";
+    var type = trimField(item && item.payment_type).toLowerCase();
+    if (type === "deposit") return true;
+    var label = trimField(item && item.label).toLowerCase();
+    return /\bdeposit\b/.test(label) || label === "initial scheduling payment";
+  }
+
+  function isFinalLikeItem(item) {
+    var type = trimField(item && item.payment_type).toLowerCase();
+    if (type === "completion" || type === "final") return true;
+    var label = trimField(item && item.label).toLowerCase();
+    return /\b(remaining|final|completion|balance)\b/.test(label);
+  }
+
+  function isSimpleTwoStageSchedule(items) {
+    var list = Array.isArray(items) ? items : [];
+    if (list.length !== 2) return false;
+    var depositCount = 0;
+    var finalCount = 0;
+    for (var i = 0; i < list.length; i += 1) {
+      if (isDepositScheduleItem(list[i])) depositCount += 1;
+      else if (isFinalLikeItem(list[i])) finalCount += 1;
+    }
+    return depositCount === 1 && finalCount === 1;
+  }
+
+  function futureStageItems(items) {
+    return cloneItems(items).filter(function (item) {
+      return !isDepositScheduleItem(item);
+    });
+  }
+
+  function shouldShowPaymentStages(items) {
+    var list = Array.isArray(items) ? items : [];
+    if (isSimpleTwoStageSchedule(list)) return false;
+    return list.length >= 3 && futureStageItems(list).length > 0;
+  }
+
+  function reconcileFutureStages(stageItems, remainingCents, options) {
+    var source = Array.isArray(stageItems) ? stageItems : [];
+    var rows = presentPaymentRows(source, options);
+    if (remainingCents == null) {
+      return { rows: rows, matches: true, reconciled: false, mismatch: false };
+    }
+    var sumCents = 0;
+    for (var i = 0; i < source.length; i += 1) {
+      sumCents += moneyToCents(source[i].amount);
+    }
+    if (sumCents === remainingCents) {
+      return { rows: rows, matches: true, reconciled: false, mismatch: false };
+    }
+    if (!source.length) {
+      return {
+        rows: rows,
+        matches: remainingCents === 0,
+        reconciled: false,
+        mismatch: remainingCents !== 0,
+      };
+    }
+    var adjustIndex = -1;
+    for (var j = source.length - 1; j >= 0; j -= 1) {
+      if (isFinalLikeItem(source[j])) {
+        adjustIndex = j;
+        break;
+      }
+    }
+    if (adjustIndex < 0) adjustIndex = source.length - 1;
+    var othersCents = 0;
+    for (var k = 0; k < source.length; k += 1) {
+      if (k !== adjustIndex) othersCents += moneyToCents(source[k].amount);
+    }
+    var adjustedCents = remainingCents - othersCents;
+    if (adjustedCents < 0) {
+      return { rows: rows, matches: false, reconciled: false, mismatch: true };
+    }
+    var nextRows = rows.map(function (row, idx) {
+      if (idx !== adjustIndex) return row;
+      return Object.assign({}, row, { amount: centsToMoneyNumber(adjustedCents) });
+    });
+    return { rows: nextRows, matches: true, reconciled: true, mismatch: false };
+  }
+
+  function formatCopyAmount(amount, currency) {
+    var n = Number(amount);
+    if (!Number.isFinite(n)) return "";
+    var cur = trimField(currency) || "USD";
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: cur,
+      }).format(n);
+    } catch (_err) {
+      return (cur === "USD" ? "$" : cur + " ") + n.toFixed(2);
+    }
   }
 
   function verifiedDepositFromServer(raw) {
@@ -230,6 +324,7 @@
   function presentPaymentSummary(input) {
     var src = input || {};
     var items = cloneItems(src.items);
+    var currency = trimField(src.currency) || "USD";
     var contractCents =
       src.contractTotal == null || !Number.isFinite(Number(src.contractTotal))
         ? null
@@ -288,8 +383,12 @@
       }
     }
 
+    var appliedDepositCents = 0;
+    if (depositStatus === "paid") appliedDepositCents = verifiedCents;
+    else if (depositStatus === "due") appliedDepositCents = plannedDepositCents;
+
     var remainingCents =
-      contractCents == null ? null : contractCents - (applied ? verifiedCents : 0);
+      contractCents == null ? null : contractCents - appliedDepositCents;
     if (remainingCents != null && remainingCents < 0) {
       remainingCents = 0;
       if (depositStatus === "paid") {
@@ -297,20 +396,67 @@
         blockConfirm = true;
         verificationMessage = DEPOSIT_INCONSISTENT_MESSAGE;
         applied = false;
+        appliedDepositCents = 0;
         remainingCents = contractCents;
         depositAmount = null;
       }
     }
 
-    var remainingSource = applied
-      ? items.filter(function (item) {
-          return !isDepositScheduleItem(item);
-        })
-      : items;
-    var remainingRows = presentPaymentRows(remainingSource, src);
-    var remainingSumCents = remainingSource.reduce(function (sum, item) {
-      return sum + moneyToCents(item.amount);
-    }, 0);
+    var remainingLabel =
+      depositStatus === "due" ? "Balance After Deposit" : "Remaining Contract Balance";
+    var remainingBalance =
+      remainingCents == null ? null : centsToMoneyNumber(remainingCents);
+    var stillDueCents = 0;
+    if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
+      stillDueCents = plannedDepositCents - verifiedCents;
+    }
+    if (stillDueCents > 0) remainingLabel = "Remaining Contract Balance";
+
+    var showStages = shouldShowPaymentStages(items);
+    var stageSource = futureStageItems(items);
+    var stagePlan = {
+      rows: showStages ? presentPaymentRows(stageSource, src) : [],
+      matches: true,
+      reconciled: false,
+      mismatch: false,
+    };
+    if (showStages) {
+      stagePlan = reconcileFutureStages(stageSource, remainingCents, src);
+      if (stagePlan.mismatch && !blockConfirm) {
+        blockConfirm = true;
+        verificationMessage = SCHEDULE_MISMATCH_MESSAGE;
+      }
+    }
+
+    var remainingSumMatches = showStages ? stagePlan.matches === true : true;
+
+    var summaryCopy = "";
+    if (depositStatus === "paid" && stillDueCents > 0) {
+      summaryCopy =
+        "A partial deposit has been received. " +
+        formatCopyAmount(centsToMoneyNumber(stillDueCents), currency) +
+        " remains due toward the deposit.";
+    } else if (depositStatus === "due" && depositAmount != null && remainingBalance != null) {
+      summaryCopy = showStages
+        ? "The " +
+          formatCopyAmount(depositAmount, currency) +
+          " deposit is due now. The remaining " +
+          formatCopyAmount(remainingBalance, currency) +
+          " is due in the stages below."
+        : "The " +
+          formatCopyAmount(depositAmount, currency) +
+          " deposit is due now. The remaining " +
+          formatCopyAmount(remainingBalance, currency) +
+          " is due upon completion.";
+    } else if (depositStatus === "paid" && remainingBalance != null) {
+      summaryCopy = showStages
+        ? "The deposit has been received. The remaining " +
+          formatCopyAmount(remainingBalance, currency) +
+          " is due in the stages below."
+        : "The deposit has been received. The remaining " +
+          formatCopyAmount(remainingBalance, currency) +
+          " is due upon completion.";
+    }
 
     return {
       contractTotal:
@@ -323,16 +469,19 @@
             ? "Deposit Due"
             : "",
       depositAmount: depositAmount,
-      depositMinus: depositStatus === "paid",
-      remainingBalance:
-        remainingCents == null ? null : centsToMoneyNumber(remainingCents),
-      appliedCopy:
-        depositStatus === "paid"
-          ? "The deposit has been received and applied to the contract total."
-          : "",
-      remainingItems: remainingRows,
-      remainingSumMatches:
-        remainingCents != null && remainingSumCents === remainingCents,
+      depositMinus: false,
+      depositStillDue: stillDueCents > 0 ? centsToMoneyNumber(stillDueCents) : null,
+      depositStillDueLabel: stillDueCents > 0 ? "Deposit Still Due" : "",
+      remainingLabel: remainingLabel,
+      remainingBalance: remainingBalance,
+      summaryCopy: summaryCopy,
+      appliedCopy: summaryCopy,
+      showPaymentStages: showStages,
+      stageTitle: showStages ? "Payment Stages" : "",
+      remainingItems: showStages ? stagePlan.rows : [],
+      remainingSumMatches: remainingSumMatches,
+      stagesReconciled: stagePlan.reconciled === true,
+      scheduleMismatch: stagePlan.mismatch === true,
       verifiedPaid: applied,
       blockConfirm: blockConfirm,
       verificationMessage: verificationMessage,
@@ -402,7 +551,9 @@
         if (depositSummary.blockConfirm) {
           return {
             ok: false,
-            reason: depositSummary.depositStatus,
+            reason: depositSummary.scheduleMismatch
+              ? "payment_stages_mismatch"
+              : depositSummary.depositStatus,
             posted: false,
             advance: false,
             error: depositSummary.verificationMessage,
@@ -490,6 +641,7 @@
     SUM_ERROR: SUM_ERROR,
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
+    SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -502,6 +654,9 @@
     presentPaymentSummary: presentPaymentSummary,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
+    isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,
+    shouldShowPaymentStages: shouldShowPaymentStages,
+    reconcileFutureStages: reconcileFutureStages,
     itemsMatchSource: itemsMatchSource,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,

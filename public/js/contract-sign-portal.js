@@ -223,6 +223,7 @@
             items: schedule.items || [],
             verifiedDeposit: schedule.deposit,
             depositRequired: price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+            currency: currency,
             dueRuleLabel: function (rule, extras) {
               return PaymentDefaults && typeof PaymentDefaults.dueRuleCustomerLabel === "function"
                 ? PaymentDefaults.dueRuleCustomerLabel(rule, extras)
@@ -240,38 +241,50 @@
       "</span></div>";
     if (summary.depositStatus === "paid") {
       html +=
-        '<div class="cs-kv"><span class="k">Deposit Paid</span><span class="v">− ' +
+        '<div class="cs-kv is-deposit"><span class="k">Deposit Paid</span><span class="v">' +
         text(money(summary.depositAmount, currency)) +
         "</span></div>";
     } else if (summary.depositStatus === "due") {
       html +=
-        '<div class="cs-kv"><span class="k">Deposit Due</span><span class="v">' +
+        '<div class="cs-kv is-deposit"><span class="k">Deposit Due</span><span class="v">' +
         text(money(summary.depositAmount, currency)) +
         "</span></div>";
     }
+    if (summary.depositStillDue != null && summary.depositStillDue > 0) {
+      html +=
+        '<div class="cs-kv is-still-due"><span class="k">' +
+        text(summary.depositStillDueLabel || "Deposit Still Due") +
+        '</span><span class="v">' +
+        text(money(summary.depositStillDue, currency)) +
+        "</span></div>";
+    }
     html +=
-      '<div class="cs-kv"><span class="k">Remaining Contract Balance</span><span class="v">' +
+      '<div class="cs-kv is-remaining"><span class="k">' +
+      text(summary.remainingLabel || "Remaining Contract Balance") +
+      '</span><span class="v">' +
       text(money(summary.remainingBalance, currency)) +
       "</span></div>";
-    if (summary.appliedCopy) {
-      html += '<p class="cs-prose">' + escapeHtml(summary.appliedCopy) + "</p>";
+    if (summary.summaryCopy) {
+      html += '<p class="cs-prose">' + escapeHtml(summary.summaryCopy) + "</p>";
     }
-    html += '<p class="cs-section-label" style="margin-top:14px">Remaining Payment Schedule</p>';
-    if (!summary.remainingItems.length) {
-      html += '<p class="cs-lead">No remaining payments.</p>';
-    } else {
-      html += summary.remainingItems
-        .map(function (row) {
-          return (
-            '<div class="cs-kv" style="grid-column:1/-1"><span class="k">' +
-            text(row.name) +
-            '</span><span class="v">' +
-            text(money(row.amount, currency)) +
-            (row.due ? "<br>" + text(row.due) : "") +
-            "</span></div>"
-          );
-        })
-        .join("");
+    if (summary.showPaymentStages) {
+      html += '<p class="cs-section-label" style="margin-top:14px">Payment Stages</p>';
+      if (!summary.remainingItems.length) {
+        html += '<p class="cs-lead">No remaining payments.</p>';
+      } else {
+        html += summary.remainingItems
+          .map(function (row) {
+            return (
+              '<div class="cs-kv" style="grid-column:1/-1"><span class="k">' +
+              text(row.name) +
+              '</span><span class="v">' +
+              text(money(row.amount, currency)) +
+              (row.due ? "<br>" + text(row.due) : "") +
+              "</span></div>"
+            );
+          })
+          .join("");
+      }
     }
     html += "</div>";
     return html;
