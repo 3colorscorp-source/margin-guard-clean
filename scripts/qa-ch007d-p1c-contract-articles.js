@@ -54,12 +54,15 @@ test("Warranty Confirm + persist", () => {
   assert.match(html, /id="cbWarEditSummary"/);
 });
 
-test("Payment Save Payment Plan + Confirm + read-only", () => {
-  assert.match(js, /"art-payment":[\s\S]*?saveLabel:\s*"Save Payment Plan"/);
+test("Payment Confirm Payment Terms + read-only", () => {
+  assert.match(js, /"art-payment":[\s\S]*?supportsEdit:\s*false/);
+  assert.match(js, /"art-payment":[\s\S]*?supportsSave:\s*false/);
   assert.match(js, /workspaceConfirmPayment/);
-  assert.match(js, /paymentScheduleAllowsOwnerEdit/);
-  assert.match(js, /Confirmed payment schedules are read-only/);
+  assert.match(js, /Confirm Payment Terms/);
+  assert.match(js, /Confirmed payment terms are read-only/);
   assert.match(html, /contract-payment-confirm\.js/);
+  assert.match(html, /Payment Terms/);
+  assert.doesNotMatch(html, /\+ Add Payment Stage/);
 });
 
 test("Scope is quote review-only", () => {

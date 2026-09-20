@@ -696,7 +696,7 @@
       renderContractSchedule(snap) +
       "</div>" +
       '<div id="sec-schedule" style="margin-top:18px">' +
-      '<p class="cs-section-label">Payment Schedule</p>' +
+      '<p class="cs-section-label">Payment Terms</p>' +
       renderSchedule(snap) +
       "</div>" +
       '<div id="sec-warranty" style="margin-top:18px">' +

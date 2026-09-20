@@ -387,7 +387,7 @@ function buildSignedContractLines({
   }
   lines.push(blank(6));
 
-  lines.push(heading("Payment Schedule"));
+  lines.push(heading("Payment Terms"));
   const payTotal = snap?.price?.contract_total ?? snap?.quote?.total;
   const paySummary = presentPaymentSummary({
     contractTotal: payTotal,

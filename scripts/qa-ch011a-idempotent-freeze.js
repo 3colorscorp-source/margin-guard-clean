@@ -153,6 +153,7 @@ test("2. different object key order → same hash", () => {
     schema: snap.schema,
     frozen_at: snap.frozen_at,
     payment_schedule: snap.payment_schedule,
+    payment_terms: snap.payment_terms,
     contract_schedule: snap.contract_schedule,
     business_settings: snap.business_settings,
     quote: snap.quote,
@@ -368,7 +369,20 @@ test("invoice_cadence_copy is frozen and included in content_hash", () => {
     snap.payment_schedule.invoice_cadence_copy,
     PaymentConfirm.PROGRESS_INVOICE_COPY
   );
+  assert.strictEqual(
+    snap.payment_terms.billing_terms_copy,
+    PaymentConfirm.PROGRESS_INVOICE_COPY
+  );
+  assert.ok(Object.prototype.hasOwnProperty.call(snap.payment_terms, "remaining_contract_balance"));
+  const termsMutated = {
+    ...snap,
+    payment_terms: {
+      ...snap.payment_terms,
+      billing_terms_copy: "Changed payment terms after freeze.",
+    },
+  };
   const h0 = lib.contentHashForSnapshot(snap);
+  assert.notStrictEqual(h0, lib.contentHashForSnapshot(termsMutated));
   const mutated = {
     ...snap,
     payment_schedule: {

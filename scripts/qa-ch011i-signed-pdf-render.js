@@ -359,7 +359,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
     " "
   );
   assert.ok(newText.includes("The $2,000.00 deposit is due now."));
-  assert.ok(newText.includes("billed every two weeks based on progress"));
+  assert.ok(newText.includes("Progress invoices are sent every two weeks based on completed work"));
   assert.ok(!newText.includes("due upon completion"));
 
   const paidFull = sampleCtx({
@@ -407,7 +407,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
     " "
   );
   assert.ok(partialText.includes("Deposit Still Due"));
-  assert.ok(partialText.includes("billed every two weeks based on progress"));
+  assert.ok(partialText.includes("Progress invoices are sent every two weeks based on completed work"));
 });
 
 test("signature, certificate, envelope, package, hashes remain", () => {

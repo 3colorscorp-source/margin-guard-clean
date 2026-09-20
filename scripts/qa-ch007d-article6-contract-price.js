@@ -93,9 +93,9 @@ test("2 Article 6 drops payment, tax, CO, and empty cards", () => {
 });
 
 test("3 other articles keep their legal homes", () => {
-  assert.ok(art7.includes("Payment Schedule"));
+  assert.ok(art7.includes("Payment Terms"));
   assert.ok(art7.includes('id="cbPayTimeline"'));
-  assert.ok(js.includes("Confirm Payment Schedule"));
+  assert.ok(js.includes("Confirm Payment Terms"));
   assert.ok(art8.includes("Estimated Start Date"));
   assert.ok(art8.includes("cbStartDisplay"));
   assert.ok(art9.includes("Changes and Additional Work"));
@@ -147,8 +147,8 @@ test("7 preview / print / frozen / signed PDF show Contract Price only", () => {
   assert.ok(signPrice.includes("Payment details are listed in Article 7."));
   assert.ok(!signPrice.includes("Deposit required"));
   assert.ok(pdfSrc.includes('heading("Contract Price")'));
-  assert.ok(pdfSrc.includes('heading("Payment Schedule")'));
-  assert.ok(signSrc.includes('cs-section-label">Payment Schedule'));
+  assert.ok(pdfSrc.includes('heading("Payment Terms")'));
+  assert.ok(signSrc.includes('cs-section-label">Payment Terms'));
 });
 
 test("8 no READY banner or extra confirmation on Article 6", () => {
@@ -160,8 +160,8 @@ test("8 no READY banner or extra confirmation on Article 6", () => {
 });
 
 test("9 payment schedule notices stay in Article 7 / PDF payment section", () => {
-  assert.ok(art7.includes("cbPayWorkspace") || art7.includes("Payment Schedule"));
-  const pdfPay = slice(pdfSrc, 'heading("Payment Schedule")', 'heading("Warranty")');
+  assert.ok(art7.includes("cbPayWorkspace") || art7.includes("Payment Terms"));
+  const pdfPay = slice(pdfSrc, 'heading("Payment Terms")', 'heading("Warranty")');
   assert.ok(pdfPay.includes("it.label") || pdfPay.includes("Payment"));
   assert.ok(freezeSrc.includes("deposit_required: moneyNumber(quote.deposit_required)"));
 });

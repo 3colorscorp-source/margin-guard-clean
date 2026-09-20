@@ -161,7 +161,7 @@
       centsToNumber(depositCents).toFixed(2) +
       ") is greater than the contract total (" +
       centsToNumber(totalCents).toFixed(2) +
-      "). Defaults were not created. Customize the payment plan to enter a balanced schedule before confirming."
+      "). Defaults were not created."
     );
   }
 
@@ -209,17 +209,7 @@
     }
 
     var items = [];
-    if (depositCents === 0) {
-      items.push(
-        makeItem(
-          1,
-          PROGRESS_FINAL_LABEL,
-          "final",
-          totalCents,
-          REMAINING_DUE_RULE
-        )
-      );
-    } else if (depositCents === totalCents) {
+    if (depositCents > 0) {
       items.push(
         makeItem(
           1,
@@ -229,40 +219,6 @@
           INITIAL_SCHEDULING_DUE_RULE
         )
       );
-    } else {
-      items.push(
-        makeItem(
-          1,
-          "Initial Scheduling Payment",
-          "deposit",
-          depositCents,
-          INITIAL_SCHEDULING_DUE_RULE
-        )
-      );
-      items.push(
-        makeItem(
-          2,
-          PROGRESS_FINAL_LABEL,
-          "final",
-          totalCents - depositCents,
-          REMAINING_DUE_RULE
-        )
-      );
-    }
-
-    var sum = 0;
-    for (var i = 0; i < items.length; i += 1) {
-      sum += items[i].amount_cents;
-    }
-    if (sum !== totalCents) {
-      return {
-        ok: false,
-        seeded: false,
-        overwriteProtected: false,
-        warning: "Generated payment stages did not equal the contract total.",
-        items: [],
-        code: "seed_total_mismatch",
-      };
     }
 
     return {

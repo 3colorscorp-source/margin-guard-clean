@@ -3363,7 +3363,7 @@ function mgSwCreateAutoDocsSession(io) {
         ["Scope of Work", true],
         ["Project Address", true],
         [
-          "Payment Schedule",
+          "Payment Terms",
           isConfigured(ready.payment_schedule || ready.payment),
         ],
         ["Warranty", isConfigured(ready.warranty)],

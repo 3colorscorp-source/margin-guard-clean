@@ -357,9 +357,7 @@ function evaluatePaymentReadiness(schedule, items, contractTotalCents) {
   const confirmed = Boolean(
     schedule &&
       schedule.status === "confirmed" &&
-      schedule.confirmed_at &&
-      itemCount > 0 &&
-      scheduledTotalCents === contractTotalCents
+      schedule.confirmed_at
   );
   return {
     status: !schedule ? "missing" : confirmed ? "configured" : "draft",
@@ -545,6 +543,18 @@ function buildSnapshot({
     resolveCanonicalContractSchedule({ quote, project });
   const startDate = normIsoDate(resolvedSchedule.start_date);
   const dueDate = normIsoDate(resolvedSchedule.due_date);
+  const billingTermsCopy = trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY;
+  const verifiedPaidAmount =
+    depositVerified &&
+    (trimField(depositVerified.status) === "paid" ||
+      depositVerified.verified_paid === true)
+      ? moneyNumber(depositVerified.amount)
+      : 0;
+  const remainingCents =
+    (toMoneyCents(contractTotal) || 0) - (toMoneyCents(verifiedPaidAmount) || 0);
+  const remainingBalance = centsToNumber(remainingCents < 0 ? 0 : remainingCents);
+  const paymentTermsConfirmed =
+    trimField(paymentReadiness?.status) === "configured";
 
   // Business Settings SoT: freeze legal profile (+ branding columns as currently stored).
   // Do not invent a second business identity schema.
@@ -646,7 +656,19 @@ function buildSnapshot({
       readiness: paymentReadiness,
       deposit: serializeDepositForSnapshot(depositVerified, quote?.id),
       deposit_status_copy: trimField(depositStatusCopy),
-      invoice_cadence_copy: trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY,
+      invoice_cadence_copy: billingTermsCopy,
+      remaining_contract_balance: remainingBalance,
+      billing_terms_copy: billingTermsCopy,
+    },
+    payment_terms: {
+      contract_total: contractTotal,
+      deposit_required: moneyNumber(quote.deposit_required),
+      deposit_paid_verified: verifiedPaidAmount || 0,
+      remaining_contract_balance: remainingBalance,
+      billing_terms_copy: billingTermsCopy,
+      confirmed: paymentTermsConfirmed,
+      confirmed_at:
+        paymentReadiness?.confirmed_at || schedule?.confirmed_at || null,
     },
     warranty: {
       duration_value: setup?.warranty_duration_value ?? null,
@@ -902,14 +924,8 @@ async function freezeContractPackage({
     items: sources.items,
     verifiedDeposit: depositVerified,
     depositRequired: moneyNumber(quote.deposit_required),
+    hideFutureStages: true,
   });
-  if (paySummary.scheduleMismatch) {
-    return {
-      error: paySummary.verificationMessage,
-      code: "payment_stages_mismatch",
-      status: 422,
-    };
-  }
 
   const frozenAt = new Date().toISOString();
   const snapshot = buildSnapshot({

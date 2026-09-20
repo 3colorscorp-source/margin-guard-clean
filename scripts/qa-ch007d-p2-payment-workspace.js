@@ -33,53 +33,46 @@ test("syntax contract-builder.js", () => {
   assert.strictEqual(r.status, 0, r.stderr || r.stdout);
 });
 
-test("edit surface present", () => {
-  assert.ok(html.includes('id="cbPayEditGrid"'));
-  assert.ok(html.includes('id="cbPayAddStage"'));
-  assert.ok(html.includes("+ Add Payment Stage"));
-  assert.ok(html.includes('id="cbPayEditDifference"'));
-  assert.ok(html.includes("Customize Payment Plan") || js.includes("Customize Payment Plan"));
+test("edit surface is not present for Payment Terms", () => {
+  assert.ok(!html.includes("+ Add Payment Stage"));
+  assert.ok(!html.includes("Customize Payment Plan"));
+  assert.ok(!html.includes('id="cbPayEditDifference"'));
+  assert.ok(html.includes("Payment Terms"));
+  assert.ok(html.includes("Billing Terms"));
 });
 
-test("art-payment supports save + edit", () => {
-  assert.ok(/"art-payment":\s*defaultWorkspaceCaps\(\{[\s\S]*?supportsEdit:\s*true/.test(js));
-  assert.ok(/"art-payment":\s*defaultWorkspaceCaps\(\{[\s\S]*?supportsSave:\s*true/.test(js));
+test("art-payment is confirm-only", () => {
   const start = js.indexOf('"art-payment": defaultWorkspaceCaps');
   const end = js.indexOf('"art-schedule": defaultWorkspaceCaps');
   const payCaps = start >= 0 && end > start ? js.slice(start, end) : "";
-  assert.ok(payCaps.includes('saveLabel: "Save Payment Plan"'));
-  assert.ok(!payCaps.includes('saveLabel: "Save Draft"'));
+  assert.ok(payCaps.includes("supportsEdit: false"));
+  assert.ok(payCaps.includes("supportsSave: false"));
+  assert.ok(js.includes("Confirm Payment Terms"));
 });
 
-test("CRUD + reorder actions", () => {
-  assert.ok(js.includes('data-pay-action="delete"'));
-  assert.ok(js.includes('data-pay-action="up"'));
-  assert.ok(js.includes('data-pay-action="down"'));
-  assert.ok(!js.includes('data-pay-action="insert"'));
-  assert.ok(js.includes("cbPayAddStage"));
-  assert.ok(js.includes("Move up"));
-  assert.ok(js.includes("Move down"));
-  assert.ok(js.includes(">Remove<") || js.includes("Remove</button>"));
+test("no stage CRUD in tenant Payment Terms", () => {
+  assert.ok(!html.includes("+ Add Payment Stage"));
+  assert.ok(!html.includes("Move up"));
+  assert.ok(!html.includes("Move down"));
+  assert.ok(js.includes("workspaceConfirmPayment"));
 });
 
-test("live totals + confirm balance", () => {
+test("live totals come from ledger remaining", () => {
   const helper = fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8");
-  assert.ok(js.includes("computePaymentDraftTotals"));
-  assert.ok(js.includes("validatePaymentDraftForConfirm"));
-  assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("must equal") || js.includes("SUM_ERROR"));
+  assert.ok(helper.includes("Remaining Contract Balance"));
+  assert.ok(helper.includes("BILLING_TERMS_COPY"));
 });
 
-test("Save Payment Plan + Confirm Schedule + POST existing API", () => {
-  assert.ok(js.includes("savePaymentScheduleDraft"));
+test("Confirm Payment Terms posts existing API", () => {
   assert.ok(js.includes("workspaceConfirmPayment"));
   assert.ok(js.includes("confirm_schedule") || fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8").includes("confirm_schedule: true"));
-  assert.ok(js.includes("PAYMENT_SCHEDULE_API"));
+  assert.ok(js.includes("PAYMENT_SCHEDULE_API") || fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8").includes("project-contract-payment-schedule"));
   assert.ok(!/project-payment-intent/.test(js));
 });
 
 test("read-only after confirm", () => {
   assert.ok(js.includes("paymentScheduleAllowsOwnerEdit"));
-  assert.ok(js.includes("Confirmed payment schedules are read-only"));
+  assert.ok(js.includes("Confirmed payment terms are read-only"));
 });
 
 test("no invoice hub / stripe / ledger / payment intent writes", () => {
@@ -91,15 +84,13 @@ test("reload / conflict handling", () => {
   assert.ok(js.includes("schedule_version_conflict") || js.includes("offerPaymentScheduleConflictReload"));
 });
 
-test("customize plan is non-technical and deposit is locked", () => {
+test("Payment Terms copy is non-technical", () => {
   assert.ok(!html.includes('id="cbPayAdvancedToggle"'));
   assert.ok(!js.includes("paymentAdvancedEdit"));
   assert.ok(!js.includes('data-pay-field="item_role"'));
   assert.ok(!js.includes("Future obligation — payment is still due"));
-  assert.ok(html.includes("cb-pay-lock-card"));
-  assert.ok(js.includes("Approved quote"));
-  assert.ok(js.includes("Due Now"));
-  assert.ok(js.includes("PROGRESS_FINAL_NOTE") || html.includes("If the project is completed sooner"));
+  assert.ok(html.includes("Billing Terms"));
+  assert.ok(html.includes("Progress invoices are sent every two weeks") || js.includes("BILLING_TERMS_COPY") || fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8").includes("Progress invoices are sent every two weeks"));
 });
 
 test("local defaults helper is loaded before builder", () => {
