@@ -14,11 +14,9 @@ const {
   escapePdfText,
 } = require("./simple-pdf");
 const {
-  dueRuleCustomerLabel,
-} = require("../../../public/js/contract-payment-defaults.js");
-const {
   presentPaymentSummary,
   paymentExplanationFromSnapshot,
+  article7DueRuleLabel,
 } = require("../../../public/js/contract-payment-confirm.js");
 const {
   formatDurationLabel,
@@ -400,7 +398,7 @@ function buildSignedContractLines({
     depositRequired: snap?.price?.deposit_required ?? snap?.quote?.deposit_required,
     currency,
     dueRuleLabel: (rule, extras) =>
-      dueRuleCustomerLabel(rule, { ...extras, omitCustom: true }),
+      article7DueRuleLabel(rule, extras),
   });
   if (paySummary.contractTotal != null) {
     lines.push(body(`Contract Total: ${money(paySummary.contractTotal, currency)}`));

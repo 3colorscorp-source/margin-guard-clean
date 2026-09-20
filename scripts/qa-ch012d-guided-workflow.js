@@ -69,7 +69,7 @@ test("2 hub incomplete readiness CTA", () => {
 test("3-4 hub next blocker + builder article path", () => {
   assert.ok(builderJs.includes("resolveNextBlocker"));
   assert.ok(builderJs.includes("Confirm Project Address"));
-  assert.ok(builderJs.includes("Complete Payment Schedule"));
+  assert.ok(builderJs.includes("Confirm the payment schedule"));
   assert.ok(builderJs.includes("Confirm Warranty"));
   assert.ok(builderJs.includes("Configure Signature Method"));
   assert.ok(builderJs.includes('dataset.article'));

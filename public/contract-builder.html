@@ -299,6 +299,7 @@
     #cbMain.is-printing .cb-pay-workspace__lead,
     #cbMain.is-printing .cb-pay-sum-warn,
     #cbMain.is-printing .cb-pay-summary__item.is-diag,
+    #cbMain.is-printing .cb-pay-customize,
     #cbMain.is-printing [data-ws-edit],
     #cbMain.is-printing .cb-editor,
     #cbMain.is-printing .cb-draft-note,
@@ -911,12 +912,64 @@
     }
     .cb-pay-sum-warn[hidden] { display: none !important; }
 
-    /* CH-007D-P2 — Payment Schedule editor */
+    /* Article 7 — Customize Payment Plan */
+    .cb-pay-customize {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    .cb-pay-lock-card,
+    .cb-pay-remaining-card,
+    .cb-pay-billing,
+    .cb-pay-stage-card {
+      min-width: 0;
+      max-width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--cb-line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    .cb-pay-lock-card { background: #fafaf9; }
+    .cb-pay-lock-card__kicker,
+    .cb-pay-billing__title {
+      margin: 0 0 4px;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: #0f766e;
+    }
+    .cb-pay-lock-card__amount {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .cb-pay-lock-card__meta { margin: 0; font-size: 0.88rem; color: #57534e; }
+    .cb-pay-lock-card__meta .k { font-weight: 700; color: #44403c; }
+    .cb-pay-remaining-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      gap: 12px;
+      align-items: baseline;
+    }
+    .cb-pay-remaining-card .k { font-weight: 800; color: #1c1917; }
+    .cb-pay-remaining-card .v { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cb-pay-billing__copy {
+      margin: 0;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      color: #44403c;
+      overflow-wrap: anywhere;
+    }
     .cb-pay-edit-totals {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px 14px;
-      margin: 0 0 14px;
+      margin: 0;
       padding: 12px 14px;
       border: 1px solid var(--cb-line);
       border-radius: 12px;
@@ -924,6 +977,7 @@
     }
     @media (max-width: 720px) {
       .cb-pay-edit-totals { grid-template-columns: 1fr; }
+      .cb-pay-remaining-card { grid-template-columns: 1fr; }
     }
     .cb-pay-edit-totals .k {
       display: block;
@@ -941,62 +995,15 @@
     }
     .cb-pay-edit-totals .v.is-bad { color: #b91c1c; }
     .cb-pay-edit-totals .v.is-ok { color: #15803d; }
-    .cb-pay-edit-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 0 0 12px;
-    }
-    .cb-pay-simple-review {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 0 0 12px;
-    }
+    .cb-pay-edit-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
     .cb-pay-simple-review[hidden],
-    #cbPayDefaultWarn[hidden] { display: none !important; }
-    .cb-pay-simple-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1.6fr) minmax(90px, 0.6fr);
-      gap: 8px 14px;
-      padding: 10px 12px;
-      border: 1px solid var(--cb-line);
-      border-radius: 10px;
-      background: #fff;
-    }
-    .cb-pay-simple-row .cb-pay-simple-label {
-      margin: 0;
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--cb-ink, #1c1917);
-    }
-    .cb-pay-simple-row .cb-pay-simple-due {
-      margin: 4px 0 0;
-      font-size: 0.82rem;
-      color: #57534e;
-    }
-    .cb-pay-simple-row .cb-pay-simple-amt {
-      margin: 0;
-      text-align: right;
-      font-size: 0.95rem;
-      font-weight: 700;
-    }
-    #cbPayEditWorkspace.is-simple #cbPayAddStage,
-    #cbPayEditWorkspace.is-simple #cbPayEditGrid {
-      display: none !important;
-    }
-    #cbPayEditWorkspace.is-advanced #cbPaySimpleReview {
-      display: none !important;
-    }
-    .cb-pay-edit-row.is-advanced-only {
-      grid-column: 1 / -1;
-    }
-    /* CH-012G — paper-safe payment editor buttons (shell .btn.ghost is light-on-dark). */
+    #cbPayDefaultWarn[hidden],
+    #cbPayBillingBlock[hidden],
+    #cbPayDepositCard[hidden],
+    #cbPayCustomizeRemaining[hidden] { display: none !important; }
     #cbPayEditToolbar .btn,
     #cbPayAddStage,
-    #cbPayAddFirst,
-    #cbPayAdvancedToggle,
-    .cb-pay-edit-row__actions .btn {
+    .cb-pay-stage-card__actions .btn {
       color: var(--cb-ink, #1c1917);
       background: #fff;
       border: 1px solid #a8a29e;
@@ -1005,54 +1012,84 @@
     }
     #cbPayEditToolbar .btn:hover,
     #cbPayAddStage:hover,
-    #cbPayAddFirst:hover,
-    .cb-pay-edit-row__actions .btn:hover {
+    .cb-pay-stage-card__actions .btn:hover {
       color: var(--cb-ink, #1c1917);
       background: #f5f5f4;
       border-color: #0f766e;
     }
     #cbPayEditToolbar .btn:focus-visible,
     #cbPayAddStage:focus-visible,
-    #cbPayAddFirst:focus-visible,
-    .cb-pay-edit-row__actions .btn:focus-visible {
+    .cb-pay-stage-card__actions .btn:focus-visible {
       outline: 2px solid #0f766e;
       outline-offset: 2px;
     }
     #cbPayEditToolbar .btn:disabled,
     #cbPayAddStage:disabled,
-    #cbPayAddFirst:disabled,
-    .cb-pay-edit-row__actions .btn:disabled {
+    .cb-pay-stage-card__actions .btn:disabled {
       opacity: 0.55;
       cursor: not-allowed;
       color: #78716c;
       background: #f5f5f4;
       border-color: #d6d3d1;
-      pointer-events: none;
     }
-    .cb-pay-edit-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 0 0 12px;
-    }
-    .cb-pay-edit-row {
+    .cb-pay-edit-grid { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+    .cb-pay-stage-card {
       display: grid;
-      grid-template-columns: 40px minmax(0, 1.4fr) minmax(110px, 0.7fr) minmax(100px, 0.6fr) auto;
-      gap: 8px;
-      align-items: start;
-      padding: 10px;
-      border: 1px solid var(--cb-line);
-      border-radius: 10px;
-      background: #fff;
+      grid-template-columns: minmax(0, 1.5fr) minmax(132px, 0.7fr);
+      gap: 6px 10px;
     }
-    @media (max-width: 900px) {
-      .cb-pay-edit-row {
-        grid-template-columns: 1fr 1fr;
-      }
-      .cb-pay-edit-row__seq { grid-column: 1 / -1; }
-      .cb-pay-edit-row__actions { grid-column: 1 / -1; }
+    .cb-pay-stage-card.is-new {
+      border-color: #0f766e;
+      box-shadow: inset 0 0 0 1px #99f6e4;
     }
-    .cb-pay-edit-row label {
+    .cb-pay-stage-card__badge {
+      grid-column: 1 / -1;
+      margin: 0;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0f766e;
+    }
+    .cb-pay-stage-card__note {
+      grid-column: 1 / -1;
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      color: #57534e;
+    }
+    .cb-pay-amount {
+      display: flex;
+      align-items: stretch;
+      min-width: 0;
+    }
+    .cb-pay-amount__prefix {
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      border: 1px solid #d6d3d1;
+      border-right: 0;
+      border-radius: 8px 0 0 8px;
+      background: #f5f5f4;
+      font-weight: 700;
+      color: #44403c;
+    }
+    .cb-pay-amount input {
+      border-radius: 0 8px 8px 0;
+      min-width: 0;
+    }
+    .cb-pay-stage-card input[readonly],
+    .cb-pay-stage-card select:disabled {
+      background: #f5f5f4;
+      color: #1c1917;
+    }
+    @media (max-width: 720px) {
+      .cb-pay-stage-card { grid-template-columns: 1fr; }
+      #cbPayAddStage,
+      .cb-pay-stage-card__actions .btn { width: 100%; }
+      .cb-pay-stage-card__actions { flex-direction: column; }
+    }
+    .cb-pay-stage-card label {
       display: block;
       margin: 0 0 4px;
       font-size: 0.68rem;
@@ -1061,28 +1098,15 @@
       text-transform: uppercase;
       color: #78716c;
     }
-    .cb-pay-edit-row input,
-    .cb-pay-edit-row select {
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .cb-pay-edit-row__actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-      padding-top: 18px;
-    }
-    .cb-pay-edit-row__actions .btn {
-      padding: 4px 8px;
-      font-size: 0.75rem;
-    }
-    .cb-pay-edit-hint {
-      margin: 0 0 8px;
-      font-size: 0.8125rem;
-      line-height: 1.4;
-      color: #57534e;
-    }
+    .cb-pay-stage-card input,
+    .cb-pay-stage-card select { width: 100%; box-sizing: border-box; }
+    .cb-pay-stage-card__due,
+    .cb-pay-stage-card__extra,
+    .cb-pay-stage-card__actions { grid-column: 1 / -1; }
+    .cb-pay-stage-card__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cb-pay-stage-card__actions:empty { display: none !important; }
+    .cb-pay-stage-card__actions .btn { padding: 6px 10px; font-size: 0.82rem; }
+    .cb-pay-edit-hint { margin: 0; font-size: 0.8125rem; line-height: 1.4; color: #57534e; }
     .cb-pay-edit-hint.is-block { color: #b91c1c; font-weight: 600; }
     .cb-pay-edit-hint.is-ok { color: #15803d; }
     .cb-pay-edit-hint.is-warn { color: #a16207; }
@@ -1881,7 +1905,11 @@
       .cb-pay-summary,
       .cb-pay-ledger,
       .cb-pay-timeline { overflow-x: hidden; }
-      .cb-pay-ledger__row { gap: 8px; }
+      .cb-pay-ledger__row {
+        grid-template-columns: 1fr;
+        gap: 2px 8px;
+      }
+      .cb-pay-ledger__row .v { text-align: left; white-space: normal; }
     }
 
     @media print {
@@ -2357,29 +2385,42 @@
                     </div>
                   </div>
                   <div data-ws-edit class="owner-only no-print">
-                    <div class="cb-editor" id="cbPayEditWorkspace">
-                      <p class="cb-pay-edit-hint" id="cbPayEditHint"></p>
+                    <div class="cb-editor cb-pay-customize" id="cbPayEditWorkspace">
+                      <article class="cb-pay-lock-card" id="cbPayDepositCard">
+                        <p class="cb-pay-lock-card__kicker">Deposit</p>
+                        <p class="cb-pay-lock-card__amount" id="cbPayLockAmount">—</p>
+                        <p class="cb-pay-lock-card__meta"><span class="k">Status:</span> <span id="cbPayLockStatus">—</span></p>
+                        <p class="cb-pay-lock-card__meta"><span class="k">Source:</span> <span id="cbPayLockSource">Approved quote</span></p>
+                      </article>
+                      <div class="cb-pay-remaining-card" id="cbPayCustomizeRemaining">
+                        <span class="k">Remaining Contract Balance</span>
+                        <span class="v" id="cbPayCustomizeRemainingAmount">—</span>
+                      </div>
+                      <div class="cb-pay-billing" id="cbPayBillingBlock">
+                        <p class="cb-pay-billing__title">Billing Schedule</p>
+                        <p class="cb-pay-billing__copy" id="cbPayBillingCopy"></p>
+                      </div>
                       <div class="cb-pay-edit-totals" id="cbPayEditTotals" aria-live="polite">
-                        <div>
-                          <span class="k">Contract total</span>
-                          <span class="v" id="cbPayEditContractTotal">—</span>
-                        </div>
                         <div>
                           <span class="k">Scheduled</span>
                           <span class="v" id="cbPayEditScheduled">—</span>
+                        </div>
+                        <div>
+                          <span class="k">Remaining Balance</span>
+                          <span class="v" id="cbPayEditContractTotal">—</span>
                         </div>
                         <div>
                           <span class="k">Difference</span>
                           <span class="v" id="cbPayEditDifference">—</span>
                         </div>
                       </div>
-                      <div class="cb-pay-edit-toolbar" id="cbPayEditToolbar">
-                        <button type="button" class="btn ghost" id="cbPayAdvancedToggle">Advanced editing</button>
-                        <button type="button" class="btn ghost" id="cbPayAddStage">Add payment</button>
-                      </div>
+                      <p class="cb-pay-edit-hint" id="cbPayEditHint"></p>
                       <p class="cb-pay-sum-warn" id="cbPayDefaultWarn" hidden role="status"></p>
                       <div class="cb-pay-simple-review" id="cbPaySimpleReview" hidden></div>
                       <div class="cb-pay-edit-grid" id="cbPayEditGrid" role="list"></div>
+                      <div class="cb-pay-edit-toolbar" id="cbPayEditToolbar">
+                        <button type="button" class="btn ghost" id="cbPayAddStage">+ Add Payment Stage</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2635,7 +2676,7 @@
             <h4>Next Action</h4>
             <p class="cb-next" id="cbNextStep">Review missing sections before freezing.</p>
             <div class="cb-cta-row" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
-              <button type="button" class="btn primary" id="cbNextActionBtn">Open required section</button>
+              <button type="button" class="btn ghost" id="cbNextActionBtn">Open required section</button>
               <button type="button" class="btn primary" id="cbFreezeBtn" hidden>Freeze Contract</button>
               <a class="btn primary" id="cbContinueSigning" href="/signature-workspace" hidden>Continue to Signature Workspace</a>
             </div>

@@ -18,7 +18,6 @@ const html = fs.readFileSync(htmlPath, "utf8");
 const js = fs.readFileSync(jsPath, "utf8");
 const helperSrc = fs.readFileSync(helperPath, "utf8");
 const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
-const PaymentDefaults = require("../public/js/contract-payment-defaults.js");
 
 let passed = 0;
 let failed = 0;
@@ -105,7 +104,7 @@ const TOTAL_TWO = 3265.49;
 const TOTAL_THREE = 3765.49;
 
 function dueLabel(rule, extras) {
-  return PaymentDefaults.dueRuleCustomerLabel(rule, extras);
+  return PaymentConfirm.article7DueRuleLabel(rule, extras);
 }
 
 function session(opts) {
@@ -195,16 +194,19 @@ async function testAsync(name, fn) {
 (async () => {
   await testAsync("1 schedule of 2 payments", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
-    const rows = s.rows();
-    assert.strictEqual(rows.length, 2);
-    assert.strictEqual(rows[0].name, "Initial Scheduling Payment");
-    assert.strictEqual(rows[1].name, "Remaining Balance");
-    assert.strictEqual(Number(rows[0].amount), 1);
-    assert.strictEqual(Number(rows[1].amount), 3264.49);
-    assert.ok(rows[0].due);
-    assert.ok(rows[1].due);
-    assert.ok(!JSON.stringify(rows).includes("%"));
-    assert.ok(!JSON.stringify(rows).includes("Stage 1"));
+    const summary = PaymentConfirm.presentPaymentSummary({
+      items: TWO,
+      contractTotal: TOTAL_TWO,
+      currency: "USD",
+      dueRuleLabel: dueLabel,
+    });
+    assert.strictEqual(summary.showPaymentStages, false);
+    assert.strictEqual(summary.remainingItems.length, 0);
+    assert.strictEqual(Number(summary.depositAmount), 1);
+    assert.strictEqual(Number(summary.remainingBalance), 3264.49);
+    assert.ok(!summary.explanationCopy.toLowerCase().includes("due upon completion"));
+    assert.ok(!JSON.stringify(s.rows()).includes("Stage 1"));
+    assert.ok(!JSON.stringify(s.rows()).includes("%"));
   });
 
   await testAsync("2 schedule of 3 or more payments", async () => {
@@ -225,7 +227,10 @@ async function testAsync(name, fn) {
     assert.strictEqual(plan.primaryLabel, "Confirm Payment Schedule");
     assert.strictEqual(plan.primaryEnabledCount, 1);
     assert.strictEqual(plan.continueVisible, false);
-    assert.ok(plan.buttons.some((b) => b.id === "edit" && b.style === "ghost"));
+    assert.ok(plan.buttons.some((b) => b.id === "customize" && b.style === "ghost"));
+    assert.ok(plan.buttons.some((b) => b.id === "confirm" && b.style === "primary"));
+    assert.ok(!plan.buttons.some((b) => b.id === "edit"));
+    assert.strictEqual(plan.buttons.filter((b) => b.style === "primary").length, 1);
   });
 
   await testAsync("4 totals incorrect: 0 POST", async () => {
@@ -233,8 +238,11 @@ async function testAsync(name, fn) {
     const plan = s.plan();
     assert.strictEqual(plan.kind, "unbalanced");
     assert.strictEqual(plan.errorMessage, PaymentConfirm.SUM_ERROR);
-    assert.strictEqual(plan.primaryLabel, "Edit Payment Schedule");
-    assert.strictEqual(plan.confirmVisible, false);
+    assert.strictEqual(plan.confirmVisible, true);
+    assert.strictEqual(plan.confirmEnabled, false);
+    assert.strictEqual(plan.primaryEnabledCount, 0);
+    assert.ok(plan.buttons.some((b) => b.id === "customize" && b.style === "ghost"));
+    assert.ok(plan.buttons.some((b) => b.id === "confirm" && b.style === "primary" && b.enabled === false));
     assert.strictEqual(plan.continueVisible, false);
     const result = await s.confirm();
     assert.strictEqual(result.posted, false);

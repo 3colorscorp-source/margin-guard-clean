@@ -183,17 +183,17 @@ test("1. $110.06 / $1.00 seeds $1.00 + $109.06 future_obligation", () => {
   assert.strictEqual(result.items[0].amount_cents, 100);
   assert.strictEqual(result.items[0].due_rule, "on_signature");
   assert.strictEqual(result.items[0].item_role, "future_obligation");
-  assert.strictEqual(result.items[1].label, "Remaining Contract Balance");
+  assert.strictEqual(result.items[1].label, "Progress & Final Billing");
   assert.strictEqual(result.items[1].amount, 109.06);
   assert.strictEqual(result.items[1].amount_cents, 10906);
-  assert.strictEqual(result.items[1].due_rule, "on_completion");
+  assert.strictEqual(result.items[1].due_rule, "custom");
   assert.strictEqual(result.items[1].item_role, "future_obligation");
   assert.strictEqual(centsSum(result.items), 11006);
-  assert.ok(!result.items.some((row) => row.due_rule === "custom"));
+  assert.ok(!result.items.some((row) => row.due_rule === "on_completion"));
   assert.ok(!result.items.some((row) => row.item_role === "applied_payment"));
 });
 
-test("2. deposit 0 seeds one Remaining Contract Balance row", () => {
+test("2. deposit 0 seeds one Progress & Final Billing row", () => {
   const result = helper.buildDefaultPaymentSchedule({
     contractTotal: 110.06,
     depositRequired: 0,
@@ -201,9 +201,9 @@ test("2. deposit 0 seeds one Remaining Contract Balance row", () => {
   });
   assert.strictEqual(result.seeded, true);
   assert.strictEqual(result.items.length, 1);
-  assert.strictEqual(result.items[0].label, "Remaining Contract Balance");
+  assert.strictEqual(result.items[0].label, "Progress & Final Billing");
   assert.strictEqual(result.items[0].amount_cents, 11006);
-  assert.strictEqual(result.items[0].due_rule, "on_completion");
+  assert.strictEqual(result.items[0].due_rule, "custom");
   assert.strictEqual(result.items[0].item_role, "future_obligation");
 });
 
@@ -321,7 +321,7 @@ test("11. PDF uses human due labels and never due: custom", () => {
   );
   assert.doesNotMatch(helper.dueRuleCustomerLabel("custom"), /custom/i);
   assert.doesNotMatch(pdfSrc, /due: \$\{due\}/);
-  assert.match(pdfSrc, /dueRuleCustomerLabel/);
+  assert.match(pdfSrc, /article7DueRuleLabel/);
 
   const seeded = helper.buildDefaultPaymentSchedule({
     contractTotal: 110.06,
@@ -331,8 +331,8 @@ test("11. PDF uses human due labels and never due: custom", () => {
   const text = extractPdfText(
     pdfLib.renderSignedContractPdf(samplePdfCtx(seeded.items)).buffer
   );
-  assert.ok(text.includes("Due upon acceptance"));
-  assert.ok(text.includes("Due upon completion"));
+  assert.ok(!text.includes("Due upon completion"));
+  assert.ok(text.includes("Deposit Due Now") || text.includes("Contract Total"));
   assert.ok(!text.includes("due: custom"));
   assert.ok(!text.includes("future_obligation"));
   assert.ok(!text.includes("applied_payment"));
@@ -359,16 +359,15 @@ test("12. freeze still requires persisted signature and confirmed payment", () =
   assert.doesNotMatch(js, /readiness_incomplete[\s\S]{0,80}bypass/i);
 });
 
-test("on_acceptance is not invented; advanced editing remains", () => {
+test("on_acceptance is not invented; customize plan remains non-technical", () => {
   assert.ok(!helper.DUE_RULES_ALLOWED.includes("on_acceptance"));
-  assert.match(html, /id="cbPayAdvancedToggle"/);
-  assert.match(js, /paymentAdvancedEdit/);
+  assert.doesNotMatch(html, /id="cbPayAdvancedToggle"/);
+  assert.doesNotMatch(js, /paymentAdvancedEdit/);
   assert.match(js, /data-pay-action="delete"/);
-  assert.match(js, /data-pay-field="item_role"/);
   assert.match(js, /data-pay-field="due_rule"/);
-  assert.match(js, /Future obligation — payment is still due/);
-  assert.match(js, /Applied payment — payment was already received/);
+  assert.doesNotMatch(js, /Future obligation — payment is still due/);
   assert.match(html, /contract-payment-defaults\.js/);
+  assert.match(js, /Customize Payment Plan/);
 });
 
 test("frozen/executed packages do not seed", () => {

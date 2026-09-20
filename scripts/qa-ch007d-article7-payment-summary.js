@@ -31,7 +31,6 @@ const signSrc = fs.readFileSync(signPath, "utf8");
 const scheduleSrc = fs.readFileSync(schedulePath, "utf8");
 const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
 const Deposit = require("../netlify/functions/_lib/verified-contract-deposit.js");
-const PaymentDefaults = require("../public/js/contract-payment-defaults.js");
 
 let passed = 0;
 let failed = 0;
@@ -60,7 +59,7 @@ function slice(src, startToken, endToken) {
 
 const art6 = slice(html, 'id="art-price"', 'id="art-payment"');
 const art7 = slice(html, 'id="art-payment"', 'id="art-schedule"');
-const dueLabel = (rule, extras) => PaymentDefaults.dueRuleCustomerLabel(rule, extras);
+const dueLabel = (rule, extras) => PaymentConfirm.article7DueRuleLabel(rule, extras);
 
 const ITEMS = [
   {
@@ -1619,6 +1618,221 @@ async function testAsync(name, fn) {
     assert.strictEqual(resultA.amount, 500);
     assert.strictEqual(resultB.amount, 800);
     assert.notStrictEqual(resultA.amount, resultB.amount);
+  });
+
+  test("26 customize UX: unpaid/paid/partial, locked deposit, one primary, no technical terms", () => {
+    const unpaid = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: ITEMS,
+      verifiedDeposit: { verified_paid: false },
+      currency: "USD",
+      dueRuleLabel: dueLabel,
+    });
+    const paid = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: ITEMS,
+      verifiedDeposit: { status: "paid", verified_paid: true, amount: 1 },
+      currency: "USD",
+      dueRuleLabel: dueLabel,
+    });
+    const partial = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: ITEMS,
+      verifiedDeposit: { status: "paid", verified_paid: true, amount: 0.5 },
+      depositRequired: 1,
+      currency: "USD",
+      dueRuleLabel: dueLabel,
+    });
+    assert.strictEqual(unpaid.depositLabel, "Deposit Due Now");
+    assert.strictEqual(unpaid.remainingLabel, "Balance After Deposit");
+    assert.strictEqual(paid.depositLabel, "Deposit Paid");
+    assert.strictEqual(paid.remainingLabel, "Remaining Contract Balance");
+    assert.strictEqual(partial.depositLabel, "Deposit Paid");
+    assert.strictEqual(partial.showDepositStillDue, true);
+    assert.strictEqual(partial.depositStillDue, 0.5);
+    assert.ok(html.includes("cb-pay-lock-card"));
+    assert.ok(!js.includes("data-pay-field=\"item_role\""));
+    assert.ok(html.includes("Approved quote"));
+    assert.strictEqual(
+      PaymentConfirm.article7DueRuleLabel("custom"),
+      "Every two weeks based on progress"
+    );
+    assert.strictEqual(
+      PaymentConfirm.article7DueRuleLabel("on_completion"),
+      "Due at project completion"
+    );
+    assert.ok(!PaymentConfirm.BILLING_SCHEDULE_COPY.toLowerCase().includes("due upon completion"));
+    assert.ok(!unpaid.explanationCopy.toLowerCase().includes("due upon completion"));
+    assert.ok(PaymentConfirm.BILLING_SCHEDULE_COPY.includes("Every two weeks based on completed work"));
+    const unconfirmed = PaymentConfirm.paymentFooterPlan({
+      items: ITEMS,
+      contractTotal: TOTAL,
+      confirmed: false,
+    });
+    assert.strictEqual(unconfirmed.primaryLabel, "Confirm Payment Schedule");
+    assert.strictEqual(unconfirmed.buttons.filter((b) => b.style === "primary").length, 1);
+    assert.ok(unconfirmed.buttons.some((b) => b.id === "customize" && b.style === "ghost"));
+    const confirmed = PaymentConfirm.paymentFooterPlan({
+      items: ITEMS,
+      contractTotal: TOTAL,
+      confirmed: true,
+    });
+    assert.strictEqual(confirmed.primaryLabel, "Continue");
+    assert.strictEqual(confirmed.buttons.filter((b) => b.style === "primary").length, 1);
+    assert.ok(!confirmed.buttons.some((b) => b.id === "customize"));
+    assert.ok(!js.includes("Edit Payment Schedule"));
+    assert.ok(!html.includes("Edit Payment Schedule"));
+    assert.ok(!html.includes("Advanced editing"));
+    assert.ok(!html.includes("Simple review"));
+    assert.ok(!js.includes("SEQ"));
+    assert.ok(!js.includes("Future obligation — payment is still due"));
+    assert.ok(!js.includes('data-pay-action="insert"'));
+    assert.ok(html.includes("Move up") || js.includes("Move up"));
+    assert.ok(html.includes('class="btn ghost" id="cbNextActionBtn"'));
+    assert.ok(html.includes("#cbMain.is-printing .cb-pay-customize"));
+    assert.ok(html.includes("overflow-x: hidden"));
+    assert.ok(js.includes("STAGES_SUM_ERROR") || helperSrc.includes("Payment stages must equal the remaining contract balance."));
+    assert.ok(freezeSrc.includes("payment_stages_mismatch"));
+    assert.ok(!scheduleSrc.includes("upsert-tenant-invoice"));
+    assert.ok(!js.includes("record-tenant-payment"));
+    assert.ok(art6.includes("This is the approved contract price."));
+    assert.ok(html.includes(".cb-pay-stage-card label"));
+    assert.ok(html.includes("@media (max-width: 720px)"));
+    assert.ok(html.includes("Status:"));
+    assert.ok(html.includes("Source:"));
+  });
+
+  test("27 default Progress & Final Billing, incomplete stages, money format", () => {
+    const PaymentDefaults = require("../public/js/contract-payment-defaults.js");
+    const seeded = PaymentDefaults.buildDefaultPaymentSchedule({
+      contractTotal: TOTAL,
+      depositRequired: 1,
+      items: [],
+      readinessStatus: "missing",
+    });
+    assert.strictEqual(seeded.items[1].label, "Progress & Final Billing");
+    assert.strictEqual(seeded.items[1].due_rule, "custom");
+    assert.strictEqual(PaymentDefaults.REMAINING_DUE_RULE, "custom");
+    assert.strictEqual(
+      PaymentConfirm.article7DueRuleLabel(seeded.items[1].due_rule, { editor: true }),
+      "Every two weeks based on progress"
+    );
+    assert.notStrictEqual(
+      PaymentConfirm.article7DueRuleLabel(seeded.items[1].due_rule, { editor: true }),
+      "At project completion"
+    );
+    assert.ok(js.includes('amount: ""'));
+    assert.ok(js.includes("createBlankPaymentDraftRow"));
+    assert.doesNotMatch(
+      js.slice(js.indexOf("function createBlankPaymentDraftRow"), js.indexOf("function mapScheduleItemToDraft")),
+      /amount:\s*0/
+    );
+    assert.ok(js.includes('due_rule: ""'));
+    assert.ok(PaymentConfirm.article7DueTimingOptionsHtml("").includes("Select timing"));
+    assert.ok(html.includes("cb-pay-amount__prefix"));
+    assert.strictEqual(PaymentConfirm.formatMoneyInputFromCents(326449), "3,264.49");
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("$3,264.49").cents, 326449);
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("").empty, true);
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("0").cents, 0);
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: 0, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: -1, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "", amount: 100, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: 100, due_rule: "" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: "", due_rule: "custom" }));
+
+    const remainingCents = 326449;
+    const residual = {
+      label: "Progress & Final Billing",
+      amount: 3264.49,
+      due_rule: "custom",
+      payment_type: "final",
+      residual: true,
+    };
+    const emptyExtra = { label: "", amount: "", due_rule: "", payment_type: "progress", is_new: true };
+    const withEmpty = PaymentConfirm.paymentStageIntegrity([residual, emptyExtra], remainingCents);
+    assert.strictEqual(withEmpty.incomplete, true);
+    assert.strictEqual(withEmpty.scheduledCents, remainingCents);
+    assert.strictEqual(withEmpty.differenceCents, 0);
+    assert.strictEqual(withEmpty.error, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+
+    const summaryEmpty = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: [...ITEMS, emptyExtra],
+      depositRequired: 1,
+      dueRuleLabel: dueLabel,
+    });
+    assert.strictEqual(summaryEmpty.blockConfirm, true);
+    assert.strictEqual(summaryEmpty.verificationMessage, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+    const planEmpty = PaymentConfirm.paymentFooterPlan({
+      items: [...ITEMS, emptyExtra],
+      contractTotal: TOTAL,
+      depositRequired: 1,
+    });
+    assert.strictEqual(planEmpty.confirmEnabled, false);
+    assert.strictEqual(planEmpty.errorMessage, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+
+    const zeroExtra = { label: "Draw", amount: 0, due_rule: "custom", payment_type: "progress" };
+    assert.strictEqual(
+      PaymentConfirm.paymentStageIntegrity([residual, zeroExtra], remainingCents).incomplete,
+      true
+    );
+    const negExtra = { label: "Draw", amount: -5, due_rule: "custom", payment_type: "progress" };
+    assert.strictEqual(
+      PaymentConfirm.paymentStageIntegrity([residual, negExtra], remainingCents).incomplete,
+      true
+    );
+
+    const mismatch = PaymentConfirm.paymentStageIntegrity(
+      [residual, { label: "Draw", amount: 100, due_rule: "custom", payment_type: "progress" }],
+      remainingCents
+    );
+    assert.strictEqual(mismatch.incomplete, false);
+    assert.strictEqual(mismatch.mismatch, true);
+    assert.strictEqual(mismatch.error, PaymentConfirm.STAGES_SUM_ERROR);
+
+    assert.ok(js.includes("INCOMPLETE_STAGE_ERROR"));
+    assert.ok(js.includes("ensureResidualBillingRow"));
+    assert.ok(js.includes("Save Payment Plan"));
+    assert.ok(js.includes('mode === WS_MODE.PREVIEW'));
+    const saveSlice = js.slice(js.indexOf('label: "Save Payment Plan"'), js.indexOf('label: "Save Payment Plan"') + 220);
+    assert.ok(saveSlice.includes('btn primary'));
+    assert.ok(!html.includes('id="cbPayLockAmount"') || html.includes("cb-pay-lock-card"));
+    assert.ok(!html.includes('data-pay-field="amount"') || js.includes("readonly"));
+    assert.ok(html.includes(".cb-pay-stage-card__actions { flex-direction: column; }") || html.includes("flex-direction: column"));
+    assert.ok(html.includes("#cbMain.is-printing .cb-pay-customize"));
+    assert.ok(pdfSrc.includes("presentPaymentSummary"));
+    assert.ok(signSrc.includes("presentPaymentSummary") || signSrc.includes("article7DueRuleLabel"));
+    assert.ok(!scheduleSrc.includes("upsert-tenant-invoice"));
+    assert.ok(!js.includes("record-tenant-payment"));
+    assert.ok(js.includes("PROGRESS_FINAL_NOTE"));
+    assert.ok(PaymentConfirm.PROGRESS_FINAL_NOTE.includes("If the project is completed sooner"));
+  });
+
+  test("28 reorder buttons match stage count and position", () => {
+    const one = PaymentConfirm.paymentStageReorderActions(0, 1);
+    assert.strictEqual(one.up, false);
+    assert.strictEqual(one.down, false);
+    const firstOfTwo = PaymentConfirm.paymentStageReorderActions(0, 2);
+    assert.strictEqual(firstOfTwo.up, false);
+    assert.strictEqual(firstOfTwo.down, true);
+    const lastOfTwo = PaymentConfirm.paymentStageReorderActions(1, 2);
+    assert.strictEqual(lastOfTwo.up, true);
+    assert.strictEqual(lastOfTwo.down, false);
+    const firstOfThree = PaymentConfirm.paymentStageReorderActions(0, 3);
+    assert.strictEqual(firstOfThree.up, false);
+    assert.strictEqual(firstOfThree.down, true);
+    const middle = PaymentConfirm.paymentStageReorderActions(1, 3);
+    assert.strictEqual(middle.up, true);
+    assert.strictEqual(middle.down, true);
+    const lastOfThree = PaymentConfirm.paymentStageReorderActions(2, 3);
+    assert.strictEqual(lastOfThree.up, true);
+    assert.strictEqual(lastOfThree.down, false);
+    assert.ok(js.includes("paymentStageActionButtonsHtml"));
+    assert.ok(js.includes("paymentStageReorderActions"));
+    assert.doesNotMatch(js, /data-pay-action="up"[\s\S]{0,80}disabled/);
+    assert.doesNotMatch(js, /data-pay-action="down"[\s\S]{0,80}disabled/);
+    assert.ok(js.includes("if (!buttons.length) return \"\""));
+    assert.ok(html.includes(".cb-pay-stage-card__actions:empty"));
   });
 
   console.log("");

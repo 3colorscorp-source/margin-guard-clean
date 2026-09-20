@@ -95,7 +95,7 @@
   let paymentDraftItems = [];
   let paymentDraftBaseline = null;
   let paymentDraftKeySeq = 1;
-  let paymentAdvancedEdit = false;
+  let paymentCustomStages = false;
   const DEFAULT_SIGNATURE_METHOD_UI = "email_link";
   const PaymentDefaults =
     window.MarginGuardContractPaymentDefaults || null;
@@ -291,8 +291,9 @@
       supportsValidation: true,
       supportsTimeline: true,
       continueLabel: "Continue",
-      editLabel: "Edit Payment Schedule",
-      saveLabel: "Save Draft",
+      editLabel: "Customize Payment Plan",
+      saveLabel: "Save Payment Plan",
+      cancelLabel: "Cancel",
       validate: () => validatePaymentWorkspace(),
       syncEditFromModel: () => {
         hydratePaymentDraftFromSource(sourceSnapshot);
@@ -307,6 +308,10 @@
           paymentDraftItems = clonePaymentDraftItems(paymentDraftBaseline);
         } else {
           hydratePaymentDraftFromSource(sourceSnapshot);
+        }
+        paymentCustomStages = paymentFutureDraftItems().some((row) => row.is_new === true);
+        if (!paymentConfigured(sourceSnapshot?.paymentSchedule)) {
+          ensureResidualBillingRow();
         }
       },
       onBeforeSave: () => {
@@ -592,7 +597,7 @@
       if (ok === false) return false;
     }
     workspaceBusy = true;
-    workspaceBusyLabel = articleId === "art-payment" ? "Saving Draft…" : "Saving…";
+    workspaceBusyLabel = articleId === "art-payment" ? "Saving Payment Plan…" : "Saving…";
     setArticleMode(articleId, WS_MODE.SAVING);
     renderWorkspaceChrome();
     try {
@@ -671,7 +676,8 @@
     }
     if (
       result.reason === "verification_unavailable" ||
-      result.reason === "inconsistent"
+      result.reason === "inconsistent" ||
+      result.reason === "payment_stages_mismatch"
     ) {
       renderWorkspaceChrome();
       window.alert(
@@ -867,27 +873,17 @@
         })
       );
       if (caps.supportsSave) {
-        actions.appendChild(
-          createFooterButton({
-            id: "cbWsSave",
-            label: caps.saveLabel || "Save",
-            className: "btn primary",
-            disabled: busy,
-            onClick: () => {
-              void workspaceSave(activeArticleId);
-            },
-          })
-        );
         if (activeArticleId === "art-payment" && paymentScheduleAllowsOwnerEdit()) {
           const paymentPlan = currentPaymentFooterPlan(busy);
+          const saveBlocked = Boolean(validatePaymentDraftForSave().blocking);
           actions.appendChild(
             createFooterButton({
-              id: "cbWsConfirmPay",
-              label: "Confirm Payment Schedule",
+              id: "cbWsSave",
+              label: "Save Payment Plan",
               className: "btn primary",
-              disabled: busy || !paymentPlan.confirmEnabled,
+              disabled: busy || saveBlocked,
               onClick: () => {
-                void workspaceConfirmPayment();
+                void workspaceSave(activeArticleId);
               },
             })
           );
@@ -906,29 +902,39 @@
           }
           if (hint) {
             hint.textContent =
-              paymentPlan.errorMessage ||
-              (paymentAdvancedEdit
-                ? "Advanced editing: change types, due timing, and received vs still due."
-                : "Review the schedule, then Confirm Payment Schedule.");
+              paymentPlan.errorMessage || "Save the payment plan, then confirm it from the summary.";
           }
-        } else if (activeArticleId === "art-signatures") {
+        } else {
           actions.appendChild(
             createFooterButton({
-              id: "cbWsConfirmSig",
-              label: "Confirm Method",
+              id: "cbWsSave",
+              label: caps.saveLabel || "Save",
               className: "btn primary",
               disabled: busy,
               onClick: () => {
-                void workspaceConfirmSignature();
+                void workspaceSave(activeArticleId);
               },
             })
           );
-          if (hint) {
-            hint.textContent =
-              "Save Draft stores the method. Confirm Method sets signature readiness.";
+          if (activeArticleId === "art-signatures") {
+            actions.appendChild(
+              createFooterButton({
+                id: "cbWsConfirmSig",
+                label: "Confirm Method",
+                className: "btn primary",
+                disabled: busy,
+                onClick: () => {
+                  void workspaceConfirmSignature();
+                },
+              })
+            );
+            if (hint) {
+              hint.textContent =
+                "Save Draft stores the method. Confirm Method sets signature readiness.";
+            }
+          } else if (hint) {
+            hint.textContent = "Save writes this article, then returns to Preview.";
           }
-        } else if (hint) {
-          hint.textContent = "Save writes this article, then returns to Preview.";
         }
       } else {
         actions.appendChild(
@@ -972,7 +978,7 @@
           ? "Add Project Address"
           : "Edit Project Address";
       const propertyEditPrimary = Boolean(propertyPlan && propertyPlan.kind === "missing");
-      const paymentEditPrimary = Boolean(paymentPlan && paymentPlan.editStyle === "primary");
+      const paymentEditPrimary = false;
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
@@ -980,7 +986,7 @@
             activeArticleId === "art-property"
               ? propertyEditLabel
               : activeArticleId === "art-payment"
-                ? "Edit Payment Schedule"
+                ? "Customize Payment Plan"
                 : caps.editLabel || "Edit",
           className: propertyEditPrimary || paymentEditPrimary ? "btn primary" : "btn ghost",
           disabled: busy,
@@ -2279,26 +2285,42 @@
       sequence_number: paymentDraftItems.length + 1,
       label: "",
       payment_type: "progress",
-      amount: 0,
-      due_rule: "on_completion",
+      amount: "",
+      due_rule: "",
       milestone_description: "",
       fixed_due_date: "",
       item_role: "future_obligation",
+      is_new: true,
+      residual: false,
     };
   }
 
-  function mapScheduleItemToDraft(item, index) {
-    return {
+  function mapScheduleItemToDraft(item, index, confirmed) {
+    const row = {
       client_id: nextPaymentClientId(),
       sequence_number: Number(item?.sequence_number) || index + 1,
       label: String(item?.label || "").trim(),
       payment_type: normalizePaymentType(item?.payment_type),
-      amount: Number(item?.amount) || 0,
+      amount: Number.isFinite(Number(item?.amount)) ? Number(item.amount) : 0,
       due_rule: normalizeDueRule(item?.due_rule),
       milestone_description: String(item?.milestone_description || "").trim(),
       fixed_due_date: String(item?.fixed_due_date || "").trim().slice(0, 10),
       item_role: normalizePaymentItemRole(item?.item_role),
+      is_new: false,
+      residual: false,
     };
+    if (
+      !confirmed &&
+      (PaymentConfirm.isResidualProgressBilling(row) || row.label === "Remaining Contract Balance")
+    ) {
+      row.label = PaymentConfirm.PROGRESS_FINAL_LABEL;
+      row.due_rule = PaymentConfirm.DEFAULT_REMAINING_DUE_RULE;
+      row.payment_type = "final";
+      row.residual = true;
+    } else if (row.label === PaymentConfirm.PROGRESS_FINAL_LABEL) {
+      row.residual = true;
+    }
+    return row;
   }
 
   function renumberPaymentDraftSequences() {
@@ -2354,10 +2376,15 @@
       ? [...source.paymentSchedule.items]
       : [];
     items.sort((a, b) => (Number(a.sequence_number) || 0) - (Number(b.sequence_number) || 0));
-    paymentDraftItems = items.map((item, i) => mapScheduleItemToDraft(item, i));
+    paymentDraftItems = items.map((item, i) =>
+      mapScheduleItemToDraft(item, i, paymentConfigured(source?.paymentSchedule))
+    );
+    if (!paymentConfigured(source?.paymentSchedule)) {
+      ensureResidualBillingRow();
+    }
     renumberPaymentDraftSequences();
     paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
-    paymentAdvancedEdit = false;
+    paymentCustomStages = paymentFutureDraftItems().some((row) => row.is_new === true);
   }
 
   function paymentDraftContractTotal(source) {
@@ -2389,47 +2416,116 @@
     };
   }
 
+  function readDueRuleFromSelect(raw) {
+    const v = String(raw == null ? "" : raw).trim().toLowerCase();
+    if (!v) return "";
+    return DUE_RULES_ALLOWED.has(v) ? v : "";
+  }
+
+  function parseDraftAmountValue(raw) {
+    const parsed = PaymentConfirm.parseMoneyInput(raw);
+    if (parsed.empty) return "";
+    if (parsed.invalid || parsed.cents == null) return String(raw == null ? "" : raw).trim();
+    return PaymentConfirm.centsToMoneyNumber(parsed.cents);
+  }
+
+  function formatDraftAmountInput(value) {
+    const parsed = PaymentConfirm.parseMoneyInput(value);
+    if (parsed.empty) return "";
+    if (parsed.invalid || parsed.cents == null) return String(value == null ? "" : value);
+    return PaymentConfirm.formatMoneyInputFromCents(parsed.cents);
+  }
+
+  function ensureResidualBillingRow() {
+    const summary = currentPaymentSummary();
+    const remainingCents =
+      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
+    if (remainingCents == null) return;
+    const residualIdx = paymentDraftItems.findIndex(
+      (row) => !PaymentConfirm.isDepositScheduleItem(row) && PaymentConfirm.isResidualProgressBilling(row)
+    );
+    let othersCents = 0;
+    let otherFutureCount = 0;
+    paymentDraftItems.forEach((row, index) => {
+      if (PaymentConfirm.isDepositScheduleItem(row)) return;
+      if (index === residualIdx) return;
+      otherFutureCount += 1;
+      if (PaymentConfirm.isPaymentStageValid(row)) {
+        othersCents += PaymentConfirm.parseMoneyInput(row.amount).cents;
+      }
+    });
+    const leftover = remainingCents - othersCents;
+    if (leftover > 0) {
+      const nextResidual = {
+        client_id: residualIdx >= 0 ? paymentDraftItems[residualIdx].client_id : nextPaymentClientId(),
+        sequence_number: paymentDraftItems.length + 1,
+        label: PaymentConfirm.PROGRESS_FINAL_LABEL,
+        payment_type: "final",
+        amount: PaymentConfirm.centsToMoneyNumber(leftover),
+        due_rule: PaymentConfirm.DEFAULT_REMAINING_DUE_RULE,
+        milestone_description: "",
+        fixed_due_date: "",
+        item_role: "future_obligation",
+        is_new: false,
+        residual: true,
+      };
+      if (residualIdx >= 0) {
+        paymentDraftItems[residualIdx] = {
+          ...paymentDraftItems[residualIdx],
+          ...nextResidual,
+          client_id: paymentDraftItems[residualIdx].client_id,
+        };
+      } else {
+        paymentDraftItems.push(nextResidual);
+      }
+    } else if (residualIdx >= 0 && otherFutureCount > 0) {
+      paymentDraftItems.splice(residualIdx, 1);
+    }
+  }
+
   function findPaymentDraftIndexByClientId(clientId) {
     const id = String(clientId || "");
     return paymentDraftItems.findIndex((row) => String(row.client_id) === id);
   }
 
   function readPaymentDraftFromGrid() {
-    if (!paymentAdvancedEdit) return;
     const grid = $("cbPayEditGrid");
-    if (!grid) return;
+    if (!grid || !grid.querySelector("[data-pay-client-id]")) return;
+    const deposits = paymentDraftItems.filter((row) =>
+      PaymentConfirm.isDepositScheduleItem(row)
+    );
     const rows = Array.from(grid.querySelectorAll("[data-pay-client-id]"));
-    const next = [];
-    rows.forEach((rowEl, index) => {
+    const futures = rows.map((rowEl, index) => {
       const clientId = rowEl.getAttribute("data-pay-client-id");
       const existing = paymentDraftItems.find((r) => String(r.client_id) === String(clientId)) || {};
       const label = String(rowEl.querySelector("[data-pay-field='label']")?.value || "").trim();
       const amountRaw = String(rowEl.querySelector("[data-pay-field='amount']")?.value || "").trim();
-      const amount = amountRaw === "" ? 0 : Number(amountRaw);
-      next.push({
+      const amount = parseDraftAmountValue(amountRaw);
+      const residual = existing.residual === true || rowEl.getAttribute("data-pay-residual") === "1";
+      return {
         ...existing,
         client_id: clientId || nextPaymentClientId(),
-        sequence_number: index + 1,
-        label,
-        payment_type: normalizePaymentType(
-          rowEl.querySelector("[data-pay-field='payment_type']")?.value
-        ),
-        amount: Number.isFinite(amount) ? amount : 0,
-        due_rule: normalizeDueRule(rowEl.querySelector("[data-pay-field='due_rule']")?.value),
+        sequence_number: deposits.length + index + 1,
+        label: residual ? PaymentConfirm.PROGRESS_FINAL_LABEL : label,
+        payment_type: residual
+          ? "final"
+          : normalizePaymentType(existing.payment_type || "progress"),
+        amount,
+        due_rule: residual
+          ? PaymentConfirm.DEFAULT_REMAINING_DUE_RULE
+          : readDueRuleFromSelect(rowEl.querySelector("[data-pay-field='due_rule']")?.value),
         milestone_description: String(
           rowEl.querySelector("[data-pay-field='milestone_description']")?.value || ""
         ).trim(),
-        fixed_due_date: String(
-          rowEl.querySelector("[data-pay-field='fixed_due_date']")?.value || ""
-        )
+        fixed_due_date: String(rowEl.querySelector("[data-pay-field='fixed_due_date']")?.value || "")
           .trim()
           .slice(0, 10),
-        item_role: normalizePaymentItemRole(
-          rowEl.querySelector("[data-pay-field='item_role']")?.value
-        ),
-      });
+        item_role: "future_obligation",
+        residual,
+        is_new: residual ? false : existing.is_new === true,
+      };
     });
-    paymentDraftItems = next;
+    paymentDraftItems = deposits.concat(futures);
   }
 
   function normalizePaymentType(raw) {
@@ -2450,25 +2546,56 @@
     return rounded.toFixed(2);
   }
 
+  function currentPaymentSummary() {
+    return PaymentConfirm.presentPaymentSummary({
+      contractTotal: paymentDraftContractTotal(sourceSnapshot),
+      items: paymentDraftItems,
+      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
+      depositRequired: sourceSnapshot?.depositRequired,
+      currency: sourceSnapshot?.currency || DEFAULT_CURRENCY,
+      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
+    });
+  }
+
+  function paymentFutureDraftItems() {
+    return paymentDraftItems.filter((row) => !PaymentConfirm.isDepositScheduleItem(row));
+  }
+
+  function paymentShowsCustomStages() {
+    return paymentCustomStages || paymentFutureDraftItems().length >= 2;
+  }
+
   function updatePaymentEditTotalsDisplay(source) {
     const currency = source?.currency || DEFAULT_CURRENCY;
-    const totals = computePaymentDraftTotals(
-      paymentDraftItems,
-      paymentDraftContractTotal(source)
+    const summary = currentPaymentSummary();
+    const future = paymentFutureDraftItems();
+    const remainingCents =
+      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
+    const integrity = PaymentConfirm.paymentStageIntegrity(future, remainingCents);
+    setText(
+      "cbPayEditScheduled",
+      formatMoney(centsToMoneyNumber(integrity.scheduledCents), currency)
     );
     setText(
       "cbPayEditContractTotal",
-      totals.contract != null ? formatMoney(totals.contract, currency) : "—"
+      remainingCents == null ? "—" : formatMoney(centsToMoneyNumber(remainingCents), currency)
     );
-    setText("cbPayEditScheduled", formatMoney(totals.scheduled, currency));
+    const remainingEl = $("cbPayCustomizeRemainingAmount");
+    if (remainingEl) {
+      remainingEl.textContent =
+        remainingCents == null ? "—" : formatMoney(centsToMoneyNumber(remainingCents), currency);
+    }
     const diffEl = $("cbPayEditDifference");
     if (diffEl) {
       diffEl.classList.remove("is-ok", "is-bad");
-      if (totals.difference == null) {
+      if (integrity.differenceCents == null) {
         diffEl.textContent = "—";
       } else {
-        diffEl.textContent = formatMoney(totals.difference, currency);
-        diffEl.classList.add(totals.balanced ? "is-ok" : "is-bad");
+        diffEl.textContent = formatMoney(
+          centsToMoneyNumber(integrity.differenceCents),
+          currency
+        );
+        diffEl.classList.add(integrity.differenceCents === 0 ? "is-ok" : "is-bad");
       }
     }
   }
@@ -2518,13 +2645,6 @@
       readPaymentDraftFromGrid();
     }
     for (const row of paymentDraftItems) {
-      if (formatPaymentAmountForApi(row.amount) == null) {
-        return {
-          level: "block",
-          blocking: true,
-          message: "Each amount must be a non-negative number with up to 2 decimals.",
-        };
-      }
       if (String(row.label || "").trim().length > 160) {
         return {
           level: "block",
@@ -2532,23 +2652,37 @@
           message: "Stage description must be 160 characters or fewer.",
         };
       }
+      if (
+        PaymentConfirm.isDepositScheduleItem(row) &&
+        formatPaymentAmountForApi(row.amount) == null
+      ) {
+        return {
+          level: "block",
+          blocking: true,
+          message: "Each amount must be a non-negative number with up to 2 decimals.",
+        };
+      }
     }
-    const totals = computePaymentDraftTotals(
-      paymentDraftItems,
-      paymentDraftContractTotal(sourceSnapshot)
-    );
-    if (totals.balanced) {
+    const summary = currentPaymentSummary();
+    const future = paymentFutureDraftItems();
+    const remainingCents =
+      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
+    const integrity = PaymentConfirm.paymentStageIntegrity(future, remainingCents);
+    if (integrity.incomplete) {
       return {
-        level: "ok",
-        blocking: false,
-        message: "",
+        level: "block",
+        blocking: true,
+        message: PaymentConfirm.INCOMPLETE_STAGE_ERROR,
       };
     }
-    return {
-      level: "warn",
-      blocking: false,
-      message: PaymentConfirm.SUM_ERROR,
-    };
+    if (integrity.mismatch) {
+      return {
+        level: "block",
+        blocking: true,
+        message: PaymentConfirm.STAGES_SUM_ERROR,
+      };
+    }
+    return { level: "ok", blocking: false, message: "" };
   }
 
   function validatePaymentDraftForConfirm() {
@@ -2560,40 +2694,8 @@
         message: "Add at least one payment stage before confirming.",
       };
     }
-    for (const row of paymentDraftItems) {
-      if (!String(row.label || "").trim()) {
-        return {
-          level: "block",
-          blocking: true,
-          message: "Every payment needs a description before confirm.",
-        };
-      }
-      if (formatPaymentAmountForApi(row.amount) == null) {
-        return {
-          level: "block",
-          blocking: true,
-          message: "Each amount must be a non-negative number with up to 2 decimals.",
-        };
-      }
-    }
-    const totals = computePaymentDraftTotals(
-      paymentDraftItems,
-      paymentDraftContractTotal(sourceSnapshot)
-    );
-    if (totals.contract == null) {
-      return {
-        level: "block",
-        blocking: true,
-        message: "Contract total is unavailable — cannot confirm.",
-      };
-    }
-    if (!totals.balanced) {
-      return {
-        level: "block",
-        blocking: true,
-        message: PaymentConfirm.SUM_ERROR,
-      };
-    }
+    const saveCheck = validatePaymentDraftForSave({ syncFromDom: false });
+    if (saveCheck.blocking) return saveCheck;
     return {
       level: "ok",
       blocking: false,
@@ -2699,178 +2801,171 @@
     applyPaymentScheduleResponse(res.data);
   }
 
-  function paymentTypeOptionsHtml(selected) {
-    return Array.from(PAYMENT_TYPES_ALLOWED)
-      .map((t) => {
-        const label = t === "custom" ? "Payment" : paymentTypeLabel(t);
-        return `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
-  }
-
-  function paymentRoleOptionsHtml(selected) {
-    const roles = [
-      ["future_obligation", "Future obligation — payment is still due"],
-      ["applied_payment", "Applied payment — payment was already received"],
-    ];
-    return roles
-      .map(
-        ([v, label]) =>
-          `<option value="${escapeHtml(v)}"${v === selected ? " selected" : ""}>${escapeHtml(label)}</option>`
-      )
-      .join("");
-  }
-
-  function paymentDueRuleOptionsHtml(selected) {
-    return Array.from(DUE_RULES_ALLOWED)
-      .filter((t) => t !== "custom")
-      .concat(["custom"])
-      .map((t) => {
-        const label =
-          t === "custom"
-            ? "As scheduled in this Agreement"
-            : dueRuleLabel(t);
-        return `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
-  }
-
   function addPaymentDraftRow() {
+    paymentCustomStages = true;
     paymentDraftApplyMutation(() => {
       paymentDraftItems.push(createBlankPaymentDraftRow());
+      ensureResidualBillingRow();
     });
-    // Focus amount on the newest row when safe (edit mode, one useful field).
     try {
       const grid = $("cbPayEditGrid");
-      const rows = grid ? grid.querySelectorAll("[data-pay-client-id]") : [];
+      const rows = grid ? grid.querySelectorAll("[data-pay-client-id]:not([data-pay-residual])") : [];
       const last = rows.length ? rows[rows.length - 1] : null;
-      const amountInput = last?.querySelector?.("[data-pay-field='amount']");
-      if (amountInput && typeof amountInput.focus === "function") {
-        amountInput.focus({ preventScroll: true });
-        if (typeof amountInput.select === "function") amountInput.select();
+      const nameInput = last?.querySelector?.("[data-pay-field='label']");
+      if (nameInput && typeof nameInput.focus === "function") {
+        nameInput.focus({ preventScroll: true });
       }
     } catch (_err) {
       /* ignore focus failures */
     }
   }
 
-  function syncPaymentEditorMode() {
-    const ws = $("cbPayEditWorkspace");
-    if (ws) {
-      ws.classList.toggle("is-simple", !paymentAdvancedEdit);
-      ws.classList.toggle("is-advanced", paymentAdvancedEdit);
-    }
-    const toggle = $("cbPayAdvancedToggle");
-    if (toggle) {
-      toggle.textContent = paymentAdvancedEdit ? "Simple review" : "Advanced editing";
-    }
+  function depositLockStatusLabel(summary) {
+    if (summary.depositStatus === "due") return "Due Now";
+    if (summary.depositStatus === "paid" && summary.showDepositStillDue) return "Partially Paid";
+    if (summary.depositStatus === "paid") return "Paid";
+    if (summary.depositStatus === "verification_unavailable") return "Unavailable";
+    return "—";
   }
 
-  function renderPaymentSimpleReview() {
-    const el = $("cbPaySimpleReview");
+  function renderPaymentCustomizeChrome() {
+    const summary = currentPaymentSummary();
+    const currency = sourceSnapshot?.currency || DEFAULT_CURRENCY;
+    const card = $("cbPayDepositCard");
+    const billing = $("cbPayBillingBlock");
+    const billingCopy = $("cbPayBillingCopy");
     const warn = $("cbPayDefaultWarn");
     const warning = String(sourceSnapshot?.paymentSchedule?.localDefaultWarning || "").trim();
     if (warn) {
       warn.hidden = !warning;
       warn.textContent = warning;
     }
-    if (!el) return;
-    const currency = sourceSnapshot?.currency || DEFAULT_CURRENCY;
-    if (paymentAdvancedEdit) {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
-    if (!paymentDraftItems.length) {
-      el.innerHTML = warning
-        ? `<p class="cb-pay-edit-hint">No default payments were created. Open Advanced editing to enter a balanced schedule.</p>`
-        : `<p class="cb-pay-edit-hint">No payments yet. Open Advanced editing to add payments.</p>`;
-      return;
-    }
-    el.innerHTML = paymentDraftItems
-      .map((row) => {
-        const due = dueRuleLabel(row.due_rule, {
-          fixedDueDate: row.fixed_due_date,
-          milestoneDescription: row.milestone_description,
-        });
-        return (
-          `<article class="cb-pay-simple-row">` +
-          `<div>` +
-          `<p class="cb-pay-simple-label">${escapeHtml(row.label || paymentTypeLabel(row.payment_type))}</p>` +
-          `<p class="cb-pay-simple-due">${escapeHtml(due)}</p>` +
-          `</div>` +
-          `<p class="cb-pay-simple-amt">${escapeHtml(formatMoney(row.amount, currency))}</p>` +
-          `</article>`
+    if (card) {
+      const showDeposit =
+        summary.depositStatus === "due" ||
+        summary.depositStatus === "paid" ||
+        summary.depositStatus === "verification_unavailable";
+      card.hidden = !showDeposit;
+      if (showDeposit) {
+        setText(
+          "cbPayLockAmount",
+          summary.depositStatus === "verification_unavailable"
+            ? ""
+            : formatMoney(summary.depositAmount, currency)
         );
-      })
-      .join("");
+        setText("cbPayLockStatus", depositLockStatusLabel(summary));
+        setText("cbPayLockSource", "Approved quote");
+      }
+    }
+    if (billing) billing.hidden = true;
+    if (billingCopy) {
+      billingCopy.textContent = PaymentConfirm.PROGRESS_FINAL_NOTE;
+    }
+    const simple = $("cbPaySimpleReview");
+    if (simple) {
+      simple.hidden = true;
+      simple.innerHTML = "";
+    }
+  }
+
+  function syncPaymentEditorMode() {
+    const ws = $("cbPayEditWorkspace");
+    if (ws) {
+      ws.classList.toggle("is-custom-stages", paymentShowsCustomStages());
+    }
+  }
+
+  function renderPaymentSimpleReview() {
+    renderPaymentCustomizeChrome();
+  }
+
+  function paymentStageActionButtonsHtml(index, count, residual) {
+    const reorder = PaymentConfirm.paymentStageReorderActions(index, count);
+    const buttons = [];
+    if (reorder.up) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="up">Move up</button>`
+      );
+    }
+    if (reorder.down) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="down">Move down</button>`
+      );
+    }
+    if (!residual) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="delete">Remove</button>`
+      );
+    }
+    if (!buttons.length) return "";
+    return `<div class="cb-pay-stage-card__actions">${buttons.join("")}</div>`;
   }
 
   function renderPaymentEditGrid() {
     const grid = $("cbPayEditGrid");
     if (!grid) return;
     syncPaymentEditorMode();
-    renderPaymentSimpleReview();
+    renderPaymentCustomizeChrome();
     updatePaymentEditTotalsDisplay(sourceSnapshot);
     updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
-    if (!paymentAdvancedEdit) {
+    const future = paymentFutureDraftItems();
+    if (!future.length) {
       grid.innerHTML = "";
       return;
     }
-    if (!paymentDraftItems.length) {
-      grid.innerHTML =
-        `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>` +
-        `<button type="button" class="btn ghost" id="cbPayAddFirst">Add first payment</button>`;
-      return;
-    }
-    grid.innerHTML = paymentDraftItems
+    grid.innerHTML = future
       .map((row, index) => {
         const id = escapeHtml(row.client_id);
+        const residual = PaymentConfirm.isResidualProgressBilling(row);
+        const due = residual
+          ? PaymentConfirm.DEFAULT_REMAINING_DUE_RULE
+          : String(row.due_rule || "");
+        const extra =
+          !residual && due === "fixed_date"
+            ? `<div class="cb-pay-stage-card__extra"><label>Date</label><input type="date" data-pay-field="fixed_due_date" value="${escapeHtml(
+                row.fixed_due_date || ""
+              )}" /></div>`
+            : !residual && due === "milestone"
+              ? `<div class="cb-pay-stage-card__extra"><label>Milestone</label><input type="text" maxlength="1000" data-pay-field="milestone_description" value="${escapeHtml(
+                  row.milestone_description || ""
+                )}" /></div>`
+              : "";
+        const isNew = !residual && (row.is_new === true || !PaymentConfirm.isPaymentStageValid(row));
+        const amountDisplay = residual
+          ? formatDraftAmountInput(row.amount)
+          : formatDraftAmountInput(row.amount);
+        const nameValue = residual ? PaymentConfirm.PROGRESS_FINAL_LABEL : row.label || "";
         return (
-          `<div class="cb-pay-edit-row" role="listitem" data-pay-client-id="${id}">` +
-          `<div class="cb-pay-edit-row__seq"><label>Seq</label><div>${index + 1}</div></div>` +
-          `<div><label>Description</label>` +
-          `<input type="text" maxlength="160" data-pay-field="label" value="${escapeHtml(row.label || "")}" /></div>` +
-          `<div><label>Type</label>` +
-          `<select data-pay-field="payment_type">${paymentTypeOptionsHtml(
-            normalizePaymentType(row.payment_type)
-          )}</select></div>` +
+          `<article class="cb-pay-stage-card${isNew ? " is-new" : ""}" role="listitem" data-pay-client-id="${id}"${
+            residual ? ' data-pay-residual="1"' : ""
+          }>` +
+          (isNew ? `<p class="cb-pay-stage-card__badge">New payment stage</p>` : "") +
+          `<div><label>Payment name</label>` +
+          `<input type="text" maxlength="160" data-pay-field="label" value="${escapeHtml(
+            nameValue
+          )}"${residual ? " readonly" : ""} /></div>` +
           `<div><label>Amount</label>` +
-          `<input type="number" min="0" step="0.01" data-pay-field="amount" value="${escapeHtml(
-            String(Number(row.amount) || 0)
-          )}" /></div>` +
-          `<div class="cb-pay-edit-row__actions">` +
-          `<select data-pay-field="item_role" title="Role">${paymentRoleOptionsHtml(
-            normalizePaymentItemRole(row.item_role)
-          )}</select>` +
-          `<button type="button" class="btn ghost" data-pay-action="up" ${
-            index === 0 ? "disabled" : ""
-          }>↑</button>` +
-          `<button type="button" class="btn ghost" data-pay-action="down" ${
-            index === paymentDraftItems.length - 1 ? "disabled" : ""
-          }>↓</button>` +
-          `<button type="button" class="btn ghost" data-pay-action="insert">Insert</button>` +
-          `<button type="button" class="btn ghost" data-pay-action="delete">Delete</button>` +
+          `<div class="cb-pay-amount"><span class="cb-pay-amount__prefix" aria-hidden="true">$</span>` +
+          `<input type="text" inputmode="decimal" autocomplete="off" data-pay-field="amount" value="${escapeHtml(
+            amountDisplay
+          )}"${residual ? " readonly" : ""} /></div></div>` +
+          `<div class="cb-pay-stage-card__due"><label>Due timing</label>` +
+          (residual
+            ? `<input type="text" readonly value="${escapeHtml(
+                PaymentConfirm.article7DueRuleLabel("custom", { editor: true })
+              )}" /><input type="hidden" data-pay-field="due_rule" value="custom" />`
+            : `<select data-pay-field="due_rule">${PaymentConfirm.article7DueTimingOptionsHtml(
+                due
+              )}</select>`) +
           `</div>` +
-          `<div class="cb-pay-edit-row__due">` +
-          `<label>When due</label>` +
-          `<select data-pay-field="due_rule">${paymentDueRuleOptionsHtml(
-            normalizeDueRule(row.due_rule)
-          )}</select>` +
-          `</div>` +
-          `<div>` +
-          `<label>Milestone</label>` +
-          `<input type="text" maxlength="1000" data-pay-field="milestone_description" value="${escapeHtml(
-            row.milestone_description || ""
-          )}" />` +
-          `</div>` +
-          `<div>` +
-          `<label>Fixed date</label>` +
-          `<input type="date" data-pay-field="fixed_due_date" value="${escapeHtml(
-            row.fixed_due_date || ""
-          )}" />` +
-          `</div>` +
-          `</div>`
+          extra +
+          (residual
+            ? `<p class="cb-pay-stage-card__note">${escapeHtml(
+                PaymentConfirm.PROGRESS_FINAL_NOTE
+              )}</p>`
+            : "") +
+          paymentStageActionButtonsHtml(index, future.length, residual) +
+          `</article>`
         );
       })
       .join("");
@@ -2884,6 +2979,7 @@
       readPaymentDraftFromGrid();
     }
     mutator();
+    ensureResidualBillingRow();
     renumberPaymentDraftSequences();
     renderPaymentEditGrid();
   }
@@ -2899,19 +2995,6 @@
       workspace.addEventListener("click", (ev) => {
         const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
         if (!el || typeof el.closest !== "function") return;
-        const advBtn = el.closest("#cbPayAdvancedToggle");
-        if (advBtn) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          if (paymentAdvancedEdit) {
-            readPaymentDraftFromGrid();
-            paymentAdvancedEdit = false;
-          } else {
-            paymentAdvancedEdit = true;
-          }
-          renderPaymentEditGrid();
-          return;
-        }
         const addBtn = el.closest("#cbPayAddStage, #cbPayAddFirst");
         if (addBtn) {
           if (addBtn.disabled) return;
@@ -2930,18 +3013,33 @@
         paymentDraftApplyMutation(() => {
           const idx = findPaymentDraftIndexByClientId(clientId);
           if (idx < 0) return;
+          if (PaymentConfirm.isDepositScheduleItem(paymentDraftItems[idx])) return;
           if (action === "delete") {
             paymentDraftItems.splice(idx, 1);
-          } else if (action === "insert") {
-            paymentDraftItems.splice(idx + 1, 0, createBlankPaymentDraftRow());
-          } else if (action === "up" && idx > 0) {
-            const tmp = paymentDraftItems[idx - 1];
-            paymentDraftItems[idx - 1] = paymentDraftItems[idx];
-            paymentDraftItems[idx] = tmp;
-          } else if (action === "down" && idx < paymentDraftItems.length - 1) {
-            const tmp = paymentDraftItems[idx + 1];
-            paymentDraftItems[idx + 1] = paymentDraftItems[idx];
-            paymentDraftItems[idx] = tmp;
+            if (paymentFutureDraftItems().length < 2) paymentCustomStages = false;
+          } else if (action === "up") {
+            let prev = idx - 1;
+            while (prev >= 0 && PaymentConfirm.isDepositScheduleItem(paymentDraftItems[prev])) {
+              prev -= 1;
+            }
+            if (prev >= 0) {
+              const tmp = paymentDraftItems[prev];
+              paymentDraftItems[prev] = paymentDraftItems[idx];
+              paymentDraftItems[idx] = tmp;
+            }
+          } else if (action === "down") {
+            let next = idx + 1;
+            while (
+              next < paymentDraftItems.length &&
+              PaymentConfirm.isDepositScheduleItem(paymentDraftItems[next])
+            ) {
+              next += 1;
+            }
+            if (next < paymentDraftItems.length) {
+              const tmp = paymentDraftItems[next];
+              paymentDraftItems[next] = paymentDraftItems[idx];
+              paymentDraftItems[idx] = tmp;
+            }
           }
         });
       });
@@ -2955,16 +3053,51 @@
         const el = ev.target instanceof Element ? ev.target : null;
         if (!el || !el.closest("[data-pay-field]")) return;
         readPaymentDraftFromGrid();
+        ensureResidualBillingRow();
+        const residualInput = grid.querySelector("[data-pay-residual] [data-pay-field='amount']");
+        const residual = paymentDraftItems.find((row) =>
+          PaymentConfirm.isResidualProgressBilling(row)
+        );
+        const residualMounted = Boolean(grid.querySelector("[data-pay-residual]"));
+        if (Boolean(residual) !== residualMounted) {
+          renderPaymentEditGrid();
+        } else if (residualInput && residual) {
+          residualInput.value = formatDraftAmountInput(residual.amount);
+        }
         updatePaymentEditTotalsDisplay(sourceSnapshot);
         updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
+        renderWorkspaceChrome();
       });
       grid.addEventListener("change", (ev) => {
         const el = ev.target instanceof Element ? ev.target : null;
         if (!el || !el.closest("[data-pay-field]")) return;
         readPaymentDraftFromGrid();
+        ensureResidualBillingRow();
+        if (el.getAttribute("data-pay-field") === "due_rule") {
+          renderPaymentEditGrid();
+        }
         updatePaymentEditTotalsDisplay(sourceSnapshot);
         updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
+        renderWorkspaceChrome();
       });
+      grid.addEventListener(
+        "blur",
+        (ev) => {
+          const el = ev.target instanceof Element ? ev.target : null;
+          if (!el || el.getAttribute("data-pay-field") !== "amount") return;
+          const parsed = PaymentConfirm.parseMoneyInput(el.value);
+          if (!parsed.empty && !parsed.invalid && parsed.cents != null) {
+            el.value = PaymentConfirm.formatMoneyInputFromCents(parsed.cents);
+          }
+          readPaymentDraftFromGrid();
+          ensureResidualBillingRow();
+          renderPaymentEditGrid();
+          updatePaymentEditTotalsDisplay(sourceSnapshot);
+          updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
+          renderWorkspaceChrome();
+        },
+        true
+      );
     }
   }
 
@@ -3237,8 +3370,8 @@
   }
 
   function dueRuleLabel(raw, extras) {
-    if (PaymentDefaults && typeof PaymentDefaults.dueRuleCustomerLabel === "function") {
-      return PaymentDefaults.dueRuleCustomerLabel(raw, extras) || "—";
+    if (PaymentConfirm && typeof PaymentConfirm.article7DueRuleLabel === "function") {
+      return PaymentConfirm.article7DueRuleLabel(raw, extras) || "—";
     }
     const key = String(raw || "").trim().toLowerCase();
     if (key === "custom" || !key) return "As scheduled in this Agreement";
@@ -3438,7 +3571,16 @@
     const legalNotices = source?.legalNotices;
     const propOk = propertyConfigured(setup);
     const warOk = warrantyConfigured(setup);
-    const payOk = paymentConfigured(schedule);
+    let payOk = paymentConfigured(schedule);
+    if (payOk) {
+      const paySummary = PaymentConfirm.presentPaymentSummary({
+        contractTotal: source?.contractTotal,
+        items: Array.isArray(schedule?.items) ? schedule.items : [],
+        verifiedDeposit: schedule?.deposit,
+        depositRequired: source?.depositRequired,
+      });
+      if (paySummary.blockConfirm) payOk = false;
+    }
     const sigOk = signatureConfigured(setup);
     const legalEffective = resolveLegalNoticesEffective(legalNotices);
     const legalOk = legalEffective.contribution === "configured";
@@ -4190,9 +4332,9 @@
     }
     if (!paymentConfigured(source.paymentSchedule)) {
       return {
-        label: "Complete Payment Schedule",
+        label: "Confirm the payment schedule",
         article: "art-payment",
-        cta: "Complete Payment Schedule",
+        cta: "Open Payment Schedule",
       };
     }
     if (!warrantyConfigured(source.contractSetup)) {
@@ -4240,6 +4382,36 @@
     }
     if (overallContractReadiness(sourceSnapshot, draftEdits) !== "configured") {
       throw new Error("Contract readiness must be 100% before freezing.");
+    }
+    const freezePaySummary = PaymentConfirm.presentPaymentSummary({
+      contractTotal: sourceSnapshot.contractTotal,
+      items: Array.isArray(sourceSnapshot.paymentSchedule?.items)
+        ? sourceSnapshot.paymentSchedule.items
+        : [],
+      verifiedDeposit: sourceSnapshot.paymentSchedule?.deposit,
+      depositRequired: sourceSnapshot.depositRequired,
+    });
+    if (freezePaySummary.blockConfirm) {
+      throw new Error(
+        freezePaySummary.verificationMessage ||
+          "Payment stages must equal the remaining contract balance."
+      );
+    }
+    const freezeDraftItems = paymentDraftItems.length
+      ? paymentDraftItems
+      : Array.isArray(sourceSnapshot.paymentSchedule?.items)
+        ? sourceSnapshot.paymentSchedule.items
+        : [];
+    const freezeIntegrity = PaymentConfirm.paymentStageIntegrity(
+      PaymentConfirm.futureStageItems(freezeDraftItems),
+      freezePaySummary.remainingBalance == null
+        ? null
+        : moneyToCents(freezePaySummary.remainingBalance)
+    );
+    if (freezeIntegrity.blockConfirm) {
+      throw new Error(
+        freezeIntegrity.error || "Complete or remove the unfinished payment stage."
+      );
     }
     if (!extractApprovedScopeText(sourceSnapshot.scope).ok) {
       throw new Error(

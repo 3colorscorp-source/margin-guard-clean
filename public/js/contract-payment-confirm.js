@@ -18,14 +18,23 @@
 
   var SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
   var SUM_ERROR = "Payment amounts must equal the contract total.";
+  var STAGES_SUM_ERROR = "Payment stages must equal the remaining contract balance.";
   var DEPOSIT_UNAVAILABLE_MESSAGE =
     "Deposit status could not be verified. Refresh before confirming.";
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
-  var SCHEDULE_MISMATCH_MESSAGE =
-    "Future payments do not equal the remaining contract balance. Edit the payment schedule before confirming.";
+  var SCHEDULE_MISMATCH_MESSAGE = STAGES_SUM_ERROR;
+  var BILLING_SCHEDULE_COPY =
+    "Every two weeks based on completed work. If the project is completed sooner, the final invoice is sent at completion.";
+  var BILLING_BALANCE_COPY =
+    "Billed every two weeks based on progress. If the project is completed sooner, the final invoice is sent at completion.";
   var INVOICE_CADENCE_COPY =
     "The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner.";
+  var PROGRESS_FINAL_LABEL = "Progress & Final Billing";
+  var PROGRESS_FINAL_NOTE =
+    "If the project is completed sooner, the final invoice is sent at completion.";
+  var INCOMPLETE_STAGE_ERROR = "Complete or remove the unfinished payment stage.";
+  var DEFAULT_REMAINING_DUE_RULE = "custom";
   var PROGRESS_INVOICE_COPY = INVOICE_CADENCE_COPY;
   var confirmLock = false;
 
@@ -55,6 +64,82 @@
       milestone_description: trimField(item.milestone_description),
       fixed_due_date: trimField(item.fixed_due_date).slice(0, 10),
       item_role: item.item_role,
+      residual: item.residual === true,
+      is_new: item.is_new === true,
+    };
+  }
+
+  function parseMoneyInput(raw) {
+    var text = String(raw == null ? "" : raw).trim();
+    if (!text) return { empty: true, cents: null, invalid: false };
+    var cleaned = text.replace(/\$/g, "").replace(/,/g, "").replace(/\s/g, "");
+    var neg = cleaned.charAt(0) === "-";
+    if (neg) cleaned = cleaned.slice(1);
+    if (!/^\d+(\.\d{1,2})?$/.test(cleaned) && !/^\d+$/.test(cleaned)) {
+      return { empty: false, cents: null, invalid: true };
+    }
+    var parts = cleaned.split(".");
+    var dollars = parts[0] ? Number(parts[0]) : 0;
+    var frac = ((parts[1] || "") + "00").slice(0, 2);
+    if (!Number.isFinite(dollars)) return { empty: false, cents: null, invalid: true };
+    var cents = dollars * 100 + Number(frac);
+    if (neg) cents = -cents;
+    return { empty: false, cents: cents, invalid: false };
+  }
+
+  function formatMoneyInputFromCents(cents) {
+    var abs = Math.abs(Math.round(Number(cents) || 0));
+    var dollars = Math.floor(abs / 100);
+    var frac = String(abs % 100);
+    if (frac.length < 2) frac = "0" + frac;
+    var grouped = String(dollars).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return grouped + "." + frac;
+  }
+
+  function isResidualProgressBilling(item) {
+    if (isDepositScheduleItem(item)) return false;
+    if (item && item.residual === true) return true;
+    var label = trimField(item && item.label);
+    return label === PROGRESS_FINAL_LABEL || label === "Remaining Contract Balance";
+  }
+
+  function isPaymentStageValid(item) {
+    if (!trimField(item && item.label)) return false;
+    var parsed = parseMoneyInput(item && item.amount);
+    if (parsed.empty || parsed.invalid || parsed.cents == null || !(parsed.cents > 0)) {
+      return false;
+    }
+    var due = trimField(item && item.due_rule).toLowerCase();
+    if (!due) return false;
+    return true;
+  }
+
+  function paymentStageIntegrity(items, remainingCents) {
+    var list = Array.isArray(items) ? items : [];
+    var incomplete = false;
+    var scheduledCents = 0;
+    for (var i = 0; i < list.length; i += 1) {
+      if (!isPaymentStageValid(list[i])) incomplete = true;
+      else scheduledCents += parseMoneyInput(list[i].amount).cents;
+    }
+    var mismatch = remainingCents != null && scheduledCents !== remainingCents;
+    return {
+      incomplete: incomplete,
+      scheduledCents: scheduledCents,
+      differenceCents: remainingCents == null ? null : remainingCents - scheduledCents,
+      mismatch: mismatch,
+      blockConfirm: incomplete || mismatch,
+      error: incomplete ? INCOMPLETE_STAGE_ERROR : mismatch ? STAGES_SUM_ERROR : "",
+    };
+  }
+
+  function paymentStageReorderActions(index, count) {
+    var total = Number(count) || 0;
+    var i = Number(index) || 0;
+    if (total < 2) return { up: false, down: false };
+    return {
+      up: i > 0,
+      down: i < total - 1,
     };
   }
 
@@ -107,18 +192,21 @@
       verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
       depositRequired: src.depositRequired,
     });
+    var remainingCents =
+      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
+    var integrity = paymentStageIntegrity(futureStageItems(src.items), remainingCents);
     var depositBlocked = summary.blockConfirm === true;
     var confirmEnabled = kind === "unconfirmed" && !busy && !depositBlocked;
     var buttons = [];
     if (kind !== "confirmed") {
       buttons.push({
-        id: "edit",
-        label: "Edit Payment Schedule",
-        style: kind === "unconfirmed" ? "ghost" : "primary",
+        id: "customize",
+        label: "Customize Payment Plan",
+        style: "ghost",
         enabled: !busy,
       });
     }
-    if (kind === "unconfirmed") {
+    if (kind === "unconfirmed" || kind === "unbalanced") {
       buttons.push({
         id: "confirm",
         label: "Confirm Payment Schedule",
@@ -150,20 +238,26 @@
       buttons: buttons,
       continueVisible: kind === "confirmed",
       continueEnabled: kind === "confirmed" && !busy,
-      confirmVisible: kind === "unconfirmed",
+      confirmVisible: kind === "unconfirmed" || kind === "unbalanced",
       confirmEnabled: confirmEnabled,
-      editStyle: kind === "unconfirmed" ? "ghost" : "primary",
+      customizeVisible: kind !== "confirmed",
+      editStyle: "ghost",
       errorMessage:
-        kind === "unbalanced"
-          ? SUM_ERROR
-          : depositBlocked
-            ? summary.verificationMessage
-            : "",
+        integrity.incomplete
+          ? INCOMPLETE_STAGE_ERROR
+          : summary.scheduleMismatch
+            ? STAGES_SUM_ERROR
+            : kind === "unbalanced"
+              ? SUM_ERROR
+              : depositBlocked
+                ? summary.verificationMessage
+                : "",
       confirmedLabel: kind === "confirmed" ? "Payment Schedule Confirmed" : "",
       primaryEnabledCount: primaryEnabled.length,
       primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
       depositStatus: summary.depositStatus,
       blockConfirm: depositBlocked,
+      incompleteStages: integrity.incomplete === true,
       refreshVisible: summary.depositStatus === "verification_unavailable",
     };
   }
@@ -205,14 +299,13 @@
 
   function presentPaymentRows(items, options) {
     var opts = options || {};
-    var dueFn = typeof opts.dueRuleLabel === "function" ? opts.dueRuleLabel : null;
+    var dueFn =
+      typeof opts.dueRuleLabel === "function" ? opts.dueRuleLabel : article7DueRuleLabel;
     return cloneItems(items).map(function (item, index) {
-      var due = dueFn
-        ? dueFn(item.due_rule, {
-            fixedDueDate: item.fixed_due_date,
-            milestoneDescription: item.milestone_description,
-          })
-        : trimField(item.due_label);
+      var due = dueFn(item.due_rule, {
+        fixedDueDate: item.fixed_due_date,
+        milestoneDescription: item.milestone_description,
+      });
       return {
         index: index + 1,
         name: trimField(item.label) || "Payment",
@@ -318,6 +411,60 @@
     } catch (_err) {
       return (cur === "USD" ? "$" : cur + " ") + n.toFixed(2);
     }
+  }
+
+  function article7DueRuleLabel(raw, extras) {
+    var extra = extras || {};
+    var key = trimField(raw).toLowerCase();
+    if (key === "fixed_date") {
+      var date = trimField(extra.fixedDueDate);
+      if (date && extra.editor !== true) return "Due " + date;
+      return "On a specific date";
+    }
+    if (key === "milestone") {
+      var milestone = trimField(extra.milestoneDescription);
+      if (milestone && extra.editor !== true) return "Due at milestone: " + milestone;
+      return "Custom milestone";
+    }
+    if (key === "on_completion") {
+      return extra.editor === true ? "At project completion" : "Due at project completion";
+    }
+    if (key === "custom" || key === "on_start" || key === "before_start") {
+      return "Every two weeks based on progress";
+    }
+    return extra.editor === true ? "Every two weeks based on progress" : "";
+  }
+
+  function article7DueTimingOptionsHtml(selected) {
+    var current = trimField(selected).toLowerCase();
+    var known =
+      current === "custom" ||
+      current === "on_completion" ||
+      current === "fixed_date" ||
+      current === "milestone";
+    var options = [
+      ["", "Select timing"],
+      ["custom", "Every two weeks based on progress"],
+      ["on_completion", "At project completion"],
+      ["fixed_date", "On a specific date"],
+      ["milestone", "Custom milestone"],
+    ];
+    return options
+      .map(function (pair) {
+        var isPlaceholder = pair[0] === "";
+        var selectedAttr = (!known && isPlaceholder) || (known && pair[0] === current);
+        return (
+          '<option value="' +
+          pair[0] +
+          '"' +
+          (selectedAttr ? " selected" : "") +
+          (isPlaceholder ? " disabled" : "") +
+          ">" +
+          pair[1] +
+          "</option>"
+        );
+      })
+      .join("");
   }
 
   function joinPaymentExplanation(statusCopy, cadenceCopy) {
@@ -491,6 +638,11 @@
     }
 
     var remainingSumMatches = showStages ? stagePlan.matches === true : true;
+    var integrity = paymentStageIntegrity(futureStageItems(items), remainingCents);
+    if (integrity.incomplete) {
+      blockConfirm = true;
+      verificationMessage = INCOMPLETE_STAGE_ERROR;
+    }
 
     var summaryCopy = "";
     if (depositStatus === "paid" && stillDueCents > 0) {
@@ -537,6 +689,7 @@
       remainingSumMatches: remainingSumMatches,
       stagesReconciled: stagePlan.reconciled === true,
       scheduleMismatch: stagePlan.mismatch === true,
+      incompleteStages: integrity.incomplete === true,
       verifiedPaid: applied,
       blockConfirm: blockConfirm,
       verificationMessage: verificationMessage,
@@ -609,11 +762,14 @@
         if (depositSummary.blockConfirm) {
           return {
             ok: false,
-            reason: depositSummary.scheduleMismatch
-              ? "payment_stages_mismatch"
-              : depositSummary.depositStatus,
+            reason: depositSummary.incompleteStages
+              ? "incomplete"
+              : depositSummary.scheduleMismatch
+                ? "payment_stages_mismatch"
+                : depositSummary.depositStatus,
             posted: false,
             advance: false,
+            openEdit: depositSummary.incompleteStages === true,
             error: depositSummary.verificationMessage,
             items: items,
           };
@@ -697,11 +853,29 @@
   return {
     SCHEDULE_API: SCHEDULE_API,
     SUM_ERROR: SUM_ERROR,
+    STAGES_SUM_ERROR: STAGES_SUM_ERROR,
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
     PROGRESS_INVOICE_COPY: PROGRESS_INVOICE_COPY,
     INVOICE_CADENCE_COPY: INVOICE_CADENCE_COPY,
+    BILLING_SCHEDULE_COPY: BILLING_SCHEDULE_COPY,
+    BILLING_BALANCE_COPY: BILLING_BALANCE_COPY,
+    PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
+    PROGRESS_FINAL_NOTE: PROGRESS_FINAL_NOTE,
+    INCOMPLETE_STAGE_ERROR: INCOMPLETE_STAGE_ERROR,
+    DEFAULT_REMAINING_DUE_RULE: DEFAULT_REMAINING_DUE_RULE,
+    parseMoneyInput: parseMoneyInput,
+    formatMoneyInputFromCents: formatMoneyInputFromCents,
+    isPaymentStageValid: isPaymentStageValid,
+    isResidualProgressBilling: isResidualProgressBilling,
+    paymentStageIntegrity: paymentStageIntegrity,
+    paymentStageReorderActions: paymentStageReorderActions,
+    centsToMoneyNumber: centsToMoneyNumber,
+    PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
+    PROGRESS_FINAL_NOTE: PROGRESS_FINAL_NOTE,
+    INCOMPLETE_STAGE_ERROR: INCOMPLETE_STAGE_ERROR,
+    DEFAULT_REMAINING_DUE_RULE: DEFAULT_REMAINING_DUE_RULE,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -722,6 +896,9 @@
     depositStatusCopyFromSnapshot: depositStatusCopyFromSnapshot,
     paymentExplanationFromSnapshot: paymentExplanationFromSnapshot,
     joinPaymentExplanation: joinPaymentExplanation,
+    article7DueRuleLabel: article7DueRuleLabel,
+    article7DueTimingOptionsHtml: article7DueTimingOptionsHtml,
+    futureStageItems: futureStageItems,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,
   };

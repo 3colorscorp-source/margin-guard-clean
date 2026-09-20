@@ -38,7 +38,8 @@
   ];
 
   var INITIAL_SCHEDULING_DUE_RULE = "on_signature";
-  var REMAINING_DUE_RULE = "on_completion";
+  var REMAINING_DUE_RULE = "custom";
+  var PROGRESS_FINAL_LABEL = "Progress & Final Billing";
   var DEFAULT_ITEM_ROLE = "future_obligation";
   var CUSTOM_DUE_CUSTOMER_LABEL = "As scheduled in this Agreement";
 
@@ -160,7 +161,7 @@
       centsToNumber(depositCents).toFixed(2) +
       ") is greater than the contract total (" +
       centsToNumber(totalCents).toFixed(2) +
-      "). Defaults were not created. Use Advanced editing to enter a balanced schedule before Confirm Schedule."
+      "). Defaults were not created. Customize the payment plan to enter a balanced schedule before confirming."
     );
   }
 
@@ -212,7 +213,7 @@
       items.push(
         makeItem(
           1,
-          "Remaining Contract Balance",
+          PROGRESS_FINAL_LABEL,
           "final",
           totalCents,
           REMAINING_DUE_RULE
@@ -241,7 +242,7 @@
       items.push(
         makeItem(
           2,
-          "Remaining Contract Balance",
+          PROGRESS_FINAL_LABEL,
           "final",
           totalCents - depositCents,
           REMAINING_DUE_RULE
@@ -278,6 +279,7 @@
     DUE_RULES_ALLOWED: DUE_RULES_ALLOWED.slice(),
     INITIAL_SCHEDULING_DUE_RULE: INITIAL_SCHEDULING_DUE_RULE,
     REMAINING_DUE_RULE: REMAINING_DUE_RULE,
+    PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
     DEFAULT_ITEM_ROLE: DEFAULT_ITEM_ROLE,
     CUSTOM_DUE_CUSTOMER_LABEL: CUSTOM_DUE_CUSTOMER_LABEL,
     toMoneyCents: toMoneyCents,
