@@ -10,6 +10,9 @@ const {
   resolveVerifiedContractDeposit,
   depositBlocksConfirm,
 } = require("./_lib/verified-contract-deposit");
+const {
+  presentPaymentSummary,
+} = require("../../public/js/contract-payment-confirm.js");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -815,6 +818,21 @@ exports.handler = async (event) => {
         deposit,
       });
     }
+    if (confirmSchedule) {
+      const paySummary = presentPaymentSummary({
+        contractTotal: centsToNumber(relation.contractTotalCents),
+        items: normalized.items,
+        verifiedDeposit: deposit,
+      });
+      if (paySummary.scheduleMismatch) {
+        return json(422, {
+          ok: false,
+          error: paySummary.verificationMessage,
+          code: "payment_stages_mismatch",
+          deposit,
+        });
+      }
+    }
 
     let rpcResult;
     try {
@@ -880,4 +898,5 @@ exports._test = {
   evaluateReadiness,
   totalItemsCents,
   depositBlocksConfirm,
+  presentPaymentSummary,
 };

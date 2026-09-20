@@ -857,6 +857,9 @@
     .cb-pay-ledger__row.is-deposit .v {
       font-weight: 700;
     }
+    .cb-pay-ledger__row.is-still-due .k {
+      color: #44403c;
+    }
     .cb-pay-ledger__row.is-remaining {
       margin-top: 2px;
       padding-top: 8px;
@@ -2304,6 +2307,10 @@
                           <div class="cb-pay-ledger__row is-deposit" id="cbPayDepositRow" hidden>
                             <span class="k" id="cbPayDepositLabel">Deposit Due</span>
                             <span class="v" id="cbPayDepositAmount">—</span>
+                          </div>
+                          <div class="cb-pay-ledger__row is-still-due" id="cbPayStillDueRow" hidden>
+                            <span class="k" id="cbPayStillDueLabel">Deposit Still Due</span>
+                            <span class="v" id="cbPayStillDueAmount">—</span>
                           </div>
                           <div class="cb-pay-ledger__row is-remaining">
                             <span class="k" id="cbPayRemainingLabel">Remaining Contract Balance</span>

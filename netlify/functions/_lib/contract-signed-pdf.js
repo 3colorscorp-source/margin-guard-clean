@@ -409,6 +409,11 @@ function buildSignedContractLines({
   } else if (paySummary.depositStatus === "due") {
     lines.push(body(`Deposit Due: ${money(paySummary.depositAmount, currency)}`));
   }
+  if (paySummary.depositStillDue != null && paySummary.depositStillDue > 0) {
+    lines.push(
+      body(`Deposit Still Due: ${money(paySummary.depositStillDue, currency)}`)
+    );
+  }
   if (paySummary.remainingBalance != null) {
     lines.push(
       body(

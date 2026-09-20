@@ -4942,6 +4942,7 @@
 
     const remainingTitle = $("cbPayRemainingTitle");
     const depositRow = $("cbPayDepositRow");
+    const stillDueRow = $("cbPayStillDueRow");
     const depositCopy = $("cbPayDepositCopy");
     const paySummary = PaymentConfirm.presentPaymentSummary({
       contractTotal,
@@ -5020,6 +5021,18 @@
             "cbPayDepositAmount",
             formatMoney(paySummary.depositAmount, currency)
           );
+        }
+      }
+      if (stillDueRow) {
+        if (paySummary.depositStillDue != null && paySummary.depositStillDue > 0) {
+          stillDueRow.hidden = false;
+          setText("cbPayStillDueLabel", paySummary.depositStillDueLabel || "Deposit Still Due");
+          setText(
+            "cbPayStillDueAmount",
+            formatMoney(paySummary.depositStillDue, currency)
+          );
+        } else {
+          stillDueRow.hidden = true;
         }
       }
       setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");

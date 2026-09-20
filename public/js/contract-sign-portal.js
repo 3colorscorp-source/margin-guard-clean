@@ -250,6 +250,14 @@
         text(money(summary.depositAmount, currency)) +
         "</span></div>";
     }
+    if (summary.depositStillDue != null && summary.depositStillDue > 0) {
+      html +=
+        '<div class="cs-kv is-still-due"><span class="k">' +
+        text(summary.depositStillDueLabel || "Deposit Still Due") +
+        '</span><span class="v">' +
+        text(money(summary.depositStillDue, currency)) +
+        "</span></div>";
+    }
     html +=
       '<div class="cs-kv is-remaining"><span class="k">' +
       text(summary.remainingLabel || "Remaining Contract Balance") +
