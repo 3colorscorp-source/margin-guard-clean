@@ -280,6 +280,53 @@ body {
 
 .cs-kv .v { font-weight: 600; }
 
+.cs-pay-summary {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.cs-pay-summary > .cs-kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+}
+
+.cs-pay-summary > .cs-kv .k {
+  font-size: 0.95rem;
+  color: inherit;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cs-pay-summary > .cs-kv .v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cs-pay-summary > .cs-kv.is-remaining {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-pay-summary > .cs-kv.is-remaining .k,
+.cs-pay-summary > .cs-kv.is-remaining .v {
+  font-weight: 800;
+}
+
+.cs-pay-summary > .cs-prose {
+  margin-top: 8px;
+  font-size: 0.88rem;
+  color: var(--cs-muted);
+  white-space: normal;
+}
+
 .cs-prose {
   white-space: pre-wrap;
   word-break: break-word;
