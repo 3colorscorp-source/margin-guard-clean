@@ -104,7 +104,7 @@
     if (kind === "unconfirmed") {
       buttons.push({
         id: "confirm",
-        label: "Confirm & Continue",
+        label: "Confirm Payment Schedule",
         style: "primary",
         enabled: !busy,
       });
@@ -185,8 +185,94 @@
         amount: item.amount,
         due: due || "",
         due_rule: item.due_rule,
+        payment_type: item.payment_type,
       };
     });
+  }
+
+  function isDepositScheduleItem(item) {
+    return trimField(item && item.payment_type).toLowerCase() === "deposit";
+  }
+
+  function verifiedDepositFromServer(raw) {
+    var src = raw || {};
+    if (src.verified_paid !== true) return null;
+    var cents = moneyToCents(src.amount);
+    if (!(cents > 0)) return null;
+    return {
+      verified_paid: true,
+      amount: centsToMoneyNumber(cents),
+      paid_at: src.paid_at || null,
+      source: trimField(src.source) || "tenant_project_payments",
+    };
+  }
+
+  function presentPaymentSummary(input) {
+    var src = input || {};
+    var items = cloneItems(src.items);
+    var contractCents =
+      src.contractTotal == null || !Number.isFinite(Number(src.contractTotal))
+        ? null
+        : moneyToCents(src.contractTotal);
+    var verified = verifiedDepositFromServer(src.verifiedDeposit);
+    var verifiedCents = verified ? moneyToCents(verified.amount) : 0;
+    var remainingCents = contractCents == null ? null : contractCents - verifiedCents;
+
+    var depositItem = null;
+    for (var i = 0; i < items.length; i += 1) {
+      if (isDepositScheduleItem(items[i])) {
+        depositItem = items[i];
+        break;
+      }
+    }
+    var plannedDepositCents = depositItem
+      ? moneyToCents(depositItem.amount)
+      : moneyToCents(src.depositRequired);
+    if (plannedDepositCents < 0) plannedDepositCents = 0;
+
+    var depositStatus = "none";
+    var depositAmount = null;
+    if (verified) {
+      depositStatus = "paid";
+      depositAmount = verified.amount;
+    } else if (plannedDepositCents > 0) {
+      depositStatus = "due";
+      depositAmount = centsToMoneyNumber(plannedDepositCents);
+    }
+
+    var remainingSource = verified
+      ? items.filter(function (item) {
+          return !isDepositScheduleItem(item);
+        })
+      : items;
+    var remainingRows = presentPaymentRows(remainingSource, src);
+    var remainingSumCents = remainingSource.reduce(function (sum, item) {
+      return sum + moneyToCents(item.amount);
+    }, 0);
+
+    return {
+      contractTotal:
+        contractCents == null ? null : centsToMoneyNumber(contractCents),
+      depositStatus: depositStatus,
+      depositLabel:
+        depositStatus === "paid"
+          ? "Deposit Paid"
+          : depositStatus === "due"
+            ? "Deposit Due"
+            : "",
+      depositAmount: depositAmount,
+      depositMinus: depositStatus === "paid",
+      remainingBalance:
+        remainingCents == null ? null : centsToMoneyNumber(remainingCents),
+      appliedCopy:
+        depositStatus === "paid"
+          ? "The deposit has been received and applied to the contract total."
+          : "",
+      remainingItems: remainingRows,
+      remainingSumMatches:
+        remainingCents != null && remainingSumCents === remainingCents,
+      verifiedPaid: Boolean(verified),
+    };
   }
 
   function itemsMatchSource(payloadItems, sourceItems) {
@@ -330,6 +416,9 @@
     mapItemsForApi: mapItemsForApi,
     buildPaymentConfirmPayload: buildPaymentConfirmPayload,
     presentPaymentRows: presentPaymentRows,
+    presentPaymentSummary: presentPaymentSummary,
+    verifiedDepositFromServer: verifiedDepositFromServer,
+    isDepositScheduleItem: isDepositScheduleItem,
     itemsMatchSource: itemsMatchSource,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,

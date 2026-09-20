@@ -6,6 +6,9 @@
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
+const {
+  resolveVerifiedContractDeposit,
+} = require("./_lib/verified-contract-deposit");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -568,6 +571,15 @@ function normalizeRpcResult(raw, fallbackTotalCents, fallbackCurrency, fallbackS
   };
 }
 
+async function withVerifiedDeposit(payload, tenantId, projectId, quoteId) {
+  const deposit = await resolveVerifiedContractDeposit({
+    tenantId,
+    projectId,
+    quoteId,
+  });
+  return { ...payload, deposit };
+}
+
 async function replaceScheduleAtomically({
   tenantId,
   projectId,
@@ -704,20 +716,28 @@ exports.handler = async (event) => {
       const serializedItems = items.map((item) =>
         serializeItem(item, relation.contractTotalCents)
       );
-      return json(200, {
-        ok: true,
-        schedule,
-        items: serializedItems,
-        readiness: evaluateReadiness(
-          schedule,
-          serializedItems,
-          relation.contractTotalCents
-        ),
-        source: {
-          contract_total_source: relation.totalSource,
-          currency: relation.currency,
-        },
-      });
+      return json(
+        200,
+        await withVerifiedDeposit(
+          {
+            ok: true,
+            schedule,
+            items: serializedItems,
+            readiness: evaluateReadiness(
+              schedule,
+              serializedItems,
+              relation.contractTotalCents
+            ),
+            source: {
+              contract_total_source: relation.totalSource,
+              currency: relation.currency,
+            },
+          },
+          tenantId,
+          projectId,
+          quoteId
+        )
+      );
     }
 
     const confirmSchedule = body.confirm_schedule === true;
@@ -803,13 +823,21 @@ exports.handler = async (event) => {
       });
     }
 
-    return json(200, {
-      ok: true,
-      schedule: normalizedResult.schedule,
-      items: normalizedResult.items,
-      readiness: normalizedResult.readiness,
-      source: normalizedResult.source,
-    });
+    return json(
+      200,
+      await withVerifiedDeposit(
+        {
+          ok: true,
+          schedule: normalizedResult.schedule,
+          items: normalizedResult.items,
+          readiness: normalizedResult.readiness,
+          source: normalizedResult.source,
+        },
+        tenantId,
+        projectId,
+        quoteId
+      )
+    );
   } catch (err) {
     if (err?.isGuardError) {
       return json(err.statusCode || 403, {

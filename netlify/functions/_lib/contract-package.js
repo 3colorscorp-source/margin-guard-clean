@@ -29,6 +29,10 @@ const {
   validateContractSchedule,
   normIsoDate,
 } = require("./contract-schedule");
+const {
+  resolveVerifiedContractDeposit,
+  unpaidDeposit,
+} = require("./verified-contract-deposit");
 
 const API_VERSION = "ch-011a-v1";
 const SNAPSHOT_SCHEMA = "ch-011a-v1";
@@ -523,6 +527,7 @@ function buildSnapshot({
   frozenAt,
   contractSchedule,
   signingPolicy = null,
+  depositVerified = null,
 }) {
   const contractTotal = moneyNumber(quote.total);
   const scopeResolved = resolveContractScope(quote);
@@ -632,6 +637,7 @@ function buildSnapshot({
           return trimField(a?.id).localeCompare(trimField(b?.id));
         }),
       readiness: paymentReadiness,
+      deposit: depositVerified || unpaidDeposit(),
     },
     warranty: {
       duration_value: setup?.warranty_duration_value ?? null,
@@ -865,6 +871,11 @@ async function freezeContractPackage({
   }
 
   const frozenAt = new Date().toISOString();
+  const depositVerified = await resolveVerifiedContractDeposit({
+    tenantId,
+    projectId,
+    quoteId,
+  });
   const snapshot = buildSnapshot({
     tenantId,
     project,
@@ -880,6 +891,7 @@ async function freezeContractPackage({
     frozenAt,
     contractSchedule,
     signingPolicy: sources.preferenceRow,
+    depositVerified,
   });
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;

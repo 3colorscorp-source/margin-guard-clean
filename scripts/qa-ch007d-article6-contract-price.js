@@ -95,7 +95,7 @@ test("2 Article 6 drops payment, tax, CO, and empty cards", () => {
 test("3 other articles keep their legal homes", () => {
   assert.ok(art7.includes("Payment Schedule"));
   assert.ok(art7.includes('id="cbPayTimeline"'));
-  assert.ok(js.includes("Confirm & Continue"));
+  assert.ok(js.includes("Confirm Payment Schedule"));
   assert.ok(art8.includes("Estimated Start Date"));
   assert.ok(art8.includes("cbStartDisplay"));
   assert.ok(art9.includes("Changes and Additional Work"));

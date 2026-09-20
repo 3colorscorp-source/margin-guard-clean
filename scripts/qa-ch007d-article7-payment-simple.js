@@ -59,8 +59,9 @@ test("presentation drops diagnostics from Article 7 preview", () => {
   assert.ok(!/Scheduled 100%/.test(html + js + helperSrc));
   assert.ok(!js.includes('badgeText.textContent = "Review defaults"'));
   assert.ok(js.includes("Payment Schedule Confirmed"));
-  assert.ok(js.includes("Confirm & Continue"));
+  assert.ok(js.includes("Confirm Payment Schedule"));
   assert.ok(!js.includes('label: "Confirm Schedule"'));
+  assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.ok(!/Stage \$\{item\.sequence_number\}/.test(js));
   assert.ok(js.includes("overflow-wrap") || html.includes("overflow-wrap: anywhere"));
 });
@@ -211,13 +212,13 @@ async function testAsync(name, fn) {
     assert.ok(!PaymentConfirm.presentPaymentRows(THREE).every((row) => row.name === "Initial Scheduling Payment"));
   });
 
-  await testAsync("3 totals correct: Confirm & Continue is the only primary", async () => {
+  await testAsync("3 totals correct: Confirm Payment Schedule is the only primary", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
     const totals = PaymentConfirm.computePaymentTotals(TWO, TOTAL_TWO);
     assert.strictEqual(totals.balanced, true);
     const plan = s.plan();
     assert.strictEqual(plan.kind, "unconfirmed");
-    assert.strictEqual(plan.primaryLabel, "Confirm & Continue");
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Schedule");
     assert.strictEqual(plan.primaryEnabledCount, 1);
     assert.strictEqual(plan.continueVisible, false);
     assert.ok(plan.buttons.some((b) => b.id === "edit" && b.style === "ghost"));
@@ -239,7 +240,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(s.confirmed, false);
   });
 
-  await testAsync("5 Confirm & Continue: exactly 1 POST and advances", async () => {
+  await testAsync("5 Confirm Payment Schedule: exactly 1 POST and advances", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
     const result = await s.confirm();
     assert.strictEqual(result.ok, true);

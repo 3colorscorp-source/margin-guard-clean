@@ -811,6 +811,59 @@
       background: transparent;
     }
     .cb-pay-summary__item.is-diag { display: none !important; }
+    .cb-pay-ledger {
+      margin: 0;
+    }
+    .cb-pay-ledger__title,
+    .cb-pay-remaining-title {
+      margin: 0 0 8px;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: #0f766e;
+    }
+    .cb-pay-remaining-title {
+      margin: 16px 0 8px;
+    }
+    .cb-pay-ledger__row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 4px 0;
+      font-size: 0.98rem;
+      line-height: 1.35;
+    }
+    .cb-pay-ledger__row .k {
+      color: #44403c;
+      font-weight: 600;
+    }
+    .cb-pay-ledger__row .v {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    .cb-pay-ledger__row.is-deposit .v {
+      font-weight: 700;
+    }
+    .cb-pay-ledger__row.is-remaining {
+      margin-top: 4px;
+      padding-top: 10px;
+      border-top: 1px solid var(--cb-line);
+      font-weight: 800;
+    }
+    .cb-pay-ledger__row.is-remaining .k,
+    .cb-pay-ledger__row.is-remaining .v {
+      font-weight: 800;
+    }
+    .cb-pay-ledger__copy {
+      margin: 8px 0 0;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
     .cb-pay-summary__item .k {
       display: block;
       margin: 0 0 3px;
@@ -2230,25 +2283,29 @@
                       <p class="cb-pay-workspace__note" id="cbPayStateNote"></p>
 
                       <div class="cb-pay-summary" id="cbPaySummary" hidden>
-                        <div class="cb-pay-summary__item">
-                          <span class="k">Contract Total</span>
-                          <span class="v" id="cbPayContractTotal">—</span>
+                        <p class="cb-pay-ledger__title">Payment Summary</p>
+                        <div class="cb-pay-ledger" id="cbPayLedger">
+                          <div class="cb-pay-ledger__row">
+                            <span class="k">Contract Total</span>
+                            <span class="v" id="cbPayContractTotal">—</span>
+                          </div>
+                          <div class="cb-pay-ledger__row is-deposit" id="cbPayDepositRow" hidden>
+                            <span class="k" id="cbPayDepositLabel">Deposit Due</span>
+                            <span class="v" id="cbPayDepositAmount">—</span>
+                          </div>
+                          <div class="cb-pay-ledger__row is-remaining">
+                            <span class="k">Remaining Contract Balance</span>
+                            <span class="v" id="cbPayRemainingBalance">—</span>
+                          </div>
                         </div>
-                        <div class="cb-pay-summary__item is-diag">
-                          <span class="k">Payment stages</span>
-                          <span class="v" id="cbPayStageCount">—</span>
-                        </div>
-                        <div class="cb-pay-summary__item is-diag">
-                          <span class="k">Scheduled</span>
-                          <span class="v" id="cbPayScheduled">—</span>
-                        </div>
-                        <div class="cb-pay-summary__item is-diag">
-                          <span class="k">Plan check</span>
-                          <span class="v" id="cbPayPlanCheck">—</span>
-                        </div>
+                        <p class="cb-pay-ledger__copy" id="cbPayDepositCopy" hidden></p>
+                        <span class="is-diag" id="cbPayStageCount" hidden></span>
+                        <span class="is-diag" id="cbPayScheduled" hidden></span>
+                        <span class="is-diag" id="cbPayPlanCheck" hidden></span>
                       </div>
                       <p class="cb-pay-sum-warn" id="cbPaySumWarn" hidden role="status"></p>
 
+                      <p class="cb-pay-remaining-title" id="cbPayRemainingTitle" hidden>Remaining Payment Schedule</p>
                       <div class="cb-pay-timeline" id="cbPayTimeline" hidden></div>
 
                       <div class="cb-pay-empty" id="cbPayEmpty" hidden>

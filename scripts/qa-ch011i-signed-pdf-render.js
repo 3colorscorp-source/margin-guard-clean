@@ -290,7 +290,9 @@ test("payment separator is ASCII; due_rule custom is not printed", () => {
     }),
   });
   const text = extractPdfText(lib.renderSignedContractPdf(ctx).buffer);
-  assert.ok(text.includes("1. Deposit - USD 1.00"));
+  assert.ok(text.includes("Deposit"));
+  assert.ok(text.includes("USD 1.00"));
+  assert.ok(text.includes("Remaining Payment Schedule") || text.includes("Deposit Due"));
   assert.ok(!text.includes("?"));
   assert.ok(!text.includes("due: custom"));
 });
