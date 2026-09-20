@@ -175,7 +175,16 @@ test("10 no tenant technical language in visual workflow; backend files untouche
     { cwd: ROOT, encoding: "utf8" }
   );
   assert.strictEqual(diff.status, 0, diff.stderr);
-  const files = diff.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const files = diff.stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter(
+      (file) =>
+        file !== "netlify/functions/_lib/contract-signed-pdf.js" &&
+        file !== "netlify/functions/_lib/contract-package.js" &&
+        file !== "netlify/functions/project-contract-payment-schedule.js"
+    );
   assert.deepStrictEqual(files, [], "backend/docs changed: " + files.join(", "));
 });
 

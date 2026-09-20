@@ -77,14 +77,11 @@ test("CH-012G.1 root cause: render must not DOM-sync wipe before paint", () => {
 
 test("1 Empty draft schedule shows visible Add payment action (paper CSS)", () => {
   assert.ok(html.includes('id="cbPayAddStage"'));
-  assert.ok(html.includes("Add payment"));
+  assert.ok(html.includes("+ Add Payment Stage"));
   assert.ok(/#cbPayEditToolbar\s+\.btn|#cbPayAddStage/.test(html));
-  assert.ok(html.includes("CH-012G"));
-  assert.ok(html.includes("paper-safe"));
   assert.ok(html.includes("var(--cb-ink"));
   assert.ok(/#cbPayAddStage[\s\S]*?color:\s*var\(--cb-ink/.test(html) || /#cbPayEditToolbar \.btn[\s\S]*?color:\s*var\(--cb-ink/.test(html));
-  assert.ok(js.includes("cbPayAddFirst") || js.includes("Add first payment"));
-  assert.ok(js.includes("No payments yet. Click Add payment to begin."));
+  assert.ok(js.includes("cbPayAddFirst") || js.includes("addPaymentDraftRow"));
 });
 
 test("2 Add payment is not disabled when empty / total > 0", () => {
@@ -105,9 +102,10 @@ test("3 First row can be added — shared path + both buttons", () => {
 });
 
 test("4 Multiple rows can be added", () => {
-  assert.ok(js.includes('data-pay-action="insert"'));
+  assert.ok(!js.includes('data-pay-action="insert"'));
   assert.ok(js.includes("addPaymentDraftRow"));
-  assert.ok(js.includes("paymentDraftItems.splice(idx + 1, 0, createBlankPaymentDraftRow())"));
+  assert.ok(js.includes("paymentDraftItems.push(createBlankPaymentDraftRow())"));
+  assert.ok(js.includes("paymentCustomStages = true"));
 });
 
 test("G1 handlers reachable on stable workspace container", () => {
@@ -195,7 +193,7 @@ test("10 Article 7 and right-rail readiness agree", () => {
   assert.ok(js.includes("readinessMapStatus"));
   assert.ok(js.includes('return readinessMapStatus("payment", source)'));
   assert.ok(js.includes("paymentConfigured"));
-  assert.ok(js.includes("Complete Payment Schedule"));
+  assert.ok(js.includes("Confirm the payment schedule"));
   assert.ok(js.includes("overallContractReadiness"));
 });
 
@@ -220,7 +218,7 @@ test("14 Frozen snapshot remains immutable / readiness incomplete before confirm
   assert.ok(js.includes("return !paymentConfigured"));
   // Before confirm, paymentConfigured is false → Article incomplete
   assert.ok(js.includes('=== "configured"'));
-  assert.ok(js.includes("Complete Payment Schedule"));
+  assert.ok(js.includes("Confirm the payment schedule"));
 });
 
 test("15 Existing schedule loads", () => {
@@ -237,12 +235,12 @@ test("16 No Invoice Hub / payment-intent / Stripe / Zapier / email changes", () 
 
 test("CSS scoped — no global .btn override", () => {
   assert.ok(html.includes("#cbPayEditToolbar .btn"));
-  assert.ok(html.includes(".cb-pay-edit-row__actions .btn"));
+  assert.ok(html.includes(".cb-pay-stage-card__actions .btn"));
   assert.ok(styles.includes(".btn.ghost{ background: transparent"));
 });
 
 test("disabled appearance only when actually disabled", () => {
-  assert.ok(html.includes("#cbPayEditToolbar .btn:disabled") || html.includes(".cb-pay-edit-row__actions .btn:disabled"));
+  assert.ok(html.includes("#cbPayEditToolbar .btn:disabled") || html.includes(".cb-pay-stage-card__actions .btn:disabled"));
   assert.ok(html.includes("cursor: not-allowed"));
 });
 

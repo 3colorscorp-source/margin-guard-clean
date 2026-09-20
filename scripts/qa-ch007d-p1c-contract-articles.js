@@ -54,8 +54,8 @@ test("Warranty Confirm + persist", () => {
   assert.match(html, /id="cbWarEditSummary"/);
 });
 
-test("Payment Save Draft + Confirm + read-only", () => {
-  assert.match(js, /saveLabel:\s*"Save Draft"/);
+test("Payment Save Payment Plan + Confirm + read-only", () => {
+  assert.match(js, /"art-payment":[\s\S]*?saveLabel:\s*"Save Payment Plan"/);
   assert.match(js, /workspaceConfirmPayment/);
   assert.match(js, /paymentScheduleAllowsOwnerEdit/);
   assert.match(js, /Confirmed payment schedules are read-only/);

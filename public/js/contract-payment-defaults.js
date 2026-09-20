@@ -160,7 +160,7 @@
       centsToNumber(depositCents).toFixed(2) +
       ") is greater than the contract total (" +
       centsToNumber(totalCents).toFixed(2) +
-      "). Defaults were not created. Use Advanced editing to enter a balanced schedule before Confirm Schedule."
+      "). Defaults were not created. Customize the payment plan to enter a balanced schedule before confirming."
     );
   }
 

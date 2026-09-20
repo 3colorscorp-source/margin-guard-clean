@@ -225,8 +225,8 @@
             depositRequired: price.deposit_required != null ? price.deposit_required : quote.deposit_required,
             currency: currency,
             dueRuleLabel: function (rule, extras) {
-              return PaymentDefaults && typeof PaymentDefaults.dueRuleCustomerLabel === "function"
-                ? PaymentDefaults.dueRuleCustomerLabel(rule, extras)
+              return PaymentConfirm && typeof PaymentConfirm.article7DueRuleLabel === "function"
+                ? PaymentConfirm.article7DueRuleLabel(rule, extras)
                 : "";
             },
           })
