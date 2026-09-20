@@ -18,6 +18,7 @@ const {
 } = require("../../../public/js/contract-payment-defaults.js");
 const {
   presentPaymentSummary,
+  invoiceCadenceCopyFromSnapshot,
 } = require("../../../public/js/contract-payment-confirm.js");
 const {
   formatDurationLabel,
@@ -425,7 +426,8 @@ function buildSignedContractLines({
     );
   }
   if (paySummary.summaryCopy) lines.push(body(paySummary.summaryCopy));
-  if (paySummary.progressCopy) lines.push(body(paySummary.progressCopy));
+  const cadenceCopy = invoiceCadenceCopyFromSnapshot(snap);
+  if (cadenceCopy) lines.push(body(cadenceCopy));
   if (paySummary.showPaymentStages) {
     lines.push(subhead("Payment Stages"));
     if (!paySummary.remainingItems.length) {

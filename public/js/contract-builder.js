@@ -5064,7 +5064,7 @@
         }
       }
       if (progressCopy) {
-        const cadence = paySummary.progressCopy || PaymentConfirm.PROGRESS_INVOICE_COPY;
+        const cadence = PaymentConfirm.PROGRESS_INVOICE_COPY;
         progressCopy.hidden = false;
         progressCopy.textContent = cadence;
       }

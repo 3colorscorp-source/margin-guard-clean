@@ -310,6 +310,15 @@
     }
   }
 
+  function invoiceCadenceCopyFromSnapshot(snap) {
+    var payment = snap && typeof snap === "object" ? snap.payment_schedule : null;
+    if (!payment || typeof payment !== "object") return "";
+    if (!Object.prototype.hasOwnProperty.call(payment, "invoice_cadence_copy")) {
+      return "";
+    }
+    return trimField(payment.invoice_cadence_copy);
+  }
+
   function verifiedDepositFromServer(raw) {
     var src = raw || {};
     if (src.verified_paid !== true) return null;
@@ -476,7 +485,6 @@
       depositStillDue: stillDueCents > 0 ? centsToMoneyNumber(stillDueCents) : null,
       depositStillDueLabel: stillDueCents > 0 ? "Deposit Still Due" : "",
       showDepositStillDue: stillDueCents > 0,
-      progressCopy: PROGRESS_INVOICE_COPY,
       remainingLabel: remainingLabel,
       remainingBalance: remainingBalance,
       summaryCopy: summaryCopy,
@@ -664,6 +672,7 @@
     shouldShowPaymentStages: shouldShowPaymentStages,
     reconcileFutureStages: reconcileFutureStages,
     itemsMatchSource: itemsMatchSource,
+    invoiceCadenceCopyFromSnapshot: invoiceCadenceCopyFromSnapshot,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,
   };

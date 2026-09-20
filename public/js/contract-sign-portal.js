@@ -267,8 +267,12 @@
     if (summary.summaryCopy) {
       html += '<p class="cs-prose">' + escapeHtml(summary.summaryCopy) + "</p>";
     }
-    if (summary.progressCopy) {
-      html += '<p class="cs-prose">' + escapeHtml(summary.progressCopy) + "</p>";
+    var cadenceCopy =
+      PaymentConfirm && typeof PaymentConfirm.invoiceCadenceCopyFromSnapshot === "function"
+        ? PaymentConfirm.invoiceCadenceCopyFromSnapshot(snap)
+        : "";
+    if (cadenceCopy) {
+      html += '<p class="cs-prose">' + escapeHtml(cadenceCopy) + "</p>";
     }
     if (summary.showPaymentStages) {
       html += '<p class="cs-section-label" style="margin-top:14px">Payment Stages</p>';

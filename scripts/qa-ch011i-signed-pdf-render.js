@@ -302,16 +302,51 @@ test("payment separator is ASCII; due_rule custom is not printed", () => {
   assert.ok(!text.includes("due: custom"));
 });
 
-test("progress invoice copy is in PDF; Deposit Still Due omitted unless partial", () => {
-  const copy =
-    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished.";
+test("legacy snapshot omits cadence copy; frozen field is printed exactly", () => {
   const dueText = extractPdfText(lib.renderSignedContractPdf(sampleCtx()).buffer).replace(
     /\n/g,
     " "
   );
-  assert.ok(dueText.includes("progress invoices are sent every two weeks"));
-  assert.ok(dueText.includes(copy) || dueText.includes("final invoice is sent when the project is finished"));
+  assert.ok(!dueText.includes("progress invoices are sent every two weeks"));
   assert.ok(!dueText.includes("Deposit Still Due"));
+
+  const stored = "Frozen cadence copy for this package only.";
+  const storedCtx = sampleCtx({
+    snap: sampleSnap({
+      payment_schedule: {
+        items: [
+          { sequence_number: 1, label: "Deposit", amount: 2000, due_rule: "on_signing" },
+          { sequence_number: 2, label: "Final", amount: 10000, due_rule: "on_completion" },
+        ],
+        invoice_cadence_copy: stored,
+      },
+    }),
+  });
+  const storedText = extractPdfText(lib.renderSignedContractPdf(storedCtx).buffer).replace(
+    /\n/g,
+    " "
+  );
+  assert.ok(storedText.includes(stored));
+  assert.ok(!storedText.includes("progress invoices are sent every two weeks"));
+
+  const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
+  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+  const newFreeze = sampleCtx({
+    snap: sampleSnap({
+      payment_schedule: {
+        items: [
+          { sequence_number: 1, label: "Deposit", amount: 2000, due_rule: "on_signing" },
+          { sequence_number: 2, label: "Final", amount: 10000, due_rule: "on_completion" },
+        ],
+        invoice_cadence_copy: copy,
+      },
+    }),
+  });
+  const newText = extractPdfText(lib.renderSignedContractPdf(newFreeze).buffer).replace(
+    /\n/g,
+    " "
+  );
+  assert.ok(newText.includes("progress invoices are sent every two weeks"));
 
   const paidFull = sampleCtx({
     snap: sampleSnap({
@@ -331,7 +366,7 @@ test("progress invoice copy is in PDF; Deposit Still Due omitted unless partial"
     }),
   });
   const paidText = extractPdfText(lib.renderSignedContractPdf(paidFull).buffer).replace(/\n/g, " ");
-  assert.ok(paidText.includes("progress invoices are sent every two weeks"));
+  assert.ok(!paidText.includes("progress invoices are sent every two weeks"));
   assert.ok(!paidText.includes("Deposit Still Due"));
 
   const partial = sampleCtx({
@@ -348,6 +383,7 @@ test("progress invoice copy is in PDF; Deposit Still Due omitted unless partial"
           paid_at: "2026-09-01T12:00:00.000Z",
           source: "tenant_project_payments",
         },
+        invoice_cadence_copy: copy,
       },
     }),
   });
