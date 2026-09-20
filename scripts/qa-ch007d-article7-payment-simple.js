@@ -142,6 +142,7 @@ function session(opts) {
     getItems: () => items,
     getContractTotal: () => options.contractTotal,
     getIds: () => ({ projectId: "proj-1", quoteId: "quote-1" }),
+    getVerifiedDeposit: () => options.verifiedDeposit || null,
     postJson,
     applySuccess: (data) => {
       confirmed = PaymentConfirm.paymentConfigured({ readiness: data.readiness });
@@ -167,6 +168,7 @@ function session(opts) {
         confirmed,
         items,
         contractTotal: options.contractTotal,
+        verifiedDeposit: options.verifiedDeposit || null,
         busy,
       });
     },
@@ -363,6 +365,31 @@ async function testAsync(name, fn) {
     assert.ok(html.includes("is-preview"));
     assert.ok(html.includes("is-printing"));
     assert.ok(!/cb-pay-row__amount[\s\S]{0,80}%/.test(js));
+  });
+
+  await testAsync("11 verification_unavailable blocks Confirm with 0 POST", async () => {
+    const s = session({
+      items: TWO,
+      contractTotal: TOTAL_TWO,
+      verifiedDeposit: {
+        status: "verification_unavailable",
+        verified_paid: false,
+        amount: null,
+      },
+    });
+    const plan = s.plan();
+    assert.strictEqual(plan.confirmVisible, true);
+    assert.strictEqual(plan.confirmEnabled, false);
+    assert.strictEqual(plan.blockConfirm, true);
+    assert.ok(!/Deposit Due/.test(plan.errorMessage || ""));
+    assert.ok(
+      plan.errorMessage.includes("Deposit status could not be verified. Refresh before confirming.")
+    );
+    const result = await s.confirm();
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.posted, false);
+    assert.strictEqual(result.reason, "verification_unavailable");
+    assert.strictEqual(s.posts.length, 0);
   });
 
   console.log("");

@@ -190,17 +190,14 @@ test("6 frontend cannot falsify Paid via item_role or quote acceptance", () => {
 });
 
 test("7 ledger helper requires a real deposit payment", () => {
-  assert.deepStrictEqual(
-    Deposit.fromLedgerRows([
-      { payment_type: "deposit", amount: 1, paid_at: "2026-09-01T00:00:00.000Z" },
-    ]),
-    {
-      verified_paid: true,
-      amount: 1,
-      paid_at: "2026-09-01T00:00:00.000Z",
-      source: "tenant_project_payments",
-    }
-  );
+  const paid = Deposit.fromLedgerRows([
+    { payment_type: "deposit", amount: 1, paid_at: "2026-09-01T00:00:00.000Z" },
+  ]);
+  assert.strictEqual(paid.verified_paid, true);
+  assert.strictEqual(paid.status, "paid");
+  assert.strictEqual(paid.amount, 1);
+  assert.strictEqual(paid.paid_at, "2026-09-01T00:00:00.000Z");
+  assert.strictEqual(paid.source, "tenant_project_payments");
   assert.strictEqual(
     Deposit.fromLedgerRows([{ payment_type: "deposit", amount: 1, paid_at: null }])
       .verified_paid,
@@ -220,13 +217,22 @@ test("7 ledger helper requires a real deposit payment", () => {
 
 test("8 freeze, PDF, and sign portal consume the same summary", () => {
   assert.ok(freezeSrc.includes("resolveVerifiedContractDeposit"));
-  assert.ok(freezeSrc.includes("deposit: depositVerified"));
+  assert.ok(freezeSrc.includes("serializeDepositForSnapshot"));
+  assert.ok(freezeSrc.includes("assertDepositReadyForFreeze"));
+  assert.ok(freezeSrc.includes("deposit_verification_unavailable"));
+  assert.ok(!freezeSrc.includes("depositVerified || unpaidDeposit()"));
   assert.ok(pdfSrc.includes("presentPaymentSummary"));
   assert.ok(pdfSrc.includes("Remaining Contract Balance"));
   assert.ok(pdfSrc.includes("Deposit Paid"));
   assert.ok(signSrc.includes("presentPaymentSummary"));
   assert.ok(signSrc.includes("Remaining Payment Schedule"));
   assert.ok(!pdfSrc.includes("quote.total ="));
+  const scheduleSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/project-contract-payment-schedule.js"),
+    "utf8"
+  );
+  assert.ok(scheduleSrc.includes("depositBlocksConfirm"));
+  assert.ok(scheduleSrc.includes("deposit_verification_unavailable"));
 });
 
 test("9 no Invoice Hub writes or invented payments", () => {
@@ -251,6 +257,383 @@ test("11 no Three Colors hardcoded in Article 7", () => {
   assert.doesNotMatch(art7 + helperSrc, /3colorscorp@gmail\.com/i);
 });
 
-console.log("");
-console.log("CH-007D Article 7 Payment Summary:", passed, "passed,", failed, "failed");
-process.exit(failed === 0 ? 0 : 1);
+const MIXED_QUOTES = [
+  {
+    id: "pay-a",
+    tenant_id: "t1",
+    project_id: "p1",
+    quote_id: "quote-a",
+    payment_type: "deposit",
+    amount: 500,
+    paid_at: "2026-09-01T12:00:00.000Z",
+  },
+  {
+    id: "pay-b",
+    tenant_id: "t1",
+    project_id: "p1",
+    quote_id: "quote-b",
+    payment_type: "deposit",
+    amount: 800,
+    paid_at: "2026-09-02T12:00:00.000Z",
+  },
+];
+
+test("12 two quotes in the same project stay isolated", () => {
+  const a = Deposit.fromLedgerRows(MIXED_QUOTES, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "quote-a",
+  });
+  const b = Deposit.fromLedgerRows(MIXED_QUOTES, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "quote-b",
+  });
+  assert.strictEqual(a.status, "paid");
+  assert.strictEqual(a.amount, 500);
+  assert.strictEqual(a.quote_id, "quote-a");
+  assert.strictEqual(b.status, "paid");
+  assert.strictEqual(b.amount, 800);
+  assert.strictEqual(b.quote_id, "quote-b");
+  assert.notStrictEqual(a.amount, b.amount);
+});
+
+test("13 deposit of quote A never appears on quote B", () => {
+  const onlyA = [
+    {
+      id: "pay-a",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "quote-a",
+      payment_type: "deposit",
+      amount: 500,
+      paid_at: "2026-09-01T12:00:00.000Z",
+    },
+  ];
+  const b = Deposit.fromLedgerRows(onlyA, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "quote-b",
+  });
+  assert.strictEqual(b.verified_paid, false);
+  assert.strictEqual(b.status, "none");
+  assert.strictEqual(b.amount, null);
+  assert.ok(
+    Deposit.isLegacyProjectDepositUnique({
+      targetQuoteId: "quote-a",
+      projectQuoteId: "quote-a",
+      paymentQuoteIds: ["quote-a", "quote-b"],
+    }) === false
+  );
+});
+
+test("14 query is tenant + project + quote", () => {
+  const path = Deposit.scopedDepositRequestPath({
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "q1",
+  });
+  assert.ok(path.includes("tenant_id=eq.t1"));
+  assert.ok(path.includes("project_id=eq.p1"));
+  assert.ok(path.includes("quote_id=eq.q1"));
+  assert.match(
+    depositSrc,
+    /tenant_id=eq\.\$\{tid\}[\s\S]{0,80}project_id=eq\.\$\{pid\}[\s\S]{0,80}quote_id=eq\.\$\{qid\}/
+  );
+  assert.ok(!depositSrc.includes("tenant_id=eq.${tid}&quote_id=eq.${qid}"));
+  assert.ok(js.includes("Deposit status could not be verified. Refresh before confirming."));
+});
+
+test("15 verification_unavailable is not Deposit Due and blocks confirm/freeze", () => {
+  const unavailable = {
+    status: "verification_unavailable",
+    verified_paid: false,
+    amount: null,
+    error: PaymentConfirm.DEPOSIT_UNAVAILABLE_MESSAGE,
+  };
+  const summary = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL,
+    items: ITEMS,
+    verifiedDeposit: unavailable,
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(summary.depositStatus, "verification_unavailable");
+  assert.strictEqual(summary.depositLabel, "");
+  assert.ok(!/Paid|Due/.test(summary.depositLabel));
+  assert.strictEqual(summary.blockConfirm, true);
+  assert.strictEqual(
+    summary.verificationMessage,
+    "Deposit status could not be verified. Refresh before confirming."
+  );
+  assert.strictEqual(summary.remainingBalance, TOTAL);
+  const plan = PaymentConfirm.paymentFooterPlan({
+    items: ITEMS,
+    contractTotal: TOTAL,
+    verifiedDeposit: unavailable,
+  });
+  assert.strictEqual(plan.confirmEnabled, false);
+  assert.strictEqual(plan.blockConfirm, true);
+  assert.ok(Deposit.depositBlocksConfirm(unavailable));
+  assert.ok(Deposit.depositBlocksFreeze(unavailable));
+  assert.strictEqual(Deposit.assertDepositReadyForFreeze(unavailable).ok, false);
+  assert.strictEqual(
+    Deposit.assertDepositReadyForFreeze(unavailable).code,
+    "deposit_verification_unavailable"
+  );
+  const snap = Deposit.serializeDepositForSnapshot(unavailable, "q1");
+  assert.strictEqual(snap.status, "verification_unavailable");
+  assert.notStrictEqual(snap.status, "none");
+  assert.strictEqual(snap.verified_paid, false);
+});
+
+test("16 deposit greater than contract total blocks", () => {
+  const over = Deposit.fromLedgerRows(
+    [
+      {
+        id: "over",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 5000,
+        paid_at: "2026-09-01T00:00:00.000Z",
+      },
+    ],
+    { tenantId: "t1", projectId: "p1", quoteId: "q1", contractTotal: TOTAL }
+  );
+  assert.strictEqual(over.status, "inconsistent");
+  assert.strictEqual(over.verified_paid, false);
+  assert.ok(Deposit.depositBlocksConfirm(over));
+  const summary = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL,
+    items: ITEMS,
+    verifiedDeposit: over,
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(summary.depositStatus, "inconsistent");
+  assert.strictEqual(summary.depositLabel, "");
+  assert.ok(summary.remainingBalance == null || summary.remainingBalance >= 0);
+  assert.strictEqual(summary.blockConfirm, true);
+  assert.strictEqual(Deposit.assertDepositReadyForFreeze(over).ok, false);
+});
+
+test("17 multiple valid partials on the same quote sum", () => {
+  const summed = Deposit.fromLedgerRows(
+    [
+      {
+        id: "p1",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 0.4,
+        paid_at: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        id: "p2",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 0.6,
+        paid_at: "2026-09-02T00:00:00.000Z",
+      },
+    ],
+    { tenantId: "t1", projectId: "p1", quoteId: "q1", contractTotal: TOTAL }
+  );
+  assert.strictEqual(summed.status, "paid");
+  assert.strictEqual(summed.amount, 1);
+  assert.strictEqual(summed.verified_paid, true);
+});
+
+test("18 refunded, voided, or reversed payments do not count", () => {
+  const rows = [
+    {
+      id: "voided",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "q1",
+      payment_type: "deposit",
+      amount: 1,
+      paid_at: "2026-09-01T00:00:00.000Z",
+      status: "voided",
+    },
+    {
+      id: "refunded",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "q1",
+      payment_type: "deposit",
+      amount: 1,
+      paid_at: "2026-09-01T00:00:00.000Z",
+      notes: "refunded",
+    },
+    {
+      id: "reversed",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "q1",
+      payment_type: "deposit",
+      amount: -1,
+      paid_at: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      id: "netted",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "q1",
+      payment_type: "deposit",
+      amount: 1,
+      paid_at: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      id: "adj",
+      tenant_id: "t1",
+      project_id: "p1",
+      quote_id: "q1",
+      payment_type: "adjustment",
+      amount: -1,
+      paid_at: "2026-09-02T00:00:00.000Z",
+      notes: "deposit refund",
+    },
+  ];
+  const result = Deposit.fromLedgerRows(rows, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "q1",
+  });
+  assert.strictEqual(result.verified_paid, false);
+  assert.strictEqual(result.status, "none");
+});
+
+test("19 duplicate ledger rows do not double-count", () => {
+  const dup = Deposit.fromLedgerRows(
+    [
+      {
+        id: "same",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 1,
+        paid_at: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        id: "same",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 1,
+        paid_at: "2026-09-01T00:00:00.000Z",
+      },
+    ],
+    { tenantId: "t1", projectId: "p1", quoteId: "q1" }
+  );
+  assert.strictEqual(dup.amount, 1);
+  assert.strictEqual(dup.status, "paid");
+});
+
+test("20 contract without deposit stays none and $1.00 stays exact", () => {
+  const none = Deposit.fromLedgerRows([], {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "q1",
+  });
+  assert.strictEqual(none.status, "none");
+  assert.strictEqual(none.verified_paid, false);
+  const dollar = Deposit.fromLedgerRows(
+    [
+      {
+        id: "one",
+        tenant_id: "t1",
+        project_id: "p1",
+        quote_id: "q1",
+        payment_type: "deposit",
+        amount: 1,
+        paid_at: "2026-09-01T00:00:00.000Z",
+      },
+    ],
+    { tenantId: "t1", projectId: "p1", quoteId: "q1", contractTotal: TOTAL }
+  );
+  assert.strictEqual(dollar.amount, 1);
+  const summary = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL,
+    items: ITEMS,
+    verifiedDeposit: dollar,
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(summary.depositAmount, 1);
+  assert.strictEqual(summary.remainingBalance, 3264.49);
+  const snap = Deposit.serializeDepositForSnapshot(dollar, "q1");
+  assert.strictEqual(snap.verified_paid, true);
+  assert.strictEqual(snap.amount, 1);
+  assert.strictEqual(snap.quote_id, "q1");
+  assert.strictEqual(snap.source, "tenant_project_payments");
+  assert.ok(snap.paid_at);
+});
+
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    console.log("PASS", name);
+    passed += 1;
+  } catch (err) {
+    console.log("FAIL", name, "-", err.message);
+    failed += 1;
+  }
+}
+
+(async () => {
+  await testAsync("21 supabase error produces verification_unavailable not Due", async () => {
+    const result = await Deposit.resolveVerifiedContractDeposit(
+      { tenantId: "t1", projectId: "p1", quoteId: "q1", contractTotal: TOTAL },
+      {
+        request: async () => {
+          throw new Error("Supabase HTTP 500: boom");
+        },
+      }
+    );
+    assert.strictEqual(result.status, "verification_unavailable");
+    assert.strictEqual(result.verified_paid, false);
+    assert.notStrictEqual(result.status, "due");
+    const summary = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: ITEMS,
+      verifiedDeposit: result,
+      dueRuleLabel: dueLabel,
+    });
+    assert.strictEqual(summary.depositStatus, "verification_unavailable");
+    assert.strictEqual(summary.depositLabel, "");
+    assert.strictEqual(summary.blockConfirm, true);
+  });
+
+  await testAsync("22 quote-scoped request is the only paid query when quote exists", async () => {
+    const seen = [];
+    const result = await Deposit.resolveVerifiedContractDeposit(
+      { tenantId: "t1", projectId: "p1", quoteId: "quote-b", contractTotal: TOTAL },
+      {
+        request: async (path) => {
+          seen.push(String(path));
+          if (String(path).includes("quote_id=eq.quote-b")) {
+            return [MIXED_QUOTES[1]];
+          }
+          if (String(path).includes("tenant_projects?")) {
+            return [{ id: "p1", quote_id: "quote-b" }];
+          }
+          return [];
+        },
+      }
+    );
+    assert.strictEqual(result.status, "paid");
+    assert.strictEqual(result.amount, 800);
+    assert.ok(seen[0].includes("tenant_id=eq.t1"));
+    assert.ok(seen[0].includes("project_id=eq.p1"));
+    assert.ok(seen[0].includes("quote_id=eq.quote-b"));
+    assert.ok(!seen.some((path) => path.includes("quote_id=eq.quote-a")));
+  });
+
+  console.log("");
+  console.log("CH-007D Article 7 Payment Summary:", passed, "passed,", failed, "failed");
+  process.exit(failed === 0 ? 0 : 1);
+})();

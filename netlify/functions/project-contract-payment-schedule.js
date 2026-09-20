@@ -8,6 +8,7 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
 const {
   resolveVerifiedContractDeposit,
+  depositBlocksConfirm,
 } = require("./_lib/verified-contract-deposit");
 
 const UUID_RE =
@@ -571,11 +572,12 @@ function normalizeRpcResult(raw, fallbackTotalCents, fallbackCurrency, fallbackS
   };
 }
 
-async function withVerifiedDeposit(payload, tenantId, projectId, quoteId) {
+async function withVerifiedDeposit(payload, tenantId, projectId, quoteId, contractTotal) {
   const deposit = await resolveVerifiedContractDeposit({
     tenantId,
     projectId,
     quoteId,
+    contractTotal,
   });
   return { ...payload, deposit };
 }
@@ -735,7 +737,8 @@ exports.handler = async (event) => {
           },
           tenantId,
           projectId,
-          quoteId
+          quoteId,
+          centsToNumber(relation.contractTotalCents)
         )
       );
     }
@@ -793,6 +796,26 @@ exports.handler = async (event) => {
       });
     }
 
+    const deposit = await resolveVerifiedContractDeposit({
+      tenantId,
+      projectId,
+      quoteId,
+      contractTotal: centsToNumber(relation.contractTotalCents),
+    });
+    if (confirmSchedule && depositBlocksConfirm(deposit)) {
+      return json(422, {
+        ok: false,
+        error:
+          deposit.error ||
+          "Deposit status could not be verified. Refresh before confirming.",
+        code:
+          deposit.status === "inconsistent"
+            ? "deposit_inconsistent"
+            : "deposit_verification_unavailable",
+        deposit,
+      });
+    }
+
     let rpcResult;
     try {
       rpcResult = await replaceScheduleAtomically({
@@ -823,21 +846,14 @@ exports.handler = async (event) => {
       });
     }
 
-    return json(
-      200,
-      await withVerifiedDeposit(
-        {
-          ok: true,
-          schedule: normalizedResult.schedule,
-          items: normalizedResult.items,
-          readiness: normalizedResult.readiness,
-          source: normalizedResult.source,
-        },
-        tenantId,
-        projectId,
-        quoteId
-      )
-    );
+    return json(200, {
+      ok: true,
+      schedule: normalizedResult.schedule,
+      items: normalizedResult.items,
+      readiness: normalizedResult.readiness,
+      source: normalizedResult.source,
+      deposit,
+    });
   } catch (err) {
     if (err?.isGuardError) {
       return json(err.statusCode || 403, {

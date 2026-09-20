@@ -18,6 +18,10 @@
 
   var SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
   var SUM_ERROR = "Payment amounts must equal the contract total.";
+  var DEPOSIT_UNAVAILABLE_MESSAGE =
+    "Deposit status could not be verified. Refresh before confirming.";
+  var DEPOSIT_INCONSISTENT_MESSAGE =
+    "Verified deposit exceeds the contract total. Refresh before confirming.";
   var confirmLock = false;
 
   function trimField(value) {
@@ -92,6 +96,14 @@
     var src = input || {};
     var kind = paymentKind(src);
     var busy = Boolean(src.busy);
+    var summary = presentPaymentSummary({
+      items: src.items,
+      contractTotal: src.contractTotal,
+      verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
+      depositRequired: src.depositRequired,
+    });
+    var depositBlocked = summary.blockConfirm === true;
+    var confirmEnabled = kind === "unconfirmed" && !busy && !depositBlocked;
     var buttons = [];
     if (kind !== "confirmed") {
       buttons.push({
@@ -106,7 +118,7 @@
         id: "confirm",
         label: "Confirm Payment Schedule",
         style: "primary",
-        enabled: !busy,
+        enabled: confirmEnabled,
       });
     }
     if (kind === "confirmed") {
@@ -126,11 +138,19 @@
       continueVisible: kind === "confirmed",
       continueEnabled: kind === "confirmed" && !busy,
       confirmVisible: kind === "unconfirmed",
+      confirmEnabled: confirmEnabled,
       editStyle: kind === "unconfirmed" ? "ghost" : "primary",
-      errorMessage: kind === "unbalanced" ? SUM_ERROR : "",
+      errorMessage:
+        kind === "unbalanced"
+          ? SUM_ERROR
+          : depositBlocked
+            ? summary.verificationMessage
+            : "",
       confirmedLabel: kind === "confirmed" ? "Payment Schedule Confirmed" : "",
       primaryEnabledCount: primaryEnabled.length,
       primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
+      depositStatus: summary.depositStatus,
+      blockConfirm: depositBlocked,
     };
   }
 
@@ -214,9 +234,12 @@
       src.contractTotal == null || !Number.isFinite(Number(src.contractTotal))
         ? null
         : moneyToCents(src.contractTotal);
-    var verified = verifiedDepositFromServer(src.verifiedDeposit);
-    var verifiedCents = verified ? moneyToCents(verified.amount) : 0;
-    var remainingCents = contractCents == null ? null : contractCents - verifiedCents;
+    var raw = src.verifiedDeposit || {};
+    var status = trimField(raw.status).toLowerCase();
+    if (!status) {
+      status =
+        raw.verified_paid === true && moneyToCents(raw.amount) > 0 ? "paid" : "none";
+    }
 
     var depositItem = null;
     for (var i = 0; i < items.length; i += 1) {
@@ -232,15 +255,54 @@
 
     var depositStatus = "none";
     var depositAmount = null;
-    if (verified) {
-      depositStatus = "paid";
-      depositAmount = verified.amount;
-    } else if (plannedDepositCents > 0) {
-      depositStatus = "due";
-      depositAmount = centsToMoneyNumber(plannedDepositCents);
+    var verifiedCents = 0;
+    var applied = false;
+    var blockConfirm = false;
+    var verificationMessage = "";
+
+    if (status === "verification_unavailable") {
+      depositStatus = "verification_unavailable";
+      blockConfirm = true;
+      verificationMessage = DEPOSIT_UNAVAILABLE_MESSAGE;
+    } else if (status === "inconsistent") {
+      depositStatus = "inconsistent";
+      blockConfirm = true;
+      verificationMessage = trimField(raw.error) || DEPOSIT_INCONSISTENT_MESSAGE;
+    } else {
+      var verified = status === "paid" ? verifiedDepositFromServer(raw) : null;
+      if (verified) {
+        verifiedCents = moneyToCents(verified.amount);
+        if (contractCents != null && verifiedCents > contractCents) {
+          depositStatus = "inconsistent";
+          blockConfirm = true;
+          verificationMessage = DEPOSIT_INCONSISTENT_MESSAGE;
+          verifiedCents = 0;
+        } else {
+          depositStatus = "paid";
+          depositAmount = verified.amount;
+          applied = true;
+        }
+      } else if (plannedDepositCents > 0) {
+        depositStatus = "due";
+        depositAmount = centsToMoneyNumber(plannedDepositCents);
+      }
     }
 
-    var remainingSource = verified
+    var remainingCents =
+      contractCents == null ? null : contractCents - (applied ? verifiedCents : 0);
+    if (remainingCents != null && remainingCents < 0) {
+      remainingCents = 0;
+      if (depositStatus === "paid") {
+        depositStatus = "inconsistent";
+        blockConfirm = true;
+        verificationMessage = DEPOSIT_INCONSISTENT_MESSAGE;
+        applied = false;
+        remainingCents = contractCents;
+        depositAmount = null;
+      }
+    }
+
+    var remainingSource = applied
       ? items.filter(function (item) {
           return !isDepositScheduleItem(item);
         })
@@ -271,7 +333,9 @@
       remainingItems: remainingRows,
       remainingSumMatches:
         remainingCents != null && remainingSumCents === remainingCents,
-      verifiedPaid: Boolean(verified),
+      verifiedPaid: applied,
+      blockConfirm: blockConfirm,
+      verificationMessage: verificationMessage,
     };
   }
 
@@ -325,6 +389,23 @@
             advance: false,
             openEdit: true,
             error: SUM_ERROR,
+            items: items,
+          };
+        }
+        var verifiedDeposit =
+          typeof h.getVerifiedDeposit === "function" ? h.getVerifiedDeposit() : null;
+        var depositSummary = presentPaymentSummary({
+          items: items,
+          contractTotal: contractTotal,
+          verifiedDeposit: verifiedDeposit,
+        });
+        if (depositSummary.blockConfirm) {
+          return {
+            ok: false,
+            reason: depositSummary.depositStatus,
+            posted: false,
+            advance: false,
+            error: depositSummary.verificationMessage,
             items: items,
           };
         }
@@ -407,6 +488,8 @@
   return {
     SCHEDULE_API: SCHEDULE_API,
     SUM_ERROR: SUM_ERROR,
+    DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
+    DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,

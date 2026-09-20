@@ -636,6 +636,7 @@
         quoteId: sourceSnapshot?.quoteId,
       }),
       getExpectedUpdatedAt: () => sourceSnapshot?.paymentSchedule?.schedule?.updated_at || null,
+      getVerifiedDeposit: () => sourceSnapshot?.paymentSchedule?.deposit || null,
       apiUrl: PaymentConfirm.SCHEDULE_API,
       postJson,
       applySuccess: (data) => {
@@ -665,6 +666,17 @@
       setArticleMode("art-payment", startedInEdit ? WS_MODE.EDIT : WS_MODE.PREVIEW);
       renderWorkspaceChrome();
       window.alert(result.error || "Payment schedule could not be confirmed.");
+      return false;
+    }
+    if (
+      result.reason === "verification_unavailable" ||
+      result.reason === "inconsistent"
+    ) {
+      renderWorkspaceChrome();
+      window.alert(
+        result.error ||
+          "Deposit status could not be verified. Refresh before confirming."
+      );
       return false;
     }
     if (result.ok && result.advance) {
@@ -845,12 +857,13 @@
           })
         );
         if (activeArticleId === "art-payment" && paymentScheduleAllowsOwnerEdit()) {
+          const paymentPlan = currentPaymentFooterPlan(busy);
           actions.appendChild(
             createFooterButton({
               id: "cbWsConfirmPay",
               label: "Confirm Payment Schedule",
               className: "btn primary",
-              disabled: busy,
+              disabled: busy || !paymentPlan.confirmEnabled,
               onClick: () => {
                 void workspaceConfirmPayment();
               },
@@ -858,9 +871,10 @@
           );
           if (hint) {
             hint.textContent =
-              paymentAdvancedEdit
+              paymentPlan.errorMessage ||
+              (paymentAdvancedEdit
                 ? "Advanced editing: change types, due timing, and received vs still due."
-                : "Review the schedule, then Confirm Payment Schedule.";
+                : "Review the schedule, then Confirm Payment Schedule.");
           }
         } else if (activeArticleId === "art-signatures") {
           actions.appendChild(
@@ -971,15 +985,15 @@
     if (
       activeArticleId === "art-payment" &&
       currentPaymentFooterPlan(busy).confirmVisible &&
-      mode === WS_MODE.PREVIEW &&
-      !busy
+      mode === WS_MODE.PREVIEW
     ) {
+      const paymentPlan = currentPaymentFooterPlan(busy);
       actions.appendChild(
         createFooterButton({
           id: "cbWsConfirmPayPreview",
           label: "Confirm Payment Schedule",
           className: "btn primary",
-          disabled: busy,
+          disabled: busy || !paymentPlan.confirmEnabled,
           onClick: () => {
             void workspaceConfirmPayment();
           },
@@ -2175,6 +2189,8 @@
       items: currentPaymentItems(),
       contractTotal: paymentDraftContractTotal(sourceSnapshot),
       scheduleBundle: sourceSnapshot?.paymentSchedule,
+      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
+      depositRequired: sourceSnapshot?.depositRequired,
       busy: Boolean(busy),
     });
   }
@@ -4990,7 +5006,11 @@
           : "—"
       );
       if (depositRow) {
-        if (paySummary.depositStatus === "none") {
+        if (
+          paySummary.depositStatus === "none" ||
+          paySummary.depositStatus === "verification_unavailable" ||
+          paySummary.depositStatus === "inconsistent"
+        ) {
           depositRow.hidden = true;
         } else {
           depositRow.hidden = false;
@@ -5029,7 +5049,10 @@
     }
 
     if (sumWarn) {
-      if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
+      if (paySummary.blockConfirm && paySummary.verificationMessage) {
+        sumWarn.hidden = false;
+        sumWarn.textContent = paySummary.verificationMessage;
+      } else if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
         sumWarn.hidden = false;
         sumWarn.textContent = PaymentConfirm.SUM_ERROR;
       } else {
