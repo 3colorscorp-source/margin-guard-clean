@@ -255,6 +255,18 @@
       margin-left: auto;
     }
     .cb-step-footer .btn { min-height: 36px; }
+    #cbStepFooter #cbWsSave.btn.primary:disabled,
+    #cbStepFooter #cbWsSave.btn.primary:disabled:hover,
+    #cbStepFooter #cbWsSave.btn.primary:disabled:focus,
+    #cbStepFooter #cbWsSave.btn.primary:disabled:active {
+      background: #44403c !important;
+      color: #d6d3d1 !important;
+      border-color: #78716c !important;
+      box-shadow: none !important;
+      transform: none !important;
+      cursor: not-allowed !important;
+      opacity: 0.6;
+    }
     .cb-step-hint {
       margin: 0;
       font-size: 0.75rem;
@@ -1088,6 +1100,14 @@
       #cbPayAddStage,
       .cb-pay-stage-card__actions .btn { width: 100%; }
       .cb-pay-stage-card__actions { flex-direction: column; }
+      #cbStepFooter #cbWsSave.btn.primary:disabled {
+        width: 100%;
+        background: #44403c !important;
+        color: #d6d3d1 !important;
+        border-color: #78716c !important;
+        cursor: not-allowed !important;
+        opacity: 0.6;
+      }
     }
     .cb-pay-stage-card label {
       display: block;
