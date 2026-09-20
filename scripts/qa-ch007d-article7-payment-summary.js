@@ -598,7 +598,13 @@ test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", 
     depositStatusCopy: "The $1,000.00 deposit is due now.",
   });
   assert.strictEqual(snap.payment_schedule.invoice_cadence_copy, copy);
+  assert.strictEqual(snap.payment_schedule.billing_terms_copy, copy);
   assert.strictEqual(snap.payment_schedule.deposit_status_copy, "The $1,000.00 deposit is due now.");
+  assert.strictEqual(snap.payment_terms.billing_terms_copy, copy);
+  assert.strictEqual(snap.payment_terms.contract_total, 5000);
+  assert.strictEqual(snap.payment_terms.deposit_required, 1000);
+  assert.strictEqual(snap.payment_terms.remaining_contract_balance, 5000);
+  assert.strictEqual(snap.payment_terms.confirmed, true);
   const h0 = Freeze.contentHashForSnapshot(snap);
   const mutated = {
     ...snap,
@@ -608,6 +614,14 @@ test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", 
     },
   };
   assert.notStrictEqual(h0, Freeze.contentHashForSnapshot(mutated));
+  const mutatedTerms = {
+    ...snap,
+    payment_terms: {
+      ...snap.payment_terms,
+      remaining_contract_balance: 1,
+    },
+  };
+  assert.notStrictEqual(h0, Freeze.contentHashForSnapshot(mutatedTerms));
   const mutatedStatus = {
     ...snap,
     payment_schedule: {

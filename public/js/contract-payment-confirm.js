@@ -476,6 +476,11 @@
   }
 
   function paymentFieldFromSnapshot(snap, key) {
+    var terms = snap && typeof snap === "object" ? snap.payment_terms : null;
+    if (terms && typeof terms === "object" && Object.prototype.hasOwnProperty.call(terms, key)) {
+      var fromTerms = trimField(terms[key]);
+      if (fromTerms) return fromTerms;
+    }
     var payment = snap && typeof snap === "object" ? snap.payment_schedule : null;
     if (!payment || typeof payment !== "object") return "";
     if (!Object.prototype.hasOwnProperty.call(payment, key)) return "";
@@ -483,7 +488,10 @@
   }
 
   function invoiceCadenceCopyFromSnapshot(snap) {
-    return paymentFieldFromSnapshot(snap, "invoice_cadence_copy");
+    return (
+      paymentFieldFromSnapshot(snap, "billing_terms_copy") ||
+      paymentFieldFromSnapshot(snap, "invoice_cadence_copy")
+    );
   }
 
   function depositStatusCopyFromSnapshot(snap) {

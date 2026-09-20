@@ -150,10 +150,11 @@ test("G1 one click adds exactly one row path", () => {
   assert.strictEqual(pushes.length, 1);
 });
 
-test("5 Draft save allows imbalance", () => {
-  assert.ok(js.includes("validatePaymentDraftForSave"));
-  assert.ok(js.includes("blocking: false"));
-  assert.ok(/savePaymentScheduleDraft\(\s*false\s*\)/.test(js));
+test("5 Payment Terms does not save a future-stage draft", () => {
+  assert.ok(!html.includes("Save Payment Plan"));
+  assert.ok(!js.includes("Save Payment Plan"));
+  assert.ok(js.includes("workspaceConfirmPayment"));
+  assert.ok(!js.includes("Complete Payment Schedule"));
 });
 
 test("6 Confirm Payment Terms does not require future stage totals", () => {
