@@ -133,6 +133,23 @@
     };
   }
 
+  function paymentSaveControl(input) {
+    var src = input || {};
+    var remainingCents = src.remainingCents;
+    if (remainingCents == null && src.remainingBalance != null) {
+      remainingCents = moneyToCents(src.remainingBalance);
+    }
+    var integrity = paymentStageIntegrity(futureStageItems(src.items), remainingCents);
+    var blocked = integrity.blockConfirm === true || src.busy === true;
+    return {
+      disabled: blocked,
+      ariaDisabled: blocked,
+      enabled: !blocked,
+      posted: false,
+      message: integrity.error,
+    };
+  }
+
   function paymentStageReorderActions(index, count) {
     var total = Number(count) || 0;
     var i = Number(index) || 0;
@@ -870,6 +887,7 @@
     isPaymentStageValid: isPaymentStageValid,
     isResidualProgressBilling: isResidualProgressBilling,
     paymentStageIntegrity: paymentStageIntegrity,
+    paymentSaveControl: paymentSaveControl,
     paymentStageReorderActions: paymentStageReorderActions,
     centsToMoneyNumber: centsToMoneyNumber,
     PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,

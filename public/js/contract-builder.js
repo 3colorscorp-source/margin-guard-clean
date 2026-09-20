@@ -775,6 +775,8 @@
     btn.id = id;
     btn.textContent = label;
     btn.disabled = Boolean(disabled);
+    if (disabled) btn.setAttribute("aria-disabled", "true");
+    else btn.removeAttribute("aria-disabled");
     if (onClick) btn.addEventListener("click", onClick);
     return btn;
   }
@@ -875,7 +877,8 @@
       if (caps.supportsSave) {
         if (activeArticleId === "art-payment" && paymentScheduleAllowsOwnerEdit()) {
           const paymentPlan = currentPaymentFooterPlan(busy);
-          const saveBlocked = Boolean(validatePaymentDraftForSave().blocking);
+          const saveCheck = validatePaymentDraftForSave();
+          const saveBlocked = Boolean(saveCheck.blocking);
           actions.appendChild(
             createFooterButton({
               id: "cbWsSave",
@@ -883,6 +886,12 @@
               className: "btn primary",
               disabled: busy || saveBlocked,
               onClick: () => {
+                const blocked = validatePaymentDraftForSave();
+                if (blocked.blocking) {
+                  updatePaymentEditHint(blocked);
+                  renderWorkspaceChrome();
+                  return;
+                }
                 void workspaceSave(activeArticleId);
               },
             })
@@ -902,7 +911,9 @@
           }
           if (hint) {
             hint.textContent =
-              paymentPlan.errorMessage || "Save the payment plan, then confirm it from the summary.";
+              saveCheck.message ||
+              paymentPlan.errorMessage ||
+              "Save the payment plan, then confirm it from the summary.";
           }
         } else {
           actions.appendChild(
@@ -2771,6 +2782,13 @@
   }
 
   async function savePaymentScheduleDraft(confirmSchedule) {
+    const saveCheck = validatePaymentDraftForSave();
+    if (saveCheck.blocking) {
+      updatePaymentEditHint(saveCheck);
+      throw new Error(
+        saveCheck.message || PaymentConfirm.INCOMPLETE_STAGE_ERROR
+      );
+    }
     if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
       throw new Error("Project and quote are required to save the payment schedule.");
     }

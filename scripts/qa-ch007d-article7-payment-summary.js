@@ -1835,6 +1835,113 @@ async function testAsync(name, fn) {
     assert.ok(html.includes(".cb-pay-stage-card__actions:empty"));
   });
 
+  test("29 incomplete stages disable Save Payment Plan with 0 POST", () => {
+    const remainingCents = 326449;
+    const residual = {
+      label: "Progress & Final Billing",
+      amount: 3264.49,
+      due_rule: "custom",
+      payment_type: "final",
+      residual: true,
+    };
+    const emptyStage = {
+      label: "",
+      amount: "",
+      due_rule: "",
+      payment_type: "progress",
+      is_new: true,
+    };
+    const emptyNew = PaymentConfirm.paymentSaveControl({
+      items: [residual, emptyStage],
+      remainingCents,
+    });
+    assert.strictEqual(emptyNew.disabled, true);
+    assert.strictEqual(emptyNew.ariaDisabled, true);
+    assert.strictEqual(emptyNew.enabled, false);
+    assert.strictEqual(emptyNew.posted, false);
+    assert.strictEqual(emptyNew.message, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+
+    const emptyName = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "", amount: 100, due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(emptyName.disabled, true);
+
+    const emptyAmount = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: "", due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(emptyAmount.disabled, true);
+
+    const zeroAmount = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: 0, due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(zeroAmount.disabled, true);
+
+    const negativeAmount = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: -5, due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(negativeAmount.disabled, true);
+
+    const emptyTiming = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: 100, due_rule: "", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(emptyTiming.disabled, true);
+
+    const nonNumeric = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: "abc", due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(nonNumeric.disabled, true);
+
+    const mismatch = PaymentConfirm.paymentSaveControl({
+      items: [residual, { label: "Draw", amount: 100, due_rule: "custom", payment_type: "progress" }],
+      remainingCents,
+    });
+    assert.strictEqual(mismatch.disabled, true);
+    assert.strictEqual(mismatch.message, PaymentConfirm.STAGES_SUM_ERROR);
+
+    const valid = PaymentConfirm.paymentSaveControl({
+      items: [residual],
+      remainingCents,
+    });
+    assert.strictEqual(valid.disabled, false);
+    assert.strictEqual(valid.enabled, true);
+    assert.strictEqual(valid.message, "");
+
+    const restored = PaymentConfirm.paymentSaveControl({
+      items: [residual],
+      remainingCents,
+    });
+    assert.strictEqual(restored.enabled, true);
+
+    const planEmpty = PaymentConfirm.paymentFooterPlan({
+      items: [...ITEMS, emptyStage],
+      contractTotal: TOTAL,
+      depositRequired: 1,
+    });
+    assert.strictEqual(planEmpty.confirmEnabled, false);
+
+    assert.ok(js.includes("disabled: busy || saveBlocked"));
+    assert.ok(js.includes('setAttribute("aria-disabled", "true")'));
+    assert.ok(js.includes("if (check.blocking) return false"));
+    assert.ok(js.includes("if (blocked.blocking)"));
+    assert.ok(js.includes("if (saveCheck.blocking)"));
+    assert.ok(js.includes("savePaymentScheduleDraft"));
+    assert.ok(js.includes("PAYMENT_SCHEDULE_API"));
+    assert.ok(js.includes('id: "cbWsCancel"'));
+    assert.doesNotMatch(js, /cbWsCancel[\s\S]{0,80}saveBlocked/);
+    assert.ok(html.includes("#cbStepFooter #cbWsSave.btn.primary:disabled"));
+    assert.ok(html.includes("cursor: not-allowed !important"));
+    assert.ok(html.includes("background: #44403c !important"));
+    assert.ok(html.includes("@media (max-width: 720px)"));
+    assert.ok(!scheduleSrc.includes("upsert-tenant-invoice"));
+    assert.ok(!js.includes("record-tenant-payment"));
+  });
+
   console.log("");
   console.log("CH-007D Article 7 Payment Summary:", passed, "passed,", failed, "failed");
   process.exit(failed === 0 ? 0 : 1);
