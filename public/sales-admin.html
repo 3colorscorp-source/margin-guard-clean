@@ -34,6 +34,18 @@
     @media (max-width: 520px) {
       .sa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+    .sa-kpis--summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+    @media (max-width: 900px) {
+      .sa-kpis--summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .sa-kpis--summary { grid-template-columns: minmax(0, 1fr); }
+    }
     .sa-kpi {
       padding: 8px 10px;
       border-radius: 10px;
@@ -326,6 +338,9 @@
       justify-content: space-between;
       gap: 6px 12px;
       margin-bottom: 8px;
+    }
+    .sa-view-head[hidden] {
+      display: none !important;
     }
     .sa-view-head__title {
       margin: 0;
@@ -1102,6 +1117,402 @@
     .sa-table-wrap .table {
       min-width: 960px;
     }
+    .sa-table-wrap--compact .table {
+      min-width: 640px;
+    }
+    .sa-console-compact > .card-inner {
+      overflow-x: hidden;
+    }
+    .sa-kpi--ok .sa-kpi__value {
+      color: #4ade80;
+    }
+    .sa-kpi--alert {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .sa-kpi--alert .sa-kpi__value {
+      color: #fbbf24;
+    }
+    .sa-kpi--alert.sa-kpi--shortcut:hover,
+    .sa-kpi--alert.sa-kpi--shortcut:focus-visible,
+    .sa-kpi--alert.sa-kpi--shortcut.sa-kpi--active {
+      border-color: rgba(245, 158, 11, 0.6);
+      background: rgba(245, 158, 11, 0.12);
+    }
+    .sa-activity-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+      margin: 0 0 14px;
+      min-width: 0;
+    }
+    @media (max-width: 900px) {
+      .sa-activity-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .sa-card {
+      min-width: 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-card h3 {
+      margin: 0 0 6px;
+      font-size: 0.8125rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.72);
+    }
+    .sa-card__sub {
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.55);
+      line-height: 1.4;
+    }
+    .sa-card__empty {
+      margin: 0;
+      padding: 14px 10px;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.78);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+    }
+    .sa-perf-total {
+      margin: -4px 0 10px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    .sa-perf-chart {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 8px;
+      height: 196px;
+      min-height: 196px;
+      min-width: 0;
+      margin: 0;
+    }
+    .sa-perf-y {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 26px 0 32px;
+      font-size: 0.625rem;
+      font-weight: 600;
+      line-height: 1;
+      color: rgba(232, 238, 252, 0.48);
+      white-space: nowrap;
+    }
+    .sa-perf-plot {
+      position: relative;
+      min-width: 0;
+      height: 100%;
+    }
+    .sa-perf-grid {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 26px;
+      bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .sa-perf-grid i {
+      display: block;
+      height: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-perf-cols {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+      height: 100%;
+      min-width: 0;
+      padding: 26px 0 0;
+    }
+    .sa-perf-bar {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .sa-perf-bar__track {
+      flex: 1 1 auto;
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-height: 0;
+    }
+    .sa-perf-bar__fill {
+      width: 58%;
+      max-width: 28px;
+      height: 0;
+      border-radius: 6px 6px 0 0;
+      background: rgba(148, 163, 184, 0.42);
+      animation: sa-perf-grow 0.55s ease forwards;
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__fill {
+      background: #4ade80;
+    }
+    .sa-perf-bar.is-zero .sa-perf-bar__fill {
+      display: none;
+      animation: none;
+    }
+    .sa-perf-bar__zero {
+      display: none;
+      width: 58%;
+      max-width: 28px;
+      height: 0;
+      border-top: 2px solid rgba(255, 255, 255, 0.22);
+    }
+    .sa-perf-bar.is-zero .sa-perf-bar__zero {
+      display: block;
+    }
+    .sa-perf-bar.is-current.is-zero .sa-perf-bar__zero {
+      border-top-color: rgba(74, 222, 128, 0.7);
+    }
+    .sa-perf-bar__meta {
+      flex: 0 0 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      min-width: 0;
+    }
+    .sa-perf-bar__current {
+      display: none;
+      font-size: 0.5625rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #4ade80;
+      line-height: 1;
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__current {
+      display: block;
+    }
+    .sa-perf-bar__label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.55);
+      text-align: center;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__label {
+      color: #4ade80;
+    }
+    .sa-perf-tip {
+      position: absolute;
+      z-index: 3;
+      max-width: calc(100% - 8px);
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0b1220;
+      color: #e8eefc;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      line-height: 1.3;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    }
+    .sa-perf-bar:focus-visible {
+      outline: 0;
+    }
+    .sa-perf-bar:focus-visible .sa-perf-bar__track {
+      box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45);
+      border-radius: 6px;
+    }
+    @keyframes sa-perf-grow {
+      from { height: 0; }
+      to { height: var(--h, 0%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .sa-perf-bar__fill {
+        animation: none;
+        height: var(--h, 0%);
+      }
+    }
+    @media (max-width: 520px) {
+      .sa-perf-chart {
+        height: 176px;
+        min-height: 176px;
+        column-gap: 6px;
+      }
+      .sa-perf-y {
+        font-size: 0.5625rem;
+      }
+      .sa-perf-cols {
+        gap: 6px;
+      }
+      .sa-perf-bar__label {
+        font-size: 0.625rem;
+        letter-spacing: 0.02em;
+      }
+      .sa-perf-tip {
+        white-space: normal;
+      }
+    }
+    .sa-pipe {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sa-pipe li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .sa-pipe li:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .sa-pipe__label,
+    .sa-pipe button {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: rgba(232, 238, 252, 0.78);
+      font: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-align: left;
+    }
+    .sa-pipe button {
+      cursor: pointer;
+    }
+    .sa-pipe button:hover,
+    .sa-pipe button:focus-visible {
+      color: #ecfdf5;
+      text-decoration: underline;
+    }
+    .sa-pipe__value {
+      font-weight: 800;
+      color: #e8eefc;
+    }
+    .sa-attn--alert {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .sa-attn__count {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      line-height: 1.3;
+      color: #fbbf24;
+    }
+    .sa-attn:not(.sa-attn--alert) .sa-attn__count {
+      color: #e8eefc;
+    }
+    .sa-attn__sub {
+      margin: 0 0 12px;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-handoff-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .sa-handoff-head h3 {
+      margin: 0 0 2px;
+      font-size: 0.9375rem;
+      font-weight: 800;
+    }
+    .sa-handoff-head .sub {
+      margin: 0;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-handoff-head__actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+    }
+    .sa-chip-row {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .sa-chip {
+      margin: 0;
+      padding: 5px 9px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: rgba(232, 238, 252, 0.78);
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .sa-chip:hover,
+    .sa-chip:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+      color: #e8eefc;
+    }
+    .sa-chip.is-active {
+      background: rgba(34, 197, 94, 0.16);
+      color: #ecfdf5;
+    }
+    @media (max-width: 640px) {
+      .sa-table-wrap--compact tbody tr > td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+      }
+      .sa-table-wrap--compact tbody tr > td:nth-child(1)::before,
+      .sa-table-wrap--compact tbody tr > td:last-child::before {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Sales Admin">
@@ -1112,59 +1523,124 @@
       <div class="card-inner">
         <div class="sa-console-head">
           <div>
-            <h2>Sales Admin</h2>
-            <p class="sub">Single workspace — one view at a time. Use ☰ Views or KPI shortcuts to switch.</p>
+            <h2>Sales Summary</h2>
+            <p class="sub">Sales performance, pipeline, and project handoff</p>
           </div>
           <div class="sa-console-head__actions">
             <div class="sa-views-wrap">
-              <button type="button" class="btn ghost sa-views-toggle" id="btnSaViewsMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="saViewsMenu"><span class="sa-views-toggle__icon">&#9776; Views</span><span class="sa-views-toggle__sep"> · </span><span class="sa-views-toggle__current" id="saViewsCurrentLabel">Approved projects</span></button>
+              <button type="button" class="btn ghost sa-views-toggle" id="btnSaViewsMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="saViewsMenu"><span class="sa-views-toggle__icon">&#9776; Views</span><span class="sa-views-toggle__sep"> · </span><span class="sa-views-toggle__current" id="saViewsCurrentLabel">Sales Summary</span></button>
               <div class="sa-views-menu" id="saViewsMenu" role="menu" hidden></div>
             </div>
             <button type="button" class="btn ghost" id="saMainRefresh">Refresh</button>
           </div>
         </div>
 
-        <section class="sa-kpis sa-kpis--compact" id="saKpiStrip" aria-label="Sales KPIs">
-          <div class="sa-kpi sa-kpi--shortcut sa-kpi--active" data-sa-kpi-view="approved-projects" role="button" tabindex="0" title="Open Approved projects">
-            <div class="sa-kpi__label">Approved projects</div>
-            <div class="sa-kpi__value" id="saKpiConverted">—</div>
-          </div>
-          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="needs-supervisor" role="button" tabindex="0" title="Open Needs supervisor">
-            <div class="sa-kpi__label">Needs supervisor</div>
-            <div class="sa-kpi__value" id="saKpiNeedsSupervisor">—</div>
-          </div>
-          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="pending-approval" role="button" tabindex="0" title="Open Pending approvals">
-            <div class="sa-kpi__label">Pending approvals</div>
-            <div class="sa-kpi__value" id="saKpiPending">—</div>
-          </div>
-          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="all-quotes" role="button" tabindex="0" title="Open All quotes">
-            <div class="sa-kpi__label" id="saKpiSentLabel">Published this month</div>
-            <div class="sa-kpi__value" id="saKpiSent" title="Quotes published (created) this UTC month — not email sent">—</div>
-          </div>
+        <section class="sa-kpis sa-kpis--compact sa-kpis--summary" id="saKpiStrip" aria-label="Sales KPIs">
           <div class="sa-kpi">
-            <div class="sa-kpi__label">Est. labor sold</div>
+            <div class="sa-kpi__label">Labor Sold</div>
             <div class="sa-kpi__value" id="saKpiLabor">—</div>
           </div>
           <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="estimated-commission" role="button" tabindex="0" title="Open Estimated commission">
-            <div class="sa-kpi__label">Est. commission</div>
+            <div class="sa-kpi__label">Estimated Commission</div>
             <div class="sa-kpi__value" id="saKpiCommission">—</div>
           </div>
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="approved-projects" role="button" tabindex="0" title="Open Approved projects">
+            <div class="sa-kpi__label">Approved Projects</div>
+            <div class="sa-kpi__value" id="saKpiConverted">—</div>
+          </div>
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="needs-supervisor" role="button" tabindex="0" title="Open Needs supervisor">
+            <div class="sa-kpi__label">Needs Supervisor</div>
+            <div class="sa-kpi__value" id="saKpiNeedsSupervisor">—</div>
+          </div>
+          <span id="saKpiPending" hidden aria-hidden="true">—</span>
+          <span id="saKpiSentLabel" hidden aria-hidden="true">Published this month</span>
+          <span id="saKpiSent" hidden aria-hidden="true" title="Quotes published (created) this UTC month — not email sent">—</span>
           <span id="saKpiApproved" hidden aria-hidden="true">—</span>
         </section>
 
-        <div class="sa-view-head">
-          <h3 class="sa-view-head__title" id="saViewTitle"><span class="sa-view-head__dot" aria-hidden="true">●</span><span id="saViewTitleLabel">Approved projects</span></h3>
-          <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
+        <div class="sa-view-head" id="saViewHead" hidden>
+          <h3 class="sa-view-head__title" id="saViewTitle"><span class="sa-view-head__dot" aria-hidden="true">●</span><span id="saViewTitleLabel">Sales Summary</span></h3>
+          <p class="sa-view-desc" id="saViewDesc">Sales performance, pipeline, and project handoff.</p>
         </div>
 
         <p id="saWorkspaceFeedback" role="status" aria-live="polite"></p>
+        <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading approved projects…</p>
+        <div id="saConvertedError" class="sa-empty" hidden>
+          <p class="sa-empty__title">Could not load approved projects.</p>
+          <p class="sa-empty__sub" id="saConvertedErrorMsg">Try refreshing the page.</p>
+        </div>
 
-        <div id="saProjectsViewWrap" class="sa-workspace-panel">
-          <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading approved projects…</p>
-          <div id="saConvertedError" class="sa-empty" hidden>
-            <p class="sa-empty__title">Could not load approved projects.</p>
-            <p class="sa-empty__sub" id="saConvertedErrorMsg">Try refreshing the page.</p>
+        <div id="saSummaryViewWrap" class="sa-workspace-panel">
+          <div class="sa-activity-grid" aria-label="Sales activity">
+            <section class="sa-card" aria-labelledby="saPerfTitle">
+              <h3 id="saPerfTitle">Sales Performance</h3>
+              <p class="sa-card__sub">Labor sold by month</p>
+              <p id="saPerfRangeTotal" class="sa-perf-total">Last 6 months · —</p>
+              <div id="saPerfChart" class="sa-perf-chart" aria-label="Labor sold by month, last 6 months"></div>
+            </section>
+            <section class="sa-card" aria-labelledby="saPipeTitle">
+              <h3 id="saPipeTitle">Pipeline</h3>
+              <ul class="sa-pipe">
+                <li>
+                  <span class="sa-pipe__label">Draft</span>
+                  <strong class="sa-pipe__value" id="saPipeDraft">—</strong>
+                </li>
+                <li>
+                  <button type="button" data-sa-summary-view="sent-quotes">Sent</button>
+                  <strong class="sa-pipe__value" id="saPipeSent">—</strong>
+                </li>
+                <li>
+                  <button type="button" data-sa-summary-view="pending-approval">Pending Approval</button>
+                  <strong class="sa-pipe__value" id="saPipePending">—</strong>
+                </li>
+              </ul>
+            </section>
+            <section class="sa-card sa-attn" id="saAttnCard" aria-labelledby="saAttnTitle">
+              <h3 id="saAttnTitle">Needs Attention</h3>
+              <p class="sa-attn__count" id="saAttnCount">—</p>
+              <p class="sa-attn__sub">These projects have accepted quotes but no supervisor assigned.</p>
+              <button type="button" class="btn" id="saReviewProjectsBtn">Review projects</button>
+            </section>
           </div>
+
+          <div class="sa-handoff" aria-labelledby="saHandoffTitle">
+            <div class="sa-handoff-head">
+              <div>
+                <h3 id="saHandoffTitle">Recent Sales &amp; Handoff</h3>
+                <p class="sub">Most recent converted projects, ordered by signed date.</p>
+              </div>
+              <div class="sa-handoff-head__actions">
+                <div class="sa-chip-row" role="tablist" aria-label="Handoff filters">
+                  <button type="button" class="sa-chip is-active" data-sa-handoff-filter="all">All</button>
+                  <button type="button" class="sa-chip" data-sa-handoff-filter="needs-supervisor">Needs supervisor</button>
+                  <button type="button" class="sa-chip" data-sa-handoff-filter="completed">Completed</button>
+                </div>
+                <button type="button" class="btn ghost" id="saViewAllProjectsBtn">View all projects</button>
+              </div>
+            </div>
+            <div id="saHandoffEmpty" class="sa-empty" hidden>
+              <p class="sa-empty__title">No projects in this view.</p>
+              <p class="sa-empty__sub">Converted production projects will appear here.</p>
+            </div>
+            <div id="saHandoffTableWrap" class="sa-table-wrap sa-table-wrap--compact" hidden>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Project</th>
+                    <th>Client</th>
+                    <th>Sale Price</th>
+                    <th>Stage</th>
+                    <th>Supervisor</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="saHandoffBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="saProjectsViewWrap" class="sa-workspace-panel" hidden>
           <div id="saMainProjectsEmpty" class="sa-empty" hidden>
             <p class="sa-empty__title">No approved projects in this view.</p>
             <p class="sa-empty__sub" id="saMainProjectsEmptySub">Accepted quotes linked to production projects will appear here.</p>

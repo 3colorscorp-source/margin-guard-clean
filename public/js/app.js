@@ -19600,16 +19600,18 @@ window.renderSupervisor = renderSupervisor;
     const convertedEl = $("saKpiConverted");
     const laborEl = $("saKpiLabor");
     const commissionEl = $("saKpiCommission");
+    const pipePendingEl = $("saPipePending");
     const currency = settings?.currency || DEFAULTS.currency;
+    let pendingCount = null;
 
     if (!Array.isArray(mapped)) {
       if (pendingEl) pendingEl.textContent = "—";
       if (approvedEl) approvedEl.textContent = "—";
+      if (pipePendingEl) pipePendingEl.textContent = "—";
     } else {
-      if (pendingEl) {
-        const pending = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
-        pendingEl.textContent = String(pending);
-      }
+      pendingCount = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
+      if (pendingEl) pendingEl.textContent = String(pendingCount);
+      if (pipePendingEl) pipePendingEl.textContent = String(pendingCount);
       if (approvedEl) {
         const approved = mapped.filter((row) => String(row?.status || "").toLowerCase() === "approved").length;
         approvedEl.textContent = String(approved);
@@ -19621,11 +19623,20 @@ window.renderSupervisor = renderSupervisor;
     const converted = Array.isArray(convertedRows) ? convertedRows : [];
     if (convertedEl) convertedEl.textContent = converted.length ? String(converted.length) : "—";
 
+    const needsCount = saFilterMainProjectRows(converted, "needs-supervisor").length;
     const needsSupervisorEl = $("saKpiNeedsSupervisor");
     if (needsSupervisorEl) {
-      const needsCount = saFilterMainProjectRows(converted, "needs-supervisor").length;
       needsSupervisorEl.textContent = converted.length ? String(needsCount) : "—";
     }
+    const needsCard = document.querySelector('[data-sa-kpi-view="needs-supervisor"]');
+    if (needsCard) needsCard.classList.toggle("sa-kpi--alert", needsCount > 0);
+
+    const attnCountEl = $("saAttnCount");
+    if (attnCountEl) {
+      attnCountEl.textContent = converted.length ? `${needsCount} projects need a supervisor` : "—";
+    }
+    const attnCard = $("saAttnCard");
+    if (attnCard) attnCard.classList.toggle("sa-attn--alert", needsCount > 0);
 
     let laborSum = 0;
     let commissionSum = 0;
@@ -19634,10 +19645,202 @@ window.renderSupervisor = renderSupervisor;
       laborSum += finiteNumber(row.laborBudget, 0);
       commissionSum += finiteNumber(row.estCommission, 0);
     }
-    if (laborEl) laborEl.textContent = converted.length ? money(laborSum, currency) : "—";
+    if (laborEl) laborEl.textContent = converted.length ? saFormatSummaryMoney(laborSum, currency) : "—";
+    if (laborEl && laborEl.parentElement) {
+      laborEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+    }
+    if (convertedEl && convertedEl.parentElement) {
+      convertedEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+    }
     if (commissionEl) {
-      commissionEl.textContent = converted.length ? money(commissionSum, currency) : "—";
+      commissionEl.textContent = converted.length ? saFormatSummaryMoney(commissionSum, currency) : "—";
       commissionEl.title = converted.length ? `${rate}% of labor budget (estimate only)` : "";
+      if (commissionEl.parentElement) {
+        commissionEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+      }
+    }
+    saRenderPerformanceChart(converted, settings);
+  }
+
+  function saUtcMonthKey(date) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function saSignedAtMonthKey(signedAt) {
+    const raw = String(signedAt || "").trim();
+    if (!raw) return "";
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return saUtcMonthKey(parsed);
+    const m = raw.match(/^(\d{4})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}` : "";
+  }
+
+  function saBuildLaborSoldMonthBuckets(convertedRows) {
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const buckets = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const year = d.getUTCFullYear();
+      const short = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+      buckets.push({
+        key: saUtcMonthKey(d),
+        year,
+        label: year === currentYear ? short : `${short} '${String(year).slice(-2)}`,
+        isCurrent: i === 0,
+        labor: 0
+      });
+    }
+    const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+    for (const row of Array.isArray(convertedRows) ? convertedRows : []) {
+      const bucket = byKey.get(saSignedAtMonthKey(row.signedAt));
+      if (!bucket) continue;
+      bucket.labor += finiteNumber(row.laborBudget, 0);
+    }
+    return buckets;
+  }
+
+  function saFormatSummaryMoney(value, currency) {
+    const n = Number(value || 0);
+    const amount = (Number.isFinite(n) ? n : 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const raw = String(currency == null ? "USD" : currency).trim() || "USD";
+    const code = raw === "$" ? "USD" : raw.replace(/\s+/g, "");
+    return `${code} ${amount}`;
+  }
+
+  let saPerfTipTimer = 0;
+  let saPerfDocBound = false;
+
+  function saClearPerfTooltip() {
+    window.clearTimeout(saPerfTipTimer);
+    const chart = $("saPerfChart");
+    if (chart) {
+      chart.querySelectorAll(".sa-perf-bar.is-active").forEach((el) => el.classList.remove("is-active"));
+    }
+    const tip = $("saPerfTooltip");
+    if (tip) {
+      tip.hidden = true;
+      tip.textContent = "";
+    }
+  }
+
+  function saPlacePerfTooltip(bar) {
+    const plot = bar && bar.closest(".sa-perf-plot");
+    const tip = $("saPerfTooltip");
+    if (!plot || !tip) return;
+    const text = String(bar.getAttribute("data-sa-tip") || "").trim();
+    if (!text) return;
+    plot.querySelectorAll(".sa-perf-bar.is-active").forEach((el) => {
+      if (el !== bar) el.classList.remove("is-active");
+    });
+    bar.classList.add("is-active");
+    tip.hidden = false;
+    tip.textContent = text;
+    const plotRect = plot.getBoundingClientRect();
+    const barRect = bar.getBoundingClientRect();
+    const fill = bar.querySelector(".sa-perf-bar__fill") || bar.querySelector(".sa-perf-bar__zero") || bar;
+    const fillRect = fill.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    let left = barRect.left - plotRect.left + (barRect.width / 2) - (tipW / 2);
+    left = Math.max(4, Math.min(left, plotRect.width - tipW - 4));
+    let top = fillRect.top - plotRect.top - tipH - 8;
+    top = Math.max(4, Math.min(top, plotRect.height - tipH - 4));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+
+  function saBindPerfChartDocOnce() {
+    if (saPerfDocBound) return;
+    saPerfDocBound = true;
+    const dismissIfOutside = (ev) => {
+      const chart = $("saPerfChart");
+      if (!chart || chart.contains(ev.target)) return;
+      saClearPerfTooltip();
+    };
+    document.addEventListener("pointerdown", dismissIfOutside);
+    document.addEventListener("focusin", dismissIfOutside);
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") saClearPerfTooltip();
+    });
+  }
+
+  function saRenderPerformanceChart(convertedRows, settings) {
+    const host = $("saPerfChart");
+    if (!host) return;
+    const currency = settings?.currency || DEFAULTS.currency;
+    const buckets = saBuildLaborSoldMonthBuckets(convertedRows);
+    const max = buckets.reduce((highest, bucket) => Math.max(highest, bucket.labor), 0);
+    const rangeTotal = buckets.reduce((sum, bucket) => sum + bucket.labor, 0);
+    const rangeEl = $("saPerfRangeTotal");
+    if (rangeEl) {
+      rangeEl.textContent = `Last 6 months · ${saFormatSummaryMoney(rangeTotal, currency)}`;
+    }
+    const ticks = max > 0 ? [max, max / 2, 0] : [0, 0, 0];
+    const yHtml = ticks.map((tick) => `<span>${escapeHtml(saFormatSummaryMoney(tick, currency))}</span>`).join("");
+    const colsHtml = buckets.map((bucket) => {
+      const pct = max > 0 ? Math.max(0, Math.round((bucket.labor / max) * 100)) : 0;
+      const amount = saFormatSummaryMoney(bucket.labor, currency);
+      const tip = `${bucket.label} · ${amount}`;
+      const cls = [
+        "sa-perf-bar",
+        bucket.isCurrent ? "is-current" : "",
+        bucket.labor <= 0 ? "is-zero" : ""
+      ].filter(Boolean).join(" ");
+      return (
+        `<button type="button" class="${cls}" data-sa-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">` +
+        `<span class="sa-perf-bar__track">` +
+        `<span class="sa-perf-bar__fill" style="--h:${pct}%"></span>` +
+        `<span class="sa-perf-bar__zero"></span>` +
+        `</span>` +
+        `<span class="sa-perf-bar__meta">` +
+        `<span class="sa-perf-bar__current">Current</span>` +
+        `<span class="sa-perf-bar__label">${escapeHtml(bucket.label)}</span>` +
+        `</span>` +
+        `</button>`
+      );
+    }).join("");
+    host.innerHTML =
+      `<div class="sa-perf-y" aria-hidden="true">${yHtml}</div>` +
+      `<div class="sa-perf-plot">` +
+      `<div class="sa-perf-grid" aria-hidden="true"><i></i><i></i><i></i></div>` +
+      `<div class="sa-perf-cols">${colsHtml}</div>` +
+      `<div id="saPerfTooltip" class="sa-perf-tip" role="tooltip" hidden></div>` +
+      `</div>`;
+    saBindPerfChartDocOnce();
+    const plot = host.querySelector(".sa-perf-plot");
+    host.querySelectorAll(".sa-perf-bar").forEach((el) => {
+      el.onpointerenter = () => {
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
+      };
+      el.onfocus = () => {
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
+      };
+      el.onblur = (ev) => {
+        const chart = $("saPerfChart");
+        if (chart && chart.contains(ev.relatedTarget)) return;
+        saClearPerfTooltip();
+      };
+      el.onclick = () => {
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
+      };
+    });
+    if (plot) {
+      plot.onpointerleave = (ev) => {
+        if (plot.contains(ev.relatedTarget)) return;
+        window.clearTimeout(saPerfTipTimer);
+        saPerfTipTimer = window.setTimeout(saClearPerfTooltip, 80);
+      };
+      plot.onfocusout = (ev) => {
+        if (plot.contains(ev.relatedTarget)) return;
+        saClearPerfTooltip();
+      };
     }
   }
 
@@ -19724,6 +19927,11 @@ window.renderSupervisor = renderSupervisor;
   }
 
   const SA_VIEW_META = {
+    "sales-summary": {
+      kind: "summary",
+      title: "Sales Summary",
+      desc: "Sales performance, pipeline, and project handoff."
+    },
     "approved-projects": {
       kind: "projects",
       mode: "all",
@@ -19779,6 +19987,7 @@ window.renderSupervisor = renderSupervisor;
     {
       label: "Projects",
       items: [
+        { id: "sales-summary", label: "Sales Summary" },
         { id: "approved-projects", label: "Approved projects" },
         { id: "needs-supervisor", label: "Needs supervisor" },
         { id: "pending-approval", label: "Pending approvals" }
@@ -19908,7 +20117,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function saUpdateSalesAdminViewChrome(activeViewId) {
-    const meta = SA_VIEW_META[activeViewId] || SA_VIEW_META["approved-projects"];
+    const meta = SA_VIEW_META[activeViewId] || SA_VIEW_META["sales-summary"];
     const titleLabel = $("saViewTitleLabel");
     if (titleLabel && meta?.title) titleLabel.textContent = meta.title;
     const desc = $("saViewDesc");
@@ -19919,6 +20128,8 @@ window.renderSupervisor = renderSupervisor;
     if (viewsBtn && meta?.title) {
       viewsBtn.setAttribute("aria-label", `Views menu — current view: ${meta.title}`);
     }
+    const viewHead = $("saViewHead");
+    if (viewHead) viewHead.hidden = !meta || meta.kind === "summary";
   }
 
   function saProjectStatusNorm(row) {
@@ -19948,7 +20159,70 @@ window.renderSupervisor = renderSupervisor;
         return !uid && !saIsSaProjectCompleted(row);
       });
     }
+    if (mode === "completed") {
+      return list.filter((row) => saIsSaProjectCompleted(row));
+    }
     return list;
+  }
+
+  function saFormatProjectStage(row) {
+    const st = saProjectStatusNorm(row);
+    if (!st || st === "—") return "—";
+    return st.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function saSortConvertedBySignedAtDesc(rows) {
+    return (Array.isArray(rows) ? rows : []).slice().sort((a, b) =>
+      String(b.signedAt || "").localeCompare(String(a.signedAt || ""))
+    );
+  }
+
+  function saUpdateHandoffFilterChrome(activeFilter) {
+    document.querySelectorAll("[data-sa-handoff-filter]").forEach((el) => {
+      el.classList.toggle(
+        "is-active",
+        el.getAttribute("data-sa-handoff-filter") === activeFilter
+      );
+    });
+  }
+
+  const SA_HANDOFF_RECENT_LIMIT = 8;
+
+  function saRenderHandoffTable(convertedRows, settings, mode) {
+    const body = $("saHandoffBody");
+    const wrap = $("saHandoffTableWrap");
+    const empty = $("saHandoffEmpty");
+    if (!body) return;
+
+    const filterMode = mode === "needs-supervisor" || mode === "completed" ? mode : "all";
+    const filtered = saSortConvertedBySignedAtDesc(
+      saFilterMainProjectRows(convertedRows, filterMode)
+    ).slice(0, SA_HANDOFF_RECENT_LIMIT);
+    saUpdateHandoffFilterChrome(filterMode);
+
+    if (!filtered.length) {
+      body.innerHTML = "";
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
+    }
+
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.hidden = false;
+
+    const currency = settings?.currency || DEFAULTS.currency;
+    body.innerHTML = filtered
+      .map((row) => (
+        `<tr>` +
+        `<td>${escapeHtml(row.projectName)}</td>` +
+        `<td data-label="Client">${escapeHtml(row.clientName)}</td>` +
+        `<td data-label="Sale Price">${saFormatSummaryMoney(row.salePrice, currency)}</td>` +
+        `<td data-label="Stage">${escapeHtml(saFormatProjectStage(row))}</td>` +
+        `<td data-label="Supervisor">${saSupervisorBadgeHtml(row)}</td>` +
+        `<td>${saProjectActionsMenuHtml(row)}</td>` +
+        `</tr>`
+      ))
+      .join("");
   }
 
   function saProjectActionsMenuHtml(row) {
@@ -20493,6 +20767,10 @@ window.renderSupervisor = renderSupervisor;
       if (empty) empty.hidden = true;
       if (mainWrap) mainWrap.hidden = true;
       if (mainEmpty) mainEmpty.hidden = true;
+      const handoffWrap = $("saHandoffTableWrap");
+      const handoffEmpty = $("saHandoffEmpty");
+      if (handoffWrap) handoffWrap.hidden = true;
+      if (handoffEmpty) handoffEmpty.hidden = true;
     }
   }
 
@@ -20609,7 +20887,8 @@ window.renderSupervisor = renderSupervisor;
     };
     syncContractHubRowResolver();
 
-    let currentView = "approved-projects";
+    let currentView = "sales-summary";
+    let handoffFilter = "all";
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -20750,7 +21029,7 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const saSetMainView = (viewId) => {
-      const next = SA_VIEW_META[viewId] ? viewId : "approved-projects";
+      const next = SA_VIEW_META[viewId] ? viewId : "sales-summary";
       currentView = next;
       const meta = SA_VIEW_META[next];
 
@@ -20759,6 +21038,7 @@ window.renderSupervisor = renderSupervisor;
       saUpdateSalesAdminViewChrome(next);
 
       const panels = {
+        summary: $("saSummaryViewWrap"),
         projects: $("saProjectsViewWrap"),
         quotes: $("saQuotesViewWrap"),
         approval: $("saApprovalViewWrap"),
@@ -20773,7 +21053,13 @@ window.renderSupervisor = renderSupervisor;
       saCloseSalesAdminActionsMenu();
       saCloseSaViewsMenu();
 
-      if (meta.kind === "projects" && panels.projects) {
+      if (meta.kind === "summary" && panels.summary) {
+        panels.summary.hidden = false;
+        saRenderHandoffTable(convertedRows, settings, handoffFilter);
+        if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
+          void window.__mgSaLoadPipelineStageCounts();
+        }
+      } else if (meta.kind === "projects" && panels.projects) {
         panels.projects.hidden = false;
         saRenderMainProjectsTable(
           convertedRows,
@@ -20806,6 +21092,16 @@ window.renderSupervisor = renderSupervisor;
       if (currentView === "pending-approval") loadQueue();
       else if (SA_VIEW_META[currentView]?.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
         window.__mgSaQuotesLoadForView(currentView);
+      } else if (SA_VIEW_META[currentView]?.kind === "summary") {
+        if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
+          void window.__mgSaLoadPipelineStageCounts();
+        }
+        void saLoadConvertedProjectsData(settings, (joined) => {
+          convertedRows = joined;
+          syncContractHubRowResolver();
+          saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+          saRenderHandoffTable(convertedRows, settings, handoffFilter);
+        });
       } else if (SA_VIEW_META[currentView]?.kind === "projects") {
         void saLoadConvertedProjectsData(settings, (joined) => {
           convertedRows = joined;
@@ -20856,6 +21152,30 @@ window.renderSupervisor = renderSupervisor;
       };
     });
 
+    document.querySelectorAll("[data-sa-summary-view]").forEach((el) => {
+      el.onclick = () => {
+        const viewId = String(el.getAttribute("data-sa-summary-view") || "").trim();
+        if (viewId) saSetMainView(viewId);
+      };
+    });
+
+    document.querySelectorAll("[data-sa-handoff-filter]").forEach((el) => {
+      el.onclick = () => {
+        const nextFilter = String(el.getAttribute("data-sa-handoff-filter") || "all").trim();
+        handoffFilter = nextFilter === "needs-supervisor" || nextFilter === "completed" ? nextFilter : "all";
+        saRenderHandoffTable(convertedRows, settings, handoffFilter);
+      };
+    });
+
+    const reviewProjectsBtn = $("saReviewProjectsBtn");
+    if (reviewProjectsBtn) {
+      reviewProjectsBtn.onclick = () => saSetMainView("needs-supervisor");
+    }
+    const viewAllProjectsBtn = $("saViewAllProjectsBtn");
+    if (viewAllProjectsBtn) {
+      viewAllProjectsBtn.onclick = () => saSetMainView("approved-projects");
+    }
+
     const loadQueue = () => {
       fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
@@ -20901,13 +21221,13 @@ window.renderSupervisor = renderSupervisor;
     }
 
     loadQueue();
-    saRenderSaViewsMenu("approved-projects");
-    saUpdateSalesAdminViewChrome("approved-projects");
+    saRenderSaViewsMenu("sales-summary");
+    saUpdateSalesAdminViewChrome("sales-summary");
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       syncContractHubRowResolver();
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
-      saSetMainView("approved-projects");
+      saSetMainView("sales-summary");
     });
   }
 
