@@ -361,6 +361,16 @@ function mapScheduleConfirmFailure(err) {
       },
     };
   }
+  if (parsed?.code === "schedule_completion_missing") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error: parsed.message || "Estimated completion date is required.",
+        code: "schedule_completion_missing",
+      },
+    };
+  }
   if (parsed?.code === "schedule_completion_before_start") {
     return {
       statusCode: 400,

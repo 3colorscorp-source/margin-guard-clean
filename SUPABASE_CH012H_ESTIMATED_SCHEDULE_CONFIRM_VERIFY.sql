@@ -40,12 +40,24 @@ SELECT
     SELECT 1
     FROM pg_constraint
     WHERE conname = 'project_contract_setups_schedule_confirmed_by_fkey'
-  ) AS fk_ok,
-  EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'project_contract_setups_schedule_confirm_consistency'
-  ) AS consistency_check_ok,
+      AND pg_get_constraintdef(oid) ILIKE '%ON DELETE RESTRICT%'
+  ) AS fk_restrict_ok,
+  (
+    EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = 'project_contract_setups_schedule_confirm_consistency'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = 'project_contract_setups_schedule_confirm_consistency'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_at is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_start_date is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_due_date is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_by is not null%'
+    )
+  ) AS consistency_all_or_none_ok,
   (
     position(
       'CH-012H-CONFIRM-BEGIN'
@@ -65,6 +77,12 @@ SELECT
         'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) = 0
+    AND position(
+      'MG_ERR:schedule_completion_missing'
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
   ) AS confirm_copies_quote_dates,
   (
     position(
@@ -202,14 +220,25 @@ SELECT
       SELECT 1
       FROM pg_constraint
       WHERE conname = 'project_contract_setups_schedule_confirmed_by_fkey'
+        AND pg_get_constraintdef(oid) ILIKE '%ON DELETE RESTRICT%'
     )
     AND EXISTS (
       SELECT 1
       FROM pg_constraint
       WHERE conname = 'project_contract_setups_schedule_confirm_consistency'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_at is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_start_date is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_due_date is not null%'
+        AND pg_get_constraintdef(oid) ILIKE '%schedule_confirmed_by is not null%'
     )
     AND position(
       'CH-012H-CONFIRM-BEGIN'
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
+    AND position(
+      'MG_ERR:schedule_completion_missing'
       in pg_get_functiondef(
         'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )

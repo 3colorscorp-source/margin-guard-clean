@@ -194,14 +194,16 @@ function evaluatePersistedScheduleConfirmation(input = {}) {
   );
   const datesMatch =
     sameIsoDate(confirmedStart, quoteStart) && sameIsoDate(confirmedDue, quoteDue);
+  const datesComplete = Boolean(quoteStart && quoteDue && quoteDue >= quoteStart);
+  const confirmationComplete = Boolean(
+    confirmedAt && confirmedStart && confirmedDue && confirmedBy
+  );
   const confirmed = Boolean(
-    confirmedAt && scopeOk && datesMatch && quoteStart
+    confirmationComplete && scopeOk && datesMatch && datesComplete
   );
-  const stale = Boolean(confirmedAt && scopeOk && !datesMatch);
+  const stale = Boolean(confirmationComplete && scopeOk && !datesMatch);
   const wrongScope = Boolean(setup && !scopeOk);
-  const freezeReady = Boolean(
-    confirmed && quoteStart && quoteDue && quoteDue >= quoteStart
-  );
+  const freezeReady = Boolean(confirmed && datesComplete);
 
   return {
     confirmed,
@@ -259,6 +261,12 @@ function validateConfirmableQuoteDates(startRaw, dueRaw) {
     errors.push({
       code: "schedule_start_missing",
       message: "Estimated start date is required.",
+    });
+  }
+  if (!due_date) {
+    errors.push({
+      code: "schedule_completion_missing",
+      message: "Estimated completion date is required.",
     });
   }
   if (start_date && due_date && due_date < start_date) {

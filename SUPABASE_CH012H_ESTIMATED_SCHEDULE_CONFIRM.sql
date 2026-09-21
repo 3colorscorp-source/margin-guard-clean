@@ -15,8 +15,8 @@
 --   * invalidate_estimated_schedule_on_quote_date_change()
 --
 -- KEY: tenant_id + project_id + quote_id
--- Confirmation copies quotes.start_date / quotes.due_date. Browser dates are
--- never written as authority.
+-- Confirmation copies quotes.start_date / quotes.due_date. Both dates are
+-- required. Browser dates are never written as authority.
 --
 -- NOT IN THIS MIGRATION:
 --   * Article 7 / payment terms / payment schedule items
@@ -80,7 +80,7 @@ alter table public.project_contract_setups
   add constraint project_contract_setups_schedule_confirmed_by_fkey
   foreign key (schedule_confirmed_by)
   references public.profiles (id)
-  on delete set null;
+  on delete restrict;
 
 alter table public.project_contract_setups
   drop constraint if exists project_contract_setups_schedule_confirm_consistency;
@@ -97,11 +97,9 @@ alter table public.project_contract_setups
     or (
       schedule_confirmed_at is not null
       and schedule_confirmed_start_date is not null
+      and schedule_confirmed_due_date is not null
       and schedule_confirmed_by is not null
-      and (
-        schedule_confirmed_due_date is null
-        or schedule_confirmed_due_date >= schedule_confirmed_start_date
-      )
+      and schedule_confirmed_due_date >= schedule_confirmed_start_date
     )
   );
 
@@ -112,7 +110,7 @@ comment on column public.project_contract_setups.schedule_confirmed_start_date i
   'CH-012H. Canonical copy of quotes.start_date at confirmation. Browser dates are not authority.';
 
 comment on column public.project_contract_setups.schedule_confirmed_due_date is
-  'CH-012H. Canonical copy of quotes.due_date at confirmation. Null is allowed when the quote due_date is null.';
+  'CH-012H. Canonical copy of quotes.due_date at confirmation. Null is not confirmable.';
 
 comment on column public.project_contract_setups.schedule_confirmed_by is
   'CH-012H. profiles.id of the Owner/Admin who confirmed. Resolved from the server session.';
@@ -206,7 +204,11 @@ begin
     raise exception 'MG_ERR:schedule_start_missing:Estimated start date is required.';
   end if;
 
-  if v_due is not null and v_due < v_start then
+  if v_due is null then
+    raise exception 'MG_ERR:schedule_completion_missing:Estimated completion date is required.';
+  end if;
+
+  if v_due < v_start then
     raise exception
       'MG_ERR:schedule_completion_before_start:Completion date must be on or after the start date.';
   end if;
@@ -395,6 +397,16 @@ begin
     raise exception 'CH-012H postflight failed: schedule_confirmed_by FK missing';
   end if;
 
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'project_contract_setups_schedule_confirmed_by_fkey'
+      and pg_get_constraintdef(oid) ilike '%on delete restrict%'
+  ) then
+    raise exception
+      'CH-012H postflight failed: schedule_confirmed_by FK must ON DELETE RESTRICT';
+  end if;
+
   select exists (
     select 1
     from pg_constraint
@@ -404,11 +416,31 @@ begin
     raise exception 'CH-012H postflight failed: consistency check missing';
   end if;
 
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'project_contract_setups_schedule_confirm_consistency'
+      and pg_get_constraintdef(oid) ilike '%schedule_confirmed_due_date is not null%'
+      and pg_get_constraintdef(oid) ilike '%schedule_confirmed_at is not null%'
+      and pg_get_constraintdef(oid) ilike '%schedule_confirmed_start_date is not null%'
+      and pg_get_constraintdef(oid) ilike '%schedule_confirmed_by is not null%'
+  ) then
+    raise exception
+      'CH-012H postflight failed: consistency check must require all four confirmation fields';
+  end if;
+
   if position(
        'CH-012H-CONFIRM-BEGIN'
        in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
      ) = 0 then
     raise exception 'CH-012H postflight failed: confirm function markers missing';
+  end if;
+
+  if position(
+       'MG_ERR:schedule_completion_missing'
+       in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
+     ) = 0 then
+    raise exception 'CH-012H postflight failed: null due_date reject missing';
   end if;
 
   if position(

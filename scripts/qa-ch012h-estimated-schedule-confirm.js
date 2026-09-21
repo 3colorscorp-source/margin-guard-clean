@@ -126,6 +126,7 @@ test("1. confirmation persists across reload because GET reads schedule_confirme
     schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
     schedule_confirmed_start_date: "2026-09-01",
     schedule_confirmed_due_date: "2026-09-30",
+    schedule_confirmed_by: "u1",
   };
   const first = schedule.evaluatePersistedScheduleConfirmation({
     setup,
@@ -164,6 +165,7 @@ test("2. another session/browser COMPLETE comes from server setup, not localStor
         schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
         schedule_confirmed_start_date: "2026-09-01",
         schedule_confirmed_due_date: "2026-09-30",
+        schedule_confirmed_by: "u1",
       },
     },
   };
@@ -225,6 +227,7 @@ test("4+5. changing start or due invalidates confirmation", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-02", due_date: "2026-09-30" },
     tenantId: "t1",
@@ -239,6 +242,7 @@ test("4+5. changing start or due invalidates confirmation", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-01", due_date: "2026-10-01" },
     tenantId: "t1",
@@ -269,6 +273,7 @@ test("7. other tenant cannot read, confirm, or invalidate", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-01", due_date: "2026-09-30" },
     tenantId: "t1",
@@ -293,6 +298,7 @@ test("8. other quote/project cannot contaminate state", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-01", due_date: "2026-09-30" },
     tenantId: "t1",
@@ -307,6 +313,7 @@ test("8. other quote/project cannot contaminate state", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-01", due_date: "2026-09-30" },
     tenantId: "t1",
@@ -355,6 +362,7 @@ test("9. double-click confirm is idempotent", async () => {
             schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
             schedule_confirmed_start_date: "2026-09-01",
             schedule_confirmed_due_date: "2026-09-30",
+            schedule_confirmed_by: "u1",
           },
         },
       };
@@ -373,6 +381,9 @@ test("10. invalid dates are rejected and not confirmed", async () => {
   const confirmable = schedule.validateConfirmableQuoteDates(null, "2026-09-30");
   assert.strictEqual(confirmable.ok, false);
   assert.strictEqual(confirmable.errors[0].code, "schedule_start_missing");
+  const missingDue = schedule.validateConfirmableQuoteDates("2026-09-01", null);
+  assert.strictEqual(missingDue.ok, false);
+  assert.ok(missingDue.errors.some((err) => err.code === "schedule_completion_missing"));
   const order = schedule.validateConfirmableQuoteDates("2026-09-30", "2026-09-01");
   assert.strictEqual(order.ok, false);
   const runner = ScheduleConfirm.createScheduleConfirmRunner({
@@ -387,6 +398,7 @@ test("10. invalid dates are rejected and not confirmed", async () => {
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.posted, false);
   assert.ok(sql.includes("MG_ERR:schedule_start_missing"));
+  assert.ok(sql.includes("MG_ERR:schedule_completion_missing"));
   assert.ok(sql.includes("MG_ERR:schedule_completion_before_start"));
 });
 
@@ -457,6 +469,7 @@ test("confirm copies quote dates and rejects browser date authority", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: "2026-09-30",
+      schedule_confirmed_by: "u1",
     },
     { start_date: "2026-09-01", due_date: "2026-09-30" },
     { tenantId: "t1", projectId: "p1", quoteId: "q1" }
@@ -468,10 +481,25 @@ test("confirm copies quote dates and rejects browser date authority", () => {
   );
 });
 
-test("null due_date is allowed by server policy; missing start is not", () => {
-  const okNullDue = schedule.validateConfirmableQuoteDates("2026-09-01", null);
-  assert.strictEqual(okNullDue.ok, true);
-  const confirmedNullDue = schedule.evaluatePersistedScheduleConfirmation({
+test("direct POST with start and due null does not confirm", () => {
+  const missingBoth = schedule.validateConfirmableQuoteDates(null, null);
+  assert.strictEqual(missingBoth.ok, false);
+  assert.ok(missingBoth.errors.some((err) => err.code === "schedule_start_missing"));
+  assert.ok(missingBoth.errors.some((err) => err.code === "schedule_completion_missing"));
+  const mappedDue = setupMod._test.mapScheduleConfirmFailure({
+    message: "MG_ERR:schedule_completion_missing:Estimated completion date is required.",
+  });
+  assert.strictEqual(mappedDue.statusCode, 400);
+  assert.strictEqual(mappedDue.body.ok, false);
+  assert.strictEqual(mappedDue.body.code, "schedule_completion_missing");
+  assert.strictEqual(mappedDue.body.error, "Estimated completion date is required.");
+  assert.ok(sql.includes("if v_due is null"));
+  assert.ok(sql.includes("MG_ERR:schedule_completion_missing:Estimated completion date is required."));
+  assert.ok(setupSrc.includes("schedule_completion_missing"));
+});
+
+test("COMPLETE never appears with due null", () => {
+  const persisted = schedule.evaluatePersistedScheduleConfirmation({
     setup: {
       tenant_id: "t1",
       project_id: "p1",
@@ -479,14 +507,52 @@ test("null due_date is allowed by server policy; missing start is not", () => {
       schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
       schedule_confirmed_start_date: "2026-09-01",
       schedule_confirmed_due_date: null,
+        schedule_confirmed_by: "u1",
     },
     quote: { start_date: "2026-09-01", due_date: null },
     tenantId: "t1",
     projectId: "p1",
     quoteId: "q1",
   });
-  assert.strictEqual(confirmedNullDue.confirmed, true);
-  assert.strictEqual(confirmedNullDue.freeze_ready, false);
+  assert.strictEqual(persisted.confirmed, false);
+  assert.strictEqual(persisted.freeze_ready, false);
+  assert.strictEqual(persisted.readiness_caption, "NEEDS CONFIRMATION — ESTIMATED SCHEDULE");
+  const ready = setupMod._test.evaluateReadiness(
+    {
+      project_id: "p1",
+      quote_id: "q1",
+      tenant_id: "t1",
+      schedule_confirmed_at: "2026-09-20T18:00:00.000Z",
+      schedule_confirmed_start_date: "2026-09-01",
+      schedule_confirmed_due_date: null,
+        schedule_confirmed_by: "u1",
+    },
+    { start_date: "2026-09-01", due_date: null },
+    { tenantId: "t1", projectId: "p1", quoteId: "q1" }
+  );
+  assert.strictEqual(ready.estimated_schedule, "needs_confirmation");
+  assert.notStrictEqual(ready.estimated_schedule_caption, "COMPLETE — ESTIMATED SCHEDULE");
+});
+
+test("VERIFY requires FK RESTRICT and all-or-none consistency CHECK", () => {
+  assert.ok(sql.includes("on delete restrict"));
+  assert.ok(!sql.includes("on delete set null"));
+  assert.ok(sql.includes("schedule_confirmed_due_date is not null"));
+  assert.ok(verify.includes("fk_restrict_ok"));
+  assert.ok(verify.includes("ON DELETE RESTRICT"));
+  assert.ok(verify.includes("consistency_all_or_none_ok"));
+  assert.ok(verify.includes("schedule_confirmed_due_date is not null"));
+});
+
+test("Article 8 state B remains Set Project Dates", () => {
+  const p = ScheduleConfirm.scheduleFooterPlan({
+    startDate: "2026-09-01",
+    dueDate: "",
+  });
+  assert.strictEqual(p.kind, "missing_completion");
+  assert.strictEqual(p.primaryLabel, "Set Project Dates");
+  assert.strictEqual(p.continueVisible, false);
+  assert.ok(!p.buttons.some((btn) => btn.label === "Confirm Schedule"));
 });
 
 (async () => {
