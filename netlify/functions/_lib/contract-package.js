@@ -27,7 +27,9 @@ const {
 const {
   resolveCanonicalContractSchedule,
   validateContractSchedule,
+  evaluatePersistedScheduleConfirmation,
   normIsoDate,
+  SOURCE_APPROVED_QUOTE,
 } = require("./contract-schedule");
 const {
   resolveVerifiedContractDeposit,
@@ -286,6 +288,11 @@ function serializeSetup(row) {
     state_module_code: trimField(row.state_module_code),
     state_notice_pack_status: trimField(row.state_notice_pack_status) || "unsupported",
     state_notice_pack_version: trimField(row.state_notice_pack_version),
+    schedule_confirmed_at: row.schedule_confirmed_at || null,
+    schedule_confirmed_start_date: row.schedule_confirmed_start_date || null,
+    schedule_confirmed_due_date: row.schedule_confirmed_due_date || null,
+    schedule_confirmed_by: row.schedule_confirmed_by || null,
+    tenant_id: row.tenant_id || null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   };
@@ -602,6 +609,7 @@ function buildSnapshot({
       setup_updated_at: setup?.updated_at || null,
       schedule_updated_at: schedule?.updated_at || null,
       schedule_confirmed_at: schedule?.confirmed_at || null,
+      estimated_schedule_confirmed_at: setup?.schedule_confirmed_at || null,
       legal_notices_confirmed_at: legalEffective?.confirmed_at || null,
       legal_profile_updated_at: legalProfile?.updated_at || null,
     },
@@ -863,36 +871,43 @@ async function freezeContractPackage({
   }
 
   const canonical = resolveCanonicalContractSchedule({ quote, project });
-  const hasConfirmed =
-    normIsoDate(confirmedStartDate) || normIsoDate(confirmedDueDate);
-  let contractSchedule = {
-    start_date: canonical.start_date,
-    due_date: canonical.due_date,
-    source: canonical.source,
-  };
-  if (hasConfirmed) {
-    const confirmed = validateContractSchedule(
-      confirmedStartDate ?? canonical.start_date,
-      confirmedDueDate ?? canonical.due_date
-    );
-    if (!confirmed.ok) {
-      return {
-        error: confirmed.errors[0]?.message || "Invalid contract schedule",
-        code: confirmed.errors[0]?.code || "invalid_contract_schedule",
-        status: 400,
-        missing: ["contract_schedule"],
-      };
-    }
-    contractSchedule = {
-      start_date: confirmed.start_date,
-      due_date: confirmed.due_date,
-      source:
-        confirmed.start_date === canonical.start_date &&
-        confirmed.due_date === canonical.due_date
-          ? canonical.source
-          : "contract_builder_confirmed",
+  // CH-012H — browser confirmed_start_date/confirmed_due_date are ignored.
+  // Freeze rereads quote + project_contract_setups and requires a matching
+  // server confirmation for this tenant/project/quote.
+  void confirmedStartDate;
+  void confirmedDueDate;
+  const persisted = evaluatePersistedScheduleConfirmation({
+    setup: sources.setupRow || setup,
+    quote,
+    tenantId,
+    projectId,
+    quoteId,
+  });
+  if (!persisted.confirmed || persisted.wrong_scope) {
+    return {
+      error: persisted.stale
+        ? "Estimated schedule confirmation is out of date. Confirm the current dates before freezing."
+        : "Estimated schedule must be confirmed before freezing.",
+      code: persisted.stale
+        ? "schedule_confirmation_stale"
+        : "readiness_incomplete",
+      status: 422,
+      missing: ["contract_schedule"],
     };
   }
+  if (!persisted.freeze_ready) {
+    return {
+      error: "Estimated start and completion dates must be confirmed before freezing.",
+      code: "readiness_incomplete",
+      status: 422,
+      missing: ["contract_schedule"],
+    };
+  }
+  const contractSchedule = {
+    start_date: persisted.start_date || canonical.start_date,
+    due_date: persisted.due_date || canonical.due_date,
+    source: SOURCE_APPROVED_QUOTE,
+  };
 
   const gate = buildFreezeGate({
     project,
@@ -1040,4 +1055,5 @@ module.exports = {
   freezePackageAtomically,
   parseMgError,
   trimField,
+  evaluatePersistedScheduleConfirmation,
 };

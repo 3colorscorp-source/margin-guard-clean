@@ -17,6 +17,7 @@
   "use strict";
 
   var QUOTE_UPDATE_API = "/.netlify/functions/update-tenant-quote-edit";
+  var SETUP_API = "/.netlify/functions/project-contract-setup";
   var NOTICE =
     "Project dates may change due to site conditions, material availability, approved changes, or events outside either party's reasonable control.";
   var INVALID_ORDER = "Completion date must be on or after the start date.";
@@ -124,19 +125,38 @@
     );
   }
 
-  function scheduleConfirmed(source, edits, storage) {
+  function serverConfirmationFromSource(source) {
+    var src = source || {};
+    var setup = (src.contractSetup && src.contractSetup.setup) || src.setup || {};
+    var confirmedAt = trimField(
+      src.scheduleConfirmedAt || setup.schedule_confirmed_at || ""
+    );
+    var startDate = normIsoDate(
+      src.scheduleConfirmedStart || setup.schedule_confirmed_start_date
+    );
+    var dueDate = normIsoDate(
+      src.scheduleConfirmedDue || setup.schedule_confirmed_due_date
+    );
+    var setupProject = trimField(setup.project_id || src.projectId);
+    var setupQuote = trimField(setup.quote_id || src.quoteId);
+    var idsMatch =
+      (!setup.project_id || setupProject === trimField(src.projectId)) &&
+      (!setup.quote_id || setupQuote === trimField(src.quoteId));
+    return {
+      confirmedAt: confirmedAt || "",
+      startDate: startDate,
+      dueDate: dueDate,
+      idsMatch: idsMatch,
+    };
+  }
+
+  function scheduleConfirmed(source, edits) {
     var dates = datesFromSource(source, edits);
     var check = validateScheduleDates(dates.startDate, dates.dueDate);
     if (!check.complete) return false;
-    if (edits && edits.scheduleConfirmed === true) {
-      return (
-        normIsoDate(edits.scheduleConfirmedStart) === check.startDate &&
-        normIsoDate(edits.scheduleConfirmedDue) === check.dueDate
-      );
-    }
-    var ids = source || {};
-    var stored = readStoredConfirmation(ids.projectId, ids.quoteId, storage);
-    return storedConfirmationMatches(stored, check.startDate, check.dueDate);
+    var server = serverConfirmationFromSource(source);
+    if (!server.confirmedAt || server.idsMatch !== true) return false;
+    return server.startDate === check.startDate && server.dueDate === check.dueDate;
   }
 
   function scheduleKind(input) {
@@ -275,11 +295,20 @@
     return false;
   }
 
-  function buildScheduleConfirmPayload(quoteId, startDate, dueDate) {
+  function buildScheduleDatePayload(quoteId, startDate, dueDate) {
     return {
       quote_id: quoteId,
       start_date: normIsoDate(startDate),
       due_date: normIsoDate(dueDate),
+      confirm_sent_update: true,
+    };
+  }
+
+  function buildScheduleConfirmPayload(projectId, quoteId) {
+    return {
+      project_id: projectId,
+      quote_id: quoteId,
+      confirm_estimated_schedule: true,
     };
   }
 
@@ -332,55 +361,61 @@
         if (typeof h.isConfirmed === "function" && h.isConfirmed()) {
           return { ok: true, reason: "already_confirmed", posted: false };
         }
-        var quote = typeof h.getQuote === "function" ? h.getQuote() : null;
-        var shouldPost = quoteAllowsScheduleWrite(quote);
-        var payload = buildScheduleConfirmPayload(requestQuoteId, check.startDate, check.dueDate);
-        if (shouldPost) {
-          if (typeof h.postJson !== "function") {
-            throw new Error("postJson is required to save project dates.");
-          }
-          var res = await h.postJson(h.apiUrl || QUOTE_UPDATE_API, payload);
-          var current = typeof h.getIds === "function" ? h.getIds() || {} : {};
-          if (
-            trimField(current.projectId) !== requestProjectId ||
-            trimField(current.quoteId) !== requestQuoteId
-          ) {
-            return {
-              ok: false,
-              reason: "stale_project",
-              posted: true,
-              payload: payload,
-            };
-          }
-          if (!res || res.ok !== true || !res.data || res.data.ok !== true) {
-            return {
-              ok: false,
-              reason: "http",
-              posted: true,
-              payload: payload,
-              error: trimField(res && res.data && res.data.error) || "Project dates could not be saved.",
-              status: res && res.status,
-            };
-          }
-          if (typeof h.applySuccess === "function") {
-            h.applySuccess(res.data, payload, check);
-          }
+        var payload = buildScheduleConfirmPayload(requestProjectId, requestQuoteId);
+        if (typeof h.postJson !== "function") {
+          throw new Error("postJson is required to confirm the estimated schedule.");
+        }
+        var res = await h.postJson(h.apiUrl || SETUP_API, payload);
+        var current = typeof h.getIds === "function" ? h.getIds() || {} : {};
+        if (
+          trimField(current.projectId) !== requestProjectId ||
+          trimField(current.quoteId) !== requestQuoteId
+        ) {
           return {
-            ok: true,
-            reason: "confirmed",
+            ok: false,
+            reason: "stale_project",
             posted: true,
             payload: payload,
-            quote: res.data.quote || null,
+          };
+        }
+        if (!res || res.ok !== true || !res.data || res.data.ok !== true) {
+          return {
+            ok: false,
+            reason: "http",
+            posted: true,
+            payload: payload,
+            error:
+              trimField(res && res.data && res.data.error) ||
+              "Estimated schedule could not be confirmed.",
+            status: res && res.status,
+          };
+        }
+        var setup = res.data.setup || null;
+        var serverStart = normIsoDate(setup && setup.schedule_confirmed_start_date);
+        var serverDue = normIsoDate(setup && setup.schedule_confirmed_due_date);
+        if (!setup || !setup.schedule_confirmed_at) {
+          return {
+            ok: false,
+            reason: "http",
+            posted: true,
+            payload: payload,
+            error: "Estimated schedule confirmation was not persisted.",
           };
         }
         if (typeof h.applySuccess === "function") {
-          h.applySuccess(null, payload, check);
+          h.applySuccess(res.data, payload, {
+            startDate: serverStart,
+            dueDate: serverDue,
+            setup: setup,
+            readiness: res.data.readiness || null,
+          });
         }
         return {
           ok: true,
           reason: "confirmed",
-          posted: false,
+          posted: true,
           payload: payload,
+          setup: setup,
         };
       } finally {
         unlock();
@@ -405,6 +440,22 @@
     return next;
   }
 
+  function applyServerSetupToSource(source, setup) {
+    var next = source || {};
+    var row = setup || {};
+    next.scheduleConfirmedAt = row.schedule_confirmed_at || "";
+    next.scheduleConfirmedStart = normIsoDate(row.schedule_confirmed_start_date);
+    next.scheduleConfirmedDue = normIsoDate(row.schedule_confirmed_due_date);
+    next.scheduleConfirmed = Boolean(row.schedule_confirmed_at);
+    if (row.schedule_confirmed_start_date) {
+      next.startDate = normIsoDate(row.schedule_confirmed_start_date);
+    }
+    if (Object.prototype.hasOwnProperty.call(row, "schedule_confirmed_due_date")) {
+      next.dueDate = normIsoDate(row.schedule_confirmed_due_date);
+    }
+    return next;
+  }
+
   function clearConfirmationOnDateChange(edits) {
     var next = edits || {};
     if (next.scheduleConfirmed !== true) return next;
@@ -422,6 +473,7 @@
 
   return {
     QUOTE_UPDATE_API: QUOTE_UPDATE_API,
+    SETUP_API: SETUP_API,
     NOTICE: NOTICE,
     INVALID_ORDER: INVALID_ORDER,
     NOT_SCHEDULED: NOT_SCHEDULED,
@@ -437,6 +489,7 @@
     scheduleTermsReadiness: scheduleTermsReadiness,
     scheduleConfirmed: scheduleConfirmed,
     quoteAllowsScheduleWrite: quoteAllowsScheduleWrite,
+    buildScheduleDatePayload: buildScheduleDatePayload,
     buildScheduleConfirmPayload: buildScheduleConfirmPayload,
     createScheduleConfirmRunner: createScheduleConfirmRunner,
     readStoredConfirmation: readStoredConfirmation,
@@ -444,6 +497,8 @@
     clearStoredConfirmation: clearStoredConfirmation,
     storedConfirmationMatches: storedConfirmationMatches,
     applyConfirmationToEdits: applyConfirmationToEdits,
+    applyServerSetupToSource: applyServerSetupToSource,
+    serverConfirmationFromSource: serverConfirmationFromSource,
     clearConfirmationOnDateChange: clearConfirmationOnDateChange,
     confirmationKey: confirmationKey,
   };

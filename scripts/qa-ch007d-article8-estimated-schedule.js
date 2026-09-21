@@ -218,7 +218,20 @@ testAsync("8 double click: second call is busy, one POST", async () => {
     postJson: async (_url, body) => {
       posts.push(body);
       await gate;
-      return { ok: true, status: 200, data: { ok: true, quote: {} } };
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          ok: true,
+          setup: {
+            project_id: "p1",
+            quote_id: "q1",
+            schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+            schedule_confirmed_start_date: "2026-09-01",
+            schedule_confirmed_due_date: "2026-09-30",
+          },
+        },
+      };
     },
   });
   const first = runner.confirm();
@@ -254,20 +267,41 @@ testAsync("9 project change during await is ignored", async () => {
   assert.strictEqual(applied, false);
 });
 
-test("10 multi-tenant confirmation keys stay isolated", () => {
+test("localStorage is visual cache only and cannot mark COMPLETE", () => {
   const store = memoryStore();
+  const source = {
+    projectId: "p-a",
+    quoteId: "q-a",
+    startDate: "2026-09-01",
+    dueDate: "2026-09-30",
+  };
   ScheduleConfirm.writeStoredConfirmation("p-a", "q-a", "2026-09-01", "2026-09-30", store);
-  assert.ok(
-    ScheduleConfirm.storedConfirmationMatches(
-      ScheduleConfirm.readStoredConfirmation("p-a", "q-a", store),
-      "2026-09-01",
-      "2026-09-30"
-    )
+  assert.strictEqual(
+    ScheduleConfirm.scheduleConfirmed(source, {}, store),
+    false
   );
-  assert.strictEqual(ScheduleConfirm.readStoredConfirmation("p-b", "q-b", store), null);
-  assert.notStrictEqual(
-    ScheduleConfirm.confirmationKey("t1-p", "t1-q"),
-    ScheduleConfirm.confirmationKey("t2-p", "t2-q")
+  const serverSource = {
+    ...source,
+    scheduleConfirmedAt: "2026-09-20T12:00:00.000Z",
+    scheduleConfirmedStart: "2026-09-01",
+    scheduleConfirmedDue: "2026-09-30",
+    contractSetup: {
+      setup: {
+        project_id: "p-a",
+        quote_id: "q-a",
+        schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+        schedule_confirmed_start_date: "2026-09-01",
+        schedule_confirmed_due_date: "2026-09-30",
+      },
+    },
+  };
+  assert.strictEqual(ScheduleConfirm.scheduleConfirmed(serverSource, {}), true);
+  assert.strictEqual(
+    ScheduleConfirm.scheduleConfirmed(
+      serverSource,
+      { startDate: "2026-09-02", dueDate: "2026-09-30" }
+    ),
+    false
   );
 });
 
@@ -281,8 +315,9 @@ test("12 preview, print, freeze, portal, and PDF keep dates and notice only", ()
   assert.ok(art8.includes("Target Completion"));
   assert.ok(art8.includes("Project dates may change due to site conditions"));
   assert.ok(html.includes("@media print"));
-  assert.ok(freezeSrc.includes("confirmed_start_date"));
-  assert.ok(js.includes("confirmed_start_date"));
+  assert.ok(js.includes("Do not send browser flags or dates as freeze authority"));
+  assert.ok(js.includes("scheduleConfigured()"));
+  assert.ok(!/body\.confirmed_start_date\s*=/.test(js));
   assert.ok(portalSrc.includes("Estimated Start Date"));
   assert.ok(portalSrc.includes("Target Completion"));
   assert.ok(portalSrc.includes("Project dates may change due to site conditions"));
@@ -323,9 +358,10 @@ test("no invented today date and no auto-confirm", () => {
   assert.strictEqual(empty.kind, "missing_start");
   const both = view({ startDate: "2026-09-01", dueDate: "2026-09-30" });
   assert.strictEqual(both.kind, "unconfirmed");
-  assert.ok(js.includes("createScheduleConfirmRunner"));
-  assert.ok(js.includes("workspaceConfirmSchedule"));
-  assert.ok(html.includes("contract-schedule-confirm.js?v=sched-1"));
+  assert.ok(helperSrc.includes("confirm_estimated_schedule: true"));
+  assert.ok(helperSrc.includes("SETUP_API"));
+  assert.ok(js.includes("saveCanonicalScheduleDates"));
+  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-1"));
 });
 
 test("same-day completion is valid", () => {
@@ -334,7 +370,7 @@ test("same-day completion is valid", () => {
   assert.strictEqual(v.confirmBlocked, false);
 });
 
-testAsync("locked quote with dates already present confirms without POST", async () => {
+testAsync("locked quote with dates already present still confirms on the server", async () => {
   let posts = 0;
   const runner = ScheduleConfirm.createScheduleConfirmRunner({
     getBusy: () => false,
@@ -348,14 +384,29 @@ testAsync("locked quote with dates already present confirms without POST", async
     }),
     postJson: async () => {
       posts += 1;
-      return { ok: true, data: { ok: true } };
+      return {
+        ok: true,
+        data: {
+          ok: true,
+          setup: {
+            project_id: "p1",
+            quote_id: "q1",
+            schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+            schedule_confirmed_start_date: "2026-09-01",
+            schedule_confirmed_due_date: "2026-09-30",
+          },
+        },
+      };
     },
     applySuccess: () => {},
   });
   const result = await runner.confirm();
   assert.strictEqual(result.ok, true);
-  assert.strictEqual(result.posted, false);
-  assert.strictEqual(posts, 0);
+  assert.strictEqual(result.posted, true);
+  assert.strictEqual(posts, 1);
+  assert.strictEqual(result.payload.confirm_estimated_schedule, true);
+  assert.ok(!Object.prototype.hasOwnProperty.call(result.payload, "start_date"));
+  assert.ok(!Object.prototype.hasOwnProperty.call(result.payload, "due_date"));
 });
 
 (async () => {

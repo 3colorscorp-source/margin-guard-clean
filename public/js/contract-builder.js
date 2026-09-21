@@ -302,12 +302,34 @@
     }),
     "art-schedule": defaultWorkspaceCaps({
       supportsEdit: true,
-      supportsSave: false,
+      supportsSave: true,
       supportsValidation: true,
       continueLabel: "Continue",
       editLabel: "Set Project Dates",
+      saveLabel: "Save Project Dates",
       cancelLabel: "Back",
       validate: () => validateScheduleWorkspace(),
+      onBeforeSave: () => {
+        const dates = currentScheduleDates();
+        const check = validateScheduleDatesClient(dates.startDate, dates.dueDate);
+        const errorEl = $("cbScheduleEditError");
+        if (check.orderInvalid) {
+          if (errorEl) {
+            errorEl.hidden = false;
+            errorEl.textContent = ScheduleConfirm.INVALID_ORDER;
+          }
+          renderWorkspaceChrome();
+          return false;
+        }
+        if (errorEl) {
+          errorEl.hidden = true;
+          errorEl.textContent = "";
+        }
+        return true;
+      },
+      onSave: async () => {
+        await saveCanonicalScheduleDates();
+      },
     }),
     "art-changes": defaultWorkspaceCaps({
       continueLabel: "Continue",
@@ -1324,11 +1346,23 @@
 
   function hydrateScheduleConfirmation(source, edits) {
     const next = edits || {};
+    const server = ScheduleConfirm.serverConfirmationFromSource(source);
     const dates = ScheduleConfirm.datesFromSource(source, next);
-    const stored = ScheduleConfirm.readStoredConfirmation(source?.projectId, source?.quoteId);
-    if (ScheduleConfirm.storedConfirmationMatches(stored, dates.startDate, dates.dueDate)) {
-      return ScheduleConfirm.applyConfirmationToEdits(next, dates.startDate, dates.dueDate);
+    if (
+      server.confirmedAt &&
+      server.idsMatch &&
+      server.startDate === dates.startDate &&
+      server.dueDate === dates.dueDate
+    ) {
+      ScheduleConfirm.writeStoredConfirmation(
+        source?.projectId,
+        source?.quoteId,
+        server.startDate,
+        server.dueDate
+      );
+      return ScheduleConfirm.applyConfirmationToEdits(next, server.startDate, server.dueDate);
     }
+    ScheduleConfirm.clearStoredConfirmation(source?.projectId, source?.quoteId);
     next.scheduleConfirmed = false;
     next.scheduleConfirmedStart = "";
     next.scheduleConfirmedDue = "";
@@ -1483,9 +1517,10 @@
       startDate: toDateInput(scheduleResolved.start_date),
       dueDate: toDateInput(scheduleResolved.due_date),
       scheduleSource: scheduleResolved.source || "missing",
+      scheduleConfirmedAt: setupBundle?.setup?.schedule_confirmed_at || "",
+      scheduleConfirmedStart: toDateInput(setupBundle?.setup?.schedule_confirmed_start_date),
+      scheduleConfirmedDue: toDateInput(setupBundle?.setup?.schedule_confirmed_due_date),
       scheduleConfirmed: false,
-      scheduleConfirmedStart: "",
-      scheduleConfirmedDue: "",
       paymentNotes: "",
       warrantyNotes: "",
       additionalTerms: "",
@@ -1849,9 +1884,20 @@
         start_date: sourceSnapshot?.startDate,
         due_date: sourceSnapshot?.dueDate,
       }),
-      apiUrl: ScheduleConfirm.QUOTE_UPDATE_API,
+      apiUrl: ScheduleConfirm.SETUP_API,
       postJson,
-      applySuccess: (_data, _payload, check) => {
+      applySuccess: (data, _payload, check) => {
+        const setup = (data && data.setup) || (check && check.setup) || null;
+        if (sourceSnapshot) {
+          ScheduleConfirm.applyServerSetupToSource(sourceSnapshot, setup);
+          sourceSnapshot.contractSetup = {
+            available: true,
+            loadError: null,
+            forbidden: false,
+            setup: setup,
+            readiness: (data && data.readiness) || sourceSnapshot.contractSetup?.readiness || null,
+          };
+        }
         ScheduleConfirm.applyConfirmationToEdits(
           draftEdits,
           check.startDate,
@@ -1863,11 +1909,6 @@
           check.startDate,
           check.dueDate
         );
-        if (sourceSnapshot) {
-          sourceSnapshot.startDate = check.startDate;
-          sourceSnapshot.dueDate = check.dueDate;
-          sourceSnapshot.scheduleConfirmed = true;
-        }
         draftBaseline = cloneEdits({
           ...sourceSnapshot,
           ...draftEdits,
@@ -1894,7 +1935,7 @@
     if (result.reason === "http") {
       setArticleMode("art-schedule", WS_MODE.PREVIEW);
       renderWorkspaceChrome();
-      window.alert(result.error || "Project dates could not be confirmed.");
+      window.alert(result.error || "Estimated schedule could not be confirmed.");
       return false;
     }
     if (result.ok) {
@@ -3542,6 +3583,63 @@
     return data;
   }
 
+  async function saveCanonicalScheduleDates() {
+    const quoteId = String(sourceSnapshot?.quoteId || "").trim();
+    if (!quoteId) {
+      throw new Error("Quote id is required to save project dates.");
+    }
+    const dates = currentScheduleDates();
+    const check = validateScheduleDatesClient(dates.startDate, dates.dueDate);
+    if (check.orderInvalid) {
+      throw new Error(ScheduleConfirm.INVALID_ORDER);
+    }
+    if (!check.startDate) {
+      throw new Error(ScheduleConfirm.START_MISSING_MESSAGE);
+    }
+    const payload = ScheduleConfirm.buildScheduleDatePayload(
+      quoteId,
+      check.startDate,
+      check.dueDate
+    );
+    const res = await postJson(QUOTE_UPDATE_API, payload);
+    if (!res.ok || res.data?.ok !== true) {
+      throw new Error(res.data?.error || "Project dates could not be saved.");
+    }
+    const quote = res.data.quote || {};
+    if (sourceSnapshot) {
+      sourceSnapshot.startDate = ScheduleConfirm.normIsoDate(
+        quote.start_date || check.startDate
+      );
+      sourceSnapshot.dueDate = ScheduleConfirm.normIsoDate(
+        quote.due_date || check.dueDate
+      );
+      sourceSnapshot.scheduleConfirmedAt = "";
+      sourceSnapshot.scheduleConfirmedStart = "";
+      sourceSnapshot.scheduleConfirmedDue = "";
+      sourceSnapshot.scheduleConfirmed = false;
+      if (sourceSnapshot.contractSetup?.setup) {
+        sourceSnapshot.contractSetup.setup.schedule_confirmed_at = null;
+        sourceSnapshot.contractSetup.setup.schedule_confirmed_start_date = null;
+        sourceSnapshot.contractSetup.setup.schedule_confirmed_due_date = null;
+        sourceSnapshot.contractSetup.setup.schedule_confirmed_by = null;
+      }
+    }
+    draftEdits.startDate = sourceSnapshot.startDate;
+    draftEdits.dueDate = sourceSnapshot.dueDate;
+    ScheduleConfirm.clearConfirmationOnDateChange(draftEdits);
+    ScheduleConfirm.clearStoredConfirmation(
+      sourceSnapshot?.projectId,
+      sourceSnapshot?.quoteId
+    );
+    draftBaseline = cloneEdits({
+      ...sourceSnapshot,
+      ...draftEdits,
+    });
+    renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
+    return res.data;
+  }
+
   function looksLikeTechnicalQaLabel(text) {
     const t = String(text || "");
     if (!t.trim()) return false;
@@ -4522,19 +4620,13 @@
     const scheduleAt = sourceSnapshot.paymentSchedule?.schedule?.updated_at;
     if (setupAt) body.expected_setup_updated_at = setupAt;
     if (scheduleAt) body.expected_schedule_updated_at = scheduleAt;
-    // CH-012F — freeze confirmed Article 8 dates into immutable snapshot.
-    const scheduleCheck = validateScheduleDatesClient(
-      draftEdits?.startDate,
-      draftEdits?.dueDate
-    );
-    if (!scheduleCheck.complete || !scheduleConfigured()) {
+    // CH-012H — freeze authority is the server confirmation + quote dates.
+    // Do not send browser flags or dates as freeze authority.
+    if (!scheduleConfigured()) {
       throw new Error(
-        scheduleCheck.errors[0] ||
-          "Estimated start and completion dates must be confirmed before freezing."
+        "Estimated start and completion dates must be confirmed before freezing."
       );
     }
-    body.confirmed_start_date = scheduleCheck.startDate;
-    body.confirmed_due_date = scheduleCheck.dueDate;
     // Live fixture / repair policy: quote fill-once is Sales/Create Schedule only.
     // Article 8 confirmed dates go to freeze snapshot only — never rewrite accepted quote here.
 
