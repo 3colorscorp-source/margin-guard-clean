@@ -92,16 +92,30 @@ test("SQL forward, rollback, and VERIFY are prepared and read-only VERIFY", () =
   assert.ok(sql.includes("schedule_confirmed_by uuid"));
   assert.ok(sql.includes("references public.profiles"));
   assert.ok(sql.includes("confirm_project_estimated_schedule"));
-  assert.ok(sql.includes("apply_quote_schedule_date_change"));
+  assert.ok(sql.includes("trg_quotes_invalidate_estimated_schedule"));
+  assert.ok(sql.includes("invalidate_estimated_schedule_on_quote_date_change"));
+  assert.ok(!/create or replace function public\.apply_quote_schedule_date_change/i.test(sql));
+  assert.ok(!rollback.includes("apply_quote_schedule_date_change"));
   assert.ok(sql.includes("tenant_id + project_id + quote_id") || sql.includes("tenant_id, project_id, quote_id"));
   assert.ok(rollback.includes("drop column if exists schedule_confirmed_at"));
   assert.ok(rollback.includes("drop function if exists public.confirm_project_estimated_schedule"));
-  assert.ok(rollback.includes("drop function if exists public.apply_quote_schedule_date_change"));
+  assert.ok(rollback.includes("drop function if exists public.invalidate_estimated_schedule_on_quote_date_change"));
   assert.ok(verify.includes("READ ONLY") || verify.includes("SELECT only"));
   assert.ok(!/insert into|update public|delete from/i.test(verify));
   assert.ok(sql.includes("to service_role"));
   assert.ok(sql.includes("from anon"));
   assert.ok(sql.includes("from authenticated"));
+  assert.ok(sql.includes("p.id = p_confirmed_by"));
+  assert.ok(sql.includes("p.tenant_id = p_tenant_id"));
+  assert.ok(sql.includes("p.status = 'active'"));
+  assert.ok(sql.includes("p.role in ('owner', 'admin')"));
+  assert.ok(verify.includes("confirm_execute_service_role_only"));
+  assert.ok(verify.includes("trigger_fn_no_client_execute"));
+  assert.ok(verify.includes("security_definer_search_path_ok"));
+  assert.ok(verify.includes("confirm_validates_owner_admin"));
+  assert.ok(verify.includes("quote_date_trigger_ok"));
+  assert.ok(verify.includes("unused_rpc_absent"));
+  assert.ok(verify.includes("proname = 'apply_quote_schedule_date_change'"));
 });
 
 test("1. confirmation persists across reload because GET reads schedule_confirmed_at", () => {

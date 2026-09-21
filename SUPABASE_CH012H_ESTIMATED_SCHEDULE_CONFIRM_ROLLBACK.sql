@@ -2,8 +2,9 @@
 -- Margin Guard | CH-012H rollback — drop estimated schedule confirmation
 -- =============================================================================
 -- STATUS: PREPARED — DO NOT APPLY unless CH-012H was applied.
--- Drops only CH-012H columns, constraints, and RPCs. Does not touch Article 7,
--- payment schedules, Invoice Hub, ledger, or frozen snapshots.
+-- Drops only CH-012H columns, constraints, confirm RPC, and the quotes
+-- date-change trigger. Does not touch Article 7, payment schedules,
+-- Invoice Hub, ledger, or frozen snapshots.
 -- =============================================================================
 
 begin;
@@ -25,7 +26,6 @@ $preflight$;
 drop trigger if exists trg_quotes_invalidate_estimated_schedule on public.quotes;
 drop function if exists public.invalidate_estimated_schedule_on_quote_date_change();
 drop function if exists public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid);
-drop function if exists public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean);
 
 alter table public.project_contract_setups
   drop constraint if exists project_contract_setups_schedule_confirm_consistency;
@@ -48,7 +48,6 @@ begin
     where n.nspname = 'public'
       and p.proname in (
         'confirm_project_estimated_schedule',
-        'apply_quote_schedule_date_change',
         'invalidate_estimated_schedule_on_quote_date_change'
       )
   ) then

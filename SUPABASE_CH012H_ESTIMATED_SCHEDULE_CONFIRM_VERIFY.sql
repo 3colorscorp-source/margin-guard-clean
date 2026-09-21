@@ -68,24 +68,88 @@ SELECT
   ) AS confirm_copies_quote_dates,
   (
     position(
-      'CH-012H-INVALIDATE-BEGIN'
+      $q$p.id = p_confirmed_by$q$
       in pg_get_functiondef(
-        'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
     AND position(
-      'schedule_confirmed_at = null'
+      $q$p.tenant_id = p_tenant_id$q$
       in pg_get_functiondef(
-        'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
     AND position(
-      'tenant_id = p_tenant_id'
+      $q$p.status = 'active'$q$
       in pg_get_functiondef(
-        'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
-  ) AS invalidate_is_isolated,
+    AND position(
+      $q$p.role in ('owner', 'admin')$q$
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
+  ) AS confirm_validates_owner_admin,
+  (
+    EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'confirm_project_estimated_schedule'
+        AND p.prosecdef IS TRUE
+        AND array_to_string(coalesce(p.proconfig, array[]::text[]), ' ')
+          LIKE '%search_path%pg_catalog%public%'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'invalidate_estimated_schedule_on_quote_date_change'
+        AND p.prosecdef IS TRUE
+        AND array_to_string(coalesce(p.proconfig, array[]::text[]), ' ')
+          LIKE '%search_path%pg_catalog%public%'
+    )
+  ) AS security_definer_search_path_ok,
+  (
+    EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'confirm_project_estimated_schedule'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee = 'service_role'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'confirm_project_estimated_schedule'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'confirm_project_estimated_schedule'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee NOT IN ('service_role', 'postgres')
+    )
+  ) AS confirm_execute_service_role_only,
+  (
+    NOT EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'invalidate_estimated_schedule_on_quote_date_change'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
+    )
+  ) AS trigger_fn_no_client_execute,
   EXISTS (
     SELECT 1
     FROM pg_trigger t
@@ -97,35 +161,14 @@ SELECT
       AND t.tgenabled <> 'D'
   ) AS quote_date_trigger_ok,
   (
-    EXISTS (
+    NOT EXISTS (
       SELECT 1
-      FROM information_schema.routine_privileges rp
-      WHERE rp.specific_schema = 'public'
-        AND rp.routine_name = 'confirm_project_estimated_schedule'
-        AND rp.privilege_type = 'EXECUTE'
-        AND rp.grantee = 'service_role'
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'apply_quote_schedule_date_change'
     )
-    AND EXISTS (
-      SELECT 1
-      FROM information_schema.routine_privileges rp
-      WHERE rp.specific_schema = 'public'
-        AND rp.routine_name = 'apply_quote_schedule_date_change'
-        AND rp.privilege_type = 'EXECUTE'
-        AND rp.grantee = 'service_role'
-    )
-    AND NOT EXISTS (
-      SELECT 1
-      FROM information_schema.routine_privileges rp
-      WHERE rp.specific_schema = 'public'
-        AND rp.routine_name IN (
-          'confirm_project_estimated_schedule',
-          'apply_quote_schedule_date_change',
-          'invalidate_estimated_schedule_on_quote_date_change'
-        )
-        AND rp.privilege_type = 'EXECUTE'
-        AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
-    )
-  ) AS execute_grants_ok,
+  ) AS unused_rpc_absent,
   (
     EXISTS (
       SELECT 1 FROM information_schema.columns
@@ -172,17 +215,49 @@ SELECT
       )
     ) > 0
     AND position(
-      'CH-012H-INVALIDATE-BEGIN'
+      $q$p.id = p_confirmed_by$q$
       in pg_get_functiondef(
-        'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
     AND position(
-      'CH-012H-TRIGGER-BEGIN'
+      $q$p.tenant_id = p_tenant_id$q$
       in pg_get_functiondef(
-        'public.invalidate_estimated_schedule_on_quote_date_change()'::regprocedure
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
+    AND position(
+      $q$p.status = 'active'$q$
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
+    AND position(
+      $q$p.role in ('owner', 'admin')$q$
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
+    AND EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'confirm_project_estimated_schedule'
+        AND p.prosecdef IS TRUE
+        AND array_to_string(coalesce(p.proconfig, array[]::text[]), ' ')
+          LIKE '%search_path%pg_catalog%public%'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'invalidate_estimated_schedule_on_quote_date_change'
+        AND p.prosecdef IS TRUE
+        AND array_to_string(coalesce(p.proconfig, array[]::text[]), ' ')
+          LIKE '%search_path%pg_catalog%public%'
+    )
     AND EXISTS (
       SELECT 1
       FROM information_schema.routine_privileges rp
@@ -195,11 +270,23 @@ SELECT
       SELECT 1
       FROM information_schema.routine_privileges rp
       WHERE rp.specific_schema = 'public'
-        AND rp.routine_name IN (
-          'confirm_project_estimated_schedule',
-          'apply_quote_schedule_date_change',
-          'invalidate_estimated_schedule_on_quote_date_change'
-        )
+        AND rp.routine_name = 'confirm_project_estimated_schedule'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'confirm_project_estimated_schedule'
+        AND rp.privilege_type = 'EXECUTE'
+        AND rp.grantee NOT IN ('service_role', 'postgres')
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM information_schema.routine_privileges rp
+      WHERE rp.specific_schema = 'public'
+        AND rp.routine_name = 'invalidate_estimated_schedule_on_quote_date_change'
         AND rp.privilege_type = 'EXECUTE'
         AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
     )
@@ -212,5 +299,12 @@ SELECT
         AND c.relname = 'quotes'
         AND t.tgname = 'trg_quotes_invalidate_estimated_schedule'
         AND t.tgenabled <> 'D'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'apply_quote_schedule_date_change'
     )
   ) AS ch012h_verify_pass;

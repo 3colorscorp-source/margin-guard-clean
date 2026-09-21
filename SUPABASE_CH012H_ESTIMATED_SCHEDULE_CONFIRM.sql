@@ -11,8 +11,8 @@
 --   * project_contract_setups.schedule_confirmed_due_date
 --   * project_contract_setups.schedule_confirmed_by  (FK → public.profiles)
 --   * confirm_project_estimated_schedule(...)
---   * apply_quote_schedule_date_change(...)
 --   * trg_quotes_invalidate_estimated_schedule (AFTER UPDATE OF start_date, due_date)
+--   * invalidate_estimated_schedule_on_quote_date_change()
 --
 -- KEY: tenant_id + project_id + quote_id
 -- Confirmation copies quotes.start_date / quotes.due_date. Browser dates are
@@ -166,6 +166,8 @@ begin
     from public.profiles p
     where p.id = p_confirmed_by
       and p.tenant_id = p_tenant_id
+      and p.status = 'active'
+      and p.role in ('owner', 'admin')
   ) then
     raise exception 'MG_ERR:membership_not_found:Owner or admin membership required';
   end if;
@@ -280,122 +282,7 @@ end;
 $$;
 
 comment on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid) is
-  'CH-012H: stamp estimated schedule confirmation from quotes.start_date/due_date. Service-role only. Browser dates are ignored.';
-
-create or replace function public.apply_quote_schedule_date_change(
-  p_tenant_id uuid,
-  p_quote_id uuid,
-  p_start_date date,
-  p_due_date date,
-  p_update_start boolean,
-  p_update_due boolean
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path to pg_catalog, public
-as $$
-declare
-  v_quote record;
-  v_now timestamptz := now();
-  v_next_start date;
-  v_next_due date;
-  v_changed boolean := false;
-  v_cleared integer := 0;
-  v_row_count integer := 0;
-begin
-  -- CH-012H-INVALIDATE-BEGIN
-  if p_tenant_id is null or p_quote_id is null then
-    raise exception 'MG_ERR:invalid_quote_id:Invalid quote_id';
-  end if;
-
-  if p_update_start is not true and p_update_due is not true then
-    raise exception 'MG_ERR:no_edit_fields:No editable fields provided.';
-  end if;
-
-  perform pg_advisory_xact_lock(
-    hashtext(p_tenant_id::text || ':' || p_quote_id::text)
-  );
-
-  select q.id, q.tenant_id, q.start_date, q.due_date
-  into v_quote
-  from public.quotes q
-  where q.id = p_quote_id
-    and q.tenant_id = p_tenant_id
-  limit 1;
-
-  if v_quote.id is null then
-    raise exception 'MG_ERR:quote_not_found:Quote not found';
-  end if;
-
-  v_next_start := v_quote.start_date;
-  v_next_due := v_quote.due_date;
-
-  if p_update_start is true then
-    v_next_start := p_start_date;
-  end if;
-  if p_update_due is true then
-    v_next_due := p_due_date;
-  end if;
-
-  if v_next_start is not null
-     and v_next_due is not null
-     and v_next_due < v_next_start then
-    raise exception
-      'MG_ERR:schedule_completion_before_start:Completion date must be on or after the start date.';
-  end if;
-
-  v_changed :=
-    (v_next_start is distinct from v_quote.start_date)
-    or (v_next_due is distinct from v_quote.due_date);
-
-  if v_changed then
-    update public.quotes q
-    set
-      start_date = v_next_start,
-      due_date = v_next_due,
-      updated_at = v_now
-    where q.id = p_quote_id
-      and q.tenant_id = p_tenant_id;
-
-    get diagnostics v_row_count = row_count;
-    if v_row_count <> 1 then
-      raise exception 'MG_ERR:save_failed:Quote schedule date save failed';
-    end if;
-
-    update public.project_contract_setups s
-    set
-      schedule_confirmed_at = null,
-      schedule_confirmed_start_date = null,
-      schedule_confirmed_due_date = null,
-      schedule_confirmed_by = null,
-      updated_at = v_now
-    where s.tenant_id = p_tenant_id
-      and s.quote_id = p_quote_id
-      and s.project_id in (
-        select tp.id
-        from public.tenant_projects tp
-        where tp.tenant_id = p_tenant_id
-          and tp.quote_id = p_quote_id
-      );
-
-    get diagnostics v_cleared = row_count;
-  end if;
-
-  return jsonb_build_object(
-    'quote_id', p_quote_id,
-    'tenant_id', p_tenant_id,
-    'start_date', v_next_start,
-    'due_date', v_next_due,
-    'changed', v_changed,
-    'confirmation_cleared', (v_changed and v_cleared >= 0)
-  );
-  -- CH-012H-INVALIDATE-END
-end;
-$$;
-
-comment on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean) is
-  'CH-012H: update quote start/due and clear matching estimated-schedule confirmation in one transaction. Service-role only.';
+  'CH-012H: stamp estimated schedule confirmation from quotes.start_date/due_date. Service-role only. Browser dates are ignored. Confirmer must be an active Owner/Admin on the same tenant.';
 
 create or replace function public.invalidate_estimated_schedule_on_quote_date_change()
 returns trigger
@@ -443,21 +330,14 @@ execute function public.invalidate_estimated_schedule_on_quote_date_change();
 
 alter function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid)
   owner to postgres;
-alter function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean)
-  owner to postgres;
 alter function public.invalidate_estimated_schedule_on_quote_date_change()
   owner to postgres;
 
 revoke all on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid) from public;
 revoke all on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid) from anon;
 revoke all on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid) from authenticated;
-revoke all on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean) from public;
-revoke all on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean) from anon;
-revoke all on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean) from authenticated;
 
 grant execute on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid)
-  to service_role;
-grant execute on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean)
   to service_role;
 
 revoke all on function public.invalidate_estimated_schedule_on_quote_date_change() from public;
@@ -532,12 +412,32 @@ begin
   end if;
 
   if position(
-       'CH-012H-INVALIDATE-BEGIN'
-       in pg_get_functiondef(
-         'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
-       )
+       $q$p.id = p_confirmed_by$q$
+       in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
+     ) = 0
+     or position(
+       $q$p.tenant_id = p_tenant_id$q$
+       in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
+     ) = 0
+     or position(
+       $q$p.status = 'active'$q$
+       in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
+     ) = 0
+     or position(
+       $q$p.role in ('owner', 'admin')$q$
+       in pg_get_functiondef('public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure)
      ) = 0 then
-    raise exception 'CH-012H postflight failed: invalidate function markers missing';
+    raise exception 'CH-012H postflight failed: confirmer tenant/active/owner-admin check missing';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'apply_quote_schedule_date_change'
+  ) then
+    raise exception 'CH-012H postflight failed: unused apply_quote_schedule_date_change must not exist';
   end if;
 
   if position(
