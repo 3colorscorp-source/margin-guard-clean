@@ -1576,8 +1576,9 @@
             item.id = optionId(visible.length);
             item.className = "sup-combo__option";
             item.setAttribute("aria-selected", value === selectedValue ? "true" : "false");
-            item.setAttribute("data-value", value);
             var title = parts.name || haystack;
+            item.setAttribute("data-value", value);
+            item.setAttribute("aria-label", parts.client ? title + ", " + parts.client : title);
             item.title = title;
 
             var check = document.createElementNS("http://www.w3.org/2000/svg", "svg");
