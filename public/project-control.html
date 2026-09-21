@@ -6,27 +6,70 @@
   <title>Margin Guard | Project Control Center™</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
+    body[data-mg-page-title="Project Control"] {
+      --pcc-navy: #0b1220;
+      --pcc-surface: #101826;
+      --pcc-surface-2: #141e2e;
+      --pcc-border: rgba(148, 163, 184, 0.16);
+      --pcc-text: #f1f5f9;
+      --pcc-muted: #94a3b8;
+      --pcc-emerald: #10b981;
+      --pcc-amber: #f59e0b;
+      --pcc-red: #ef4444;
+    }
+
     .pcc-hero {
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(180deg, #121b2b 0%, #101826 100%);
+      border: 1px solid var(--pcc-border, rgba(148, 163, 184, 0.16));
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
     }
     .pcc-hero .card-inner {
-      padding-top: 12px;
-      padding-bottom: 12px;
+      padding: 8px 16px;
     }
     .pcc-hero-head {
       display: block;
     }
     .pcc-hero-head .section-head {
+      display: block;
       min-width: 0;
+      margin: 0;
+      gap: 0;
+    }
+    .pcc-hero-head .section-head > div {
+      max-width: 100%;
+    }
+    .pcc-hero-head .eyebrow {
+      display: inline-block;
+      width: max-content;
+      max-width: 100%;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--pcc-emerald, #10b981);
+      margin: 0 0 4px;
+      padding: 3px 10px;
     }
     .pcc-hero-head .hero-title {
-      font-size: clamp(1.35rem, 2.5vw, 1.75rem);
-      margin-bottom: 4px;
+      font-size: clamp(1.2rem, 2vw, 1.45rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--pcc-text, #f1f5f9);
+      margin: 0 0 4px;
+      line-height: 1.15;
     }
     .pcc-hero-head .sub {
       font-size: 0.875rem;
-      max-width: 56ch;
-      line-height: 1.45;
+      max-width: none;
+      line-height: 1.35;
+      color: var(--pcc-muted, #94a3b8);
+      white-space: normal;
+    }
+    @media (min-width: 1024px) {
+      .pcc-hero-head .sub {
+        white-space: nowrap;
+      }
     }
 
     /* KPI row — compact owner strip (#pccSummary only) */
@@ -42,20 +85,20 @@
       }
     }
 
+    body[data-mg-page-title="Project Control"] .pcc-kpi,
     .pcc-kpi {
       position: relative;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
+      gap: 12px;
+      min-height: 84px;
+      padding: 12px 14px;
       border-radius: 14px;
-      background: linear-gradient(165deg, #fafbfc 0%, #f0f2f6 100%);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      box-shadow:
-        0 8px 20px rgba(0, 0, 0, 0.22),
-        0 0 0 1px rgba(13, 20, 34, 0.06),
-        inset 0 1px 0 rgba(255, 255, 255, 0.85);
+      background: #101826;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
       overflow: hidden;
+      pointer-events: none;
     }
     .pcc-kpi::before {
       content: "";
@@ -65,41 +108,41 @@
       top: 0;
       height: 3px;
       border-radius: 14px 14px 0 0;
-      opacity: 0.95;
+      opacity: 1;
     }
-    .pcc-kpi--active::before { background: linear-gradient(90deg, #0f8a5f, #12a06e); box-shadow: 0 0 24px rgba(15, 138, 95, 0.35); }
-    .pcc-kpi--ontrack::before { background: linear-gradient(90deg, #0d8a55, #1eb87a); box-shadow: 0 0 24px rgba(14, 160, 100, 0.32); }
-    .pcc-kpi--risk::before { background: linear-gradient(90deg, #d97706, #f59e0b); box-shadow: 0 0 24px rgba(217, 119, 6, 0.28); }
-    .pcc-kpi--delayed::before { background: linear-gradient(90deg, #c83232, #e85d5d); box-shadow: 0 0 24px rgba(200, 50, 50, 0.28); }
+    .pcc-kpi--active::before { background: #10b981; }
+    .pcc-kpi--ontrack::before { background: #10b981; }
+    .pcc-kpi--risk::before { background: #f59e0b; }
+    .pcc-kpi--delayed::before { background: #ef4444; }
 
     .pcc-kpi__icon {
       flex: 0 0 auto;
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .pcc-kpi__icon svg {
-      width: 17px;
-      height: 17px;
+      width: 18px;
+      height: 18px;
     }
     .pcc-kpi--active .pcc-kpi__icon {
-      background: rgba(15, 138, 95, 0.14);
-      color: #0a5c40;
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
     }
     .pcc-kpi--ontrack .pcc-kpi__icon {
-      background: rgba(14, 160, 100, 0.16);
-      color: #065f3a;
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
     }
     .pcc-kpi--risk .pcc-kpi__icon {
-      background: rgba(217, 119, 6, 0.16);
-      color: #92400e;
+      background: rgba(245, 158, 11, 0.16);
+      color: #fbbf24;
     }
     .pcc-kpi--delayed .pcc-kpi__icon {
-      background: rgba(200, 50, 50, 0.14);
-      color: #991b1b;
+      background: rgba(239, 68, 68, 0.16);
+      color: #f87171;
     }
 
     .pcc-kpi__text {
@@ -107,23 +150,25 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      padding-top: 2px;
+      gap: 2px;
+      padding-top: 0;
     }
+    body[data-mg-page-title="Project Control"] .pcc-kpi__label,
     .pcc-kpi__label {
-      font-size: 0.68rem;
+      font-size: 0.66rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: #5c6578;
+      color: #94a3b8;
       line-height: 1.2;
     }
+    body[data-mg-page-title="Project Control"] .pcc-kpi__value,
     .pcc-kpi__value {
-      font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+      font-size: clamp(1.4rem, 2.4vw, 1.85rem);
       font-weight: 800;
       line-height: 1.05;
       letter-spacing: -0.03em;
-      color: #0d1422;
+      color: #f8fafc;
     }
     .pcc-kpi__hint {
       display: none;
@@ -132,40 +177,223 @@
     .pcc-row-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
       align-items: center;
       justify-content: flex-end;
       min-width: 0;
     }
     .pcc-row-actions .btn {
       font-size: 0.8125rem;
-      padding: 6px 10px;
+      padding: 8px 12px;
+      min-height: 40px;
       white-space: nowrap;
+    }
+    .pcc-row-actions .btn:focus-visible,
+    .pcc-filter-btn:focus-visible {
+      outline: 2px solid #34d399;
+      outline-offset: 2px;
+    }
+    .pcc-view-financial.btn.primary {
+      background: #0f8a5f;
+      border-color: #0f8a5f;
+      color: #ecfdf5;
+    }
+    .pcc-view-financial.btn.primary:hover {
+      background: #12a06e;
+      border-color: #12a06e;
+    }
+    .pcc-view-reports {
+      background: #141e2e;
+      border-color: rgba(148, 163, 184, 0.22);
+      color: #e2e8f0;
+    }
+    .pcc-view-reports:hover {
+      background: #1a2740;
+      border-color: rgba(148, 163, 184, 0.34);
     }
 
     .pcc-remove {
       font-size: 0.75rem;
-      color: #7f1d1d;
-      border-color: rgba(127, 29, 29, 0.2);
-      opacity: 0.9;
+      color: #fca5a5;
+      background: transparent;
+      border-color: rgba(239, 68, 68, 0.32);
+      opacity: 0.92;
     }
 
     .pcc-remove:hover {
-      background: rgba(127, 29, 29, 0.06);
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.45);
     }
 
     .pcc-progress-cell {
       font-size: 0.8125rem;
       line-height: 1.35;
-      color: rgba(232, 238, 252, 0.88);
+      color: rgba(226, 232, 240, 0.88);
       white-space: nowrap;
     }
+    .pcc-progress-track {
+      display: block;
+      width: 100%;
+      max-width: 148px;
+      height: 4px;
+      margin-top: 6px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.28);
+      overflow: hidden;
+    }
+    .pcc-progress-fill {
+      display: block;
+      height: 100%;
+      max-width: 100%;
+      border-radius: inherit;
+      background: #10b981;
+    }
 
-    .pcc-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
-    .pcc-filter-btn.active { box-shadow: inset 0 0 0 2px var(--accent, #0f8a5f); }
-    .pcc-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border, #e8e8e8); }
+    body[data-mg-page-title="Project Control"] .container > .card:not(.pcc-hero):not(.pcc-detail) {
+      background: #101826;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+    }
+
+    .pcc-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+    .pcc-filter-btn {
+      min-height: 40px;
+      padding: 8px 14px;
+      background: #0c1420;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: #cbd5e1;
+      box-shadow: none;
+    }
+    .pcc-filter-btn:hover {
+      background: #141e2e;
+      border-color: rgba(148, 163, 184, 0.32);
+      color: #f1f5f9;
+    }
+    .pcc-filter-btn.active {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: rgba(16, 185, 129, 0.48);
+      color: #ecfdf5;
+      box-shadow: none;
+    }
+    .pcc-table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      background: #0c1420;
+    }
     .pcc-row { transition: background 0.12s ease; }
-    .pcc-row.selected { background: rgba(15, 138, 95, 0.08); }
+    .pcc-row.selected { background: rgba(16, 185, 129, 0.1); }
+
+    @media (min-width: 641px) {
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table {
+        width: 100%;
+        border-collapse: collapse;
+        background: transparent;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table thead th {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        padding: 9px 12px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        background: #0c1420;
+        text-align: left;
+        white-space: nowrap;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody td {
+        padding: 9px 12px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        vertical-align: middle;
+        color: #e2e8f0;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody tr.pcc-row:last-child td {
+        border-bottom: 0;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody tr.pcc-row:hover {
+        background: rgba(255, 255, 255, 0.025);
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody td:first-child strong {
+        font-size: 0.9375rem;
+        font-weight: 750;
+        color: #f8fafc;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody td:nth-child(2),
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody td:nth-child(3) {
+        color: #94a3b8;
+        font-variant-numeric: tabular-nums;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table th:nth-child(6),
+      body[data-mg-page-title="Project Control"] .pcc-table-wrap .table td:nth-child(6) {
+        text-align: right;
+      }
+    }
+
+    body[data-mg-page-title="Project Control"] .pcc-row .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: #f8fafc;
+    }
+    body[data-mg-page-title="Project Control"] .pcc-row .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      flex: 0 0 auto;
+    }
+    body[data-mg-page-title="Project Control"] .pcc-row .badge.green {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.38);
+      color: #6ee7b7;
+    }
+    body[data-mg-page-title="Project Control"] .pcc-row .badge.amber {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fcd34d;
+    }
+    body[data-mg-page-title="Project Control"] .pcc-row .badge.red {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.38);
+      color: #fca5a5;
+    }
+
+    @media (max-width: 640px) {
+      body[data-mg-page-title="Project Control"] .pcc-row-actions .btn,
+      body[data-mg-page-title="Project Control"] .pcc-filter-btn {
+        min-height: 44px;
+      }
+      body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row {
+        background: #101826;
+        border-color: rgba(148, 163, 184, 0.16);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+        padding: 10px 12px;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-progress-cell {
+        white-space: normal;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-progress-track {
+        max-width: 100%;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pcc-row { transition: none; }
+    }
     .pcc-detail { margin-top: 1.5rem; display: none; }
     .pcc-detail.open { display: block; }
     .pcc-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -1550,12 +1778,19 @@
           var m = row.metrics;
           var sel = selectedId === String(p.id) ? ' selected' : '';
           var tone = m.tone === 'green' ? 'green' : (m.tone === 'yellow' ? 'amber' : 'red');
+          var progressBar = '';
+          if (m.progressPct != null && isFinite(Number(m.progressPct))) {
+            var barPct = Math.round(Number(m.progressPct));
+            if (barPct < 0) barPct = 0;
+            if (barPct > 100) barPct = 100;
+            progressBar = '<span class="pcc-progress-track" aria-hidden="true"><span class="pcc-progress-fill" style="width:' + barPct + '%"></span></span>';
+          }
           return (
             '<tr class="pcc-row' + sel + '" data-id="' + esc(p.id) + '">' +
             '<td><strong>' + esc(p.projectName || '—') + '</strong></td>' +
             '<td>' + esc(p.clientName || '—') + '</td>' +
             '<td>' + esc(fmtDate(m.dueDate)) + '</td>' +
-            '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + '</td>' +
+            '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + progressBar + '</td>' +
             '<td><span class="badge ' + tone + '"' +
             (m.serverOpAligned ? ' data-pcc-op-source="server"' : '') + '>' +
             esc(m.statusLabel) + '</span></td>' +
