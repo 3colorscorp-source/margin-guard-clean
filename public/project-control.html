@@ -19,43 +19,57 @@
     }
 
     .pcc-hero {
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
       background: linear-gradient(180deg, #121b2b 0%, #101826 100%);
       border: 1px solid var(--pcc-border, rgba(148, 163, 184, 0.16));
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
     }
     .pcc-hero .card-inner {
-      padding-top: 14px;
-      padding-bottom: 14px;
+      padding: 8px 16px;
     }
     .pcc-hero-head {
       display: block;
     }
     .pcc-hero-head .section-head {
+      display: block;
       min-width: 0;
+      margin: 0;
+      gap: 0;
+    }
+    .pcc-hero-head .section-head > div {
+      max-width: 100%;
     }
     .pcc-hero-head .eyebrow {
-      display: block;
+      display: inline-block;
+      width: max-content;
+      max-width: 100%;
       font-size: 0.68rem;
       font-weight: 800;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--pcc-emerald, #10b981);
-      margin-bottom: 6px;
+      margin: 0 0 4px;
+      padding: 3px 10px;
     }
     .pcc-hero-head .hero-title {
-      font-size: clamp(1.35rem, 2.4vw, 1.7rem);
+      font-size: clamp(1.2rem, 2vw, 1.45rem);
       font-weight: 800;
       letter-spacing: -0.02em;
       color: var(--pcc-text, #f1f5f9);
-      margin: 0 0 6px;
+      margin: 0 0 4px;
       line-height: 1.15;
     }
     .pcc-hero-head .sub {
       font-size: 0.875rem;
-      max-width: 62ch;
-      line-height: 1.45;
+      max-width: none;
+      line-height: 1.35;
       color: var(--pcc-muted, #94a3b8);
+      white-space: normal;
+    }
+    @media (min-width: 1024px) {
+      .pcc-hero-head .sub {
+        white-space: nowrap;
+      }
     }
 
     /* KPI row — compact owner strip (#pccSummary only) */
@@ -218,6 +232,23 @@
       color: rgba(226, 232, 240, 0.88);
       white-space: nowrap;
     }
+    .pcc-progress-track {
+      display: block;
+      width: 100%;
+      max-width: 148px;
+      height: 4px;
+      margin-top: 6px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.28);
+      overflow: hidden;
+    }
+    .pcc-progress-fill {
+      display: block;
+      height: 100%;
+      max-width: 100%;
+      border-radius: inherit;
+      background: #10b981;
+    }
 
     body[data-mg-page-title="Project Control"] .container > .card:not(.pcc-hero):not(.pcc-detail) {
       background: #101826;
@@ -272,14 +303,14 @@
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: #94a3b8;
-        padding: 11px 12px;
+        padding: 9px 12px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.14);
         background: #0c1420;
         text-align: left;
         white-space: nowrap;
       }
       body[data-mg-page-title="Project Control"] .pcc-table-wrap .table tbody td {
-        padding: 13px 12px;
+        padding: 9px 12px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.08);
         vertical-align: middle;
         color: #e2e8f0;
@@ -350,9 +381,13 @@
         background: #101826;
         border-color: rgba(148, 163, 184, 0.16);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+        padding: 10px 12px;
       }
       body[data-mg-page-title="Project Control"] .pcc-progress-cell {
         white-space: normal;
+      }
+      body[data-mg-page-title="Project Control"] .pcc-progress-track {
+        max-width: 100%;
       }
     }
 
@@ -1743,12 +1778,19 @@
           var m = row.metrics;
           var sel = selectedId === String(p.id) ? ' selected' : '';
           var tone = m.tone === 'green' ? 'green' : (m.tone === 'yellow' ? 'amber' : 'red');
+          var progressBar = '';
+          if (m.progressPct != null && isFinite(Number(m.progressPct))) {
+            var barPct = Math.round(Number(m.progressPct));
+            if (barPct < 0) barPct = 0;
+            if (barPct > 100) barPct = 100;
+            progressBar = '<span class="pcc-progress-track" aria-hidden="true"><span class="pcc-progress-fill" style="width:' + barPct + '%"></span></span>';
+          }
           return (
             '<tr class="pcc-row' + sel + '" data-id="' + esc(p.id) + '">' +
             '<td><strong>' + esc(p.projectName || '—') + '</strong></td>' +
             '<td>' + esc(p.clientName || '—') + '</td>' +
             '<td>' + esc(fmtDate(m.dueDate)) + '</td>' +
-            '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + '</td>' +
+            '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + progressBar + '</td>' +
             '<td><span class="badge ' + tone + '"' +
             (m.serverOpAligned ? ' data-pcc-op-source="server"' : '') + '>' +
             esc(m.statusLabel) + '</span></td>' +
