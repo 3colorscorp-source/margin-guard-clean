@@ -19659,6 +19659,80 @@ window.renderSupervisor = renderSupervisor;
         commissionEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
       }
     }
+    saRenderPerformanceChart(converted, settings);
+  }
+
+  function saUtcMonthKey(date) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function saSignedAtMonthKey(signedAt) {
+    const raw = String(signedAt || "").trim();
+    if (!raw) return "";
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return saUtcMonthKey(parsed);
+    const m = raw.match(/^(\d{4})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}` : "";
+  }
+
+  function saBuildLaborSoldMonthBuckets(convertedRows) {
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const buckets = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const year = d.getUTCFullYear();
+      const short = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+      buckets.push({
+        key: saUtcMonthKey(d),
+        year,
+        label: year === currentYear ? short : `${short} '${String(year).slice(-2)}`,
+        isCurrent: i === 0,
+        labor: 0
+      });
+    }
+    const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+    for (const row of Array.isArray(convertedRows) ? convertedRows : []) {
+      const bucket = byKey.get(saSignedAtMonthKey(row.signedAt));
+      if (!bucket) continue;
+      bucket.labor += finiteNumber(row.laborBudget, 0);
+    }
+    return buckets;
+  }
+
+  function saRenderPerformanceChart(convertedRows, settings) {
+    const host = $("saPerfChart");
+    if (!host) return;
+    const currency = settings?.currency || DEFAULTS.currency;
+    const buckets = saBuildLaborSoldMonthBuckets(convertedRows);
+    const max = buckets.reduce((sum, bucket) => Math.max(sum, bucket.labor), 0);
+    host.innerHTML = buckets.map((bucket) => {
+      const pct = max > 0 ? Math.max(0, Math.round((bucket.labor / max) * 100)) : 0;
+      const amount = money(bucket.labor, currency);
+      const label = `${bucket.label} ${bucket.year}: ${amount} labor sold`;
+      const cls = [
+        "sa-perf-bar",
+        bucket.isCurrent ? "is-current" : "",
+        bucket.labor <= 0 ? "is-zero" : ""
+      ].filter(Boolean).join(" ");
+      return (
+        `<button type="button" class="${cls}" style="--h:${pct}%" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
+        `<span class="sa-perf-bar__track">` +
+        `<span class="sa-perf-bar__value">${escapeHtml(amount)}</span>` +
+        `<span class="sa-perf-bar__fill"></span>` +
+        `</span>` +
+        `<span class="sa-perf-bar__label">${escapeHtml(bucket.label)}</span>` +
+        `</button>`
+      );
+    }).join("");
+    host.querySelectorAll(".sa-perf-bar").forEach((el) => {
+      el.onclick = () => {
+        host.querySelectorAll(".sa-perf-bar.is-active").forEach((open) => {
+          if (open !== el) open.classList.remove("is-active");
+        });
+        el.classList.toggle("is-active");
+      };
+    });
   }
 
   function saEstimatedCommissionFromLabor(laborBudget, settings) {

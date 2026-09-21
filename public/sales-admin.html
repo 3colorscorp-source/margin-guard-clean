@@ -1182,6 +1182,114 @@
       background: rgba(255, 255, 255, 0.03);
       border: 1px dashed rgba(255, 255, 255, 0.1);
     }
+    .sa-perf-chart {
+      display: flex;
+      align-items: stretch;
+      gap: 6px;
+      height: 156px;
+      min-height: 156px;
+      padding: 18px 2px 0;
+      margin: 0;
+    }
+    .sa-perf-bar {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .sa-perf-bar__track {
+      flex: 1 1 auto;
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-height: 0;
+    }
+    .sa-perf-bar__fill {
+      width: 68%;
+      max-width: 32px;
+      height: var(--h, 0%);
+      border-radius: 5px 5px 2px 2px;
+      background: rgba(148, 163, 184, 0.42);
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__fill {
+      background: #4ade80;
+    }
+    .sa-perf-bar.is-zero .sa-perf-bar__fill {
+      height: 3px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .sa-perf-bar.is-current.is-zero .sa-perf-bar__fill {
+      background: rgba(74, 222, 128, 0.4);
+    }
+    .sa-perf-bar__label {
+      flex: 0 0 auto;
+      margin-top: 6px;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.55);
+      text-align: center;
+      white-space: nowrap;
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__label {
+      color: #4ade80;
+    }
+    .sa-perf-bar__value {
+      position: absolute;
+      left: 50%;
+      bottom: calc(var(--h, 0%) + 8px);
+      transform: translateX(-50%);
+      z-index: 2;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0b1220;
+      color: #e8eefc;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    }
+    .sa-perf-bar.is-zero .sa-perf-bar__value {
+      bottom: 12px;
+    }
+    .sa-perf-bar:hover .sa-perf-bar__value,
+    .sa-perf-bar:focus-visible .sa-perf-bar__value,
+    .sa-perf-bar.is-active .sa-perf-bar__value {
+      opacity: 1;
+    }
+    .sa-perf-bar:focus-visible {
+      outline: 0;
+    }
+    .sa-perf-bar:focus-visible .sa-perf-bar__fill {
+      box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45);
+    }
+    @media (max-width: 520px) {
+      .sa-perf-chart {
+        height: 132px;
+        min-height: 132px;
+        gap: 4px;
+        padding-top: 16px;
+      }
+      .sa-perf-bar__label {
+        font-size: 0.625rem;
+        letter-spacing: 0.02em;
+      }
+    }
     .sa-pipe {
       list-style: none;
       margin: 0;
@@ -1375,7 +1483,7 @@
             <section class="sa-card" aria-labelledby="saPerfTitle">
               <h3 id="saPerfTitle">Sales Performance</h3>
               <p class="sa-card__sub">Labor sold by month</p>
-              <p class="sa-card__empty">Monthly sales history is not available yet.</p>
+              <div id="saPerfChart" class="sa-perf-chart" aria-label="Labor sold by month, last 6 months"></div>
             </section>
             <section class="sa-card" aria-labelledby="saPipeTitle">
               <h3 id="saPipeTitle">Pipeline</h3>
