@@ -361,7 +361,47 @@ test("no invented today date and no auto-confirm", () => {
   assert.ok(helperSrc.includes("confirm_estimated_schedule: true"));
   assert.ok(helperSrc.includes("SETUP_API"));
   assert.ok(js.includes("saveCanonicalScheduleDates"));
-  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-1"));
+  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-2"));
+});
+
+test("edit date inputs have accessible contrast and a visible calendar icon", () => {
+  const art8CssStart = html.indexOf("#art-schedule .cb-editor input[type=\"date\"]");
+  assert.ok(art8CssStart >= 0, "missing Article 8 date input CSS");
+  const art8Css = html.slice(art8CssStart, html.indexOf("@media print", art8CssStart));
+  assert.ok(art8Css.includes("color: #1c1917"));
+  assert.ok(art8Css.includes("color: #57534e"));
+  assert.ok(art8Css.includes("background-color: #ffffff"));
+  assert.ok(art8Css.includes("color-scheme: light"));
+  assert.ok(art8Css.includes("::-webkit-datetime-edit"));
+  assert.ok(art8Css.includes("::-webkit-calendar-picker-indicator"));
+  assert.ok(art8Css.includes("stroke='%231c1917'"));
+  assert.ok(js.includes("syncScheduleDateInputChrome"));
+  assert.ok(js.includes('el.classList.toggle("is-empty"'));
+});
+
+test("schedule edit footer has exactly one Back and Save Project Dates", () => {
+  const footerFn = slice(js, "function renderWorkspaceFooter", "function articleAllowsOwnerEdit");
+  assert.ok(
+    /"art-schedule": defaultWorkspaceCaps\(\{[\s\S]*?saveLabel: "Save Project Dates"[\s\S]*?cancelLabel: "Back"/.test(
+      js
+    )
+  );
+  assert.ok(footerFn.includes("hideStepBackOnScheduleEdit"));
+  assert.ok(footerFn.includes("if (!hideStepBackOnScheduleEdit)"));
+  const editStart = footerFn.indexOf("if (mode === WS_MODE.EDIT)");
+  const editEnd = footerFn.indexOf(
+    "if (caps.supportsEdit && articleAllowsOwnerEdit",
+    editStart
+  );
+  assert.ok(editStart >= 0 && editEnd > editStart, "missing EDIT footer branch");
+  const editSlice = footerFn.slice(editStart, editEnd);
+  assert.ok(editSlice.includes('id: "cbWsCancel"'));
+  assert.ok(editSlice.includes("caps.cancelLabel"));
+  assert.ok(editSlice.includes('id: "cbWsSave"'));
+  assert.ok(editSlice.includes("caps.saveLabel"));
+  assert.ok(!editSlice.includes('id: "cbStepBack"'));
+  assert.strictEqual((editSlice.match(/id: "cbWsCancel"/g) || []).length, 1);
+  assert.ok(editSlice.includes("return;"));
 });
 
 test("same-day completion is valid", () => {

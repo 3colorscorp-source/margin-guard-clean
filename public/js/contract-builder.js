@@ -769,17 +769,21 @@
     const mode = getArticleMode(activeArticleId);
     const busy = workspaceBusy || mode === WS_MODE.SAVING || mode === WS_MODE.SAVED;
 
-    actions.appendChild(
-      createFooterButton({
-        id: "cbStepBack",
-        label: "Back",
-        className: "btn ghost",
-        disabled: busy,
-        onClick: () => {
-          void handleWorkspaceBack();
-        },
-      })
-    );
+    const hideStepBackOnScheduleEdit =
+      activeArticleId === "art-schedule" && mode === WS_MODE.EDIT;
+    if (!hideStepBackOnScheduleEdit) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbStepBack",
+          label: "Back",
+          className: "btn ghost",
+          disabled: busy,
+          onClick: () => {
+            void handleWorkspaceBack();
+          },
+        })
+      );
+    }
 
     if (mode === WS_MODE.SAVING) {
       actions.appendChild(
@@ -1301,6 +1305,14 @@
 
   function currentScheduleDates() {
     return ScheduleConfirm.datesFromSource(sourceSnapshot, draftEdits);
+  }
+
+  function syncScheduleDateInputChrome() {
+    ["cbEditStart", "cbEditDue"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.classList.toggle("is-empty", !String(el.value || "").trim());
+    });
   }
 
   function currentScheduleView() {
@@ -5058,6 +5070,7 @@
     if ($("cbSigEditMethod")) $("cbSigEditMethod").value = normalizeSignatureMethod(edits.sigMethod);
     if ($("cbEditStart")) $("cbEditStart").value = edits.startDate || "";
     if ($("cbEditDue")) $("cbEditDue").value = edits.dueDate || "";
+    syncScheduleDateInputChrome();
   }
 
   function readEditsFromInputs() {
@@ -5830,6 +5843,7 @@
           updateSignatureLiveHint();
           renderWorkspaceChrome();
         } else if (id === "cbEditStart" || id === "cbEditDue") {
+          syncScheduleDateInputChrome();
           if (sourceSnapshot && draftEdits) {
             renderDocument(sourceSnapshot, draftEdits);
             updateIndexNavStatus();
