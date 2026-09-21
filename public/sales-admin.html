@@ -1182,14 +1182,64 @@
       background: rgba(255, 255, 255, 0.03);
       border: 1px dashed rgba(255, 255, 255, 0.1);
     }
+    .sa-perf-total {
+      margin: -4px 0 10px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: rgba(232, 238, 252, 0.78);
+    }
     .sa-perf-chart {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 8px;
+      height: 196px;
+      min-height: 196px;
+      min-width: 0;
+      margin: 0;
+    }
+    .sa-perf-y {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 26px 0 32px;
+      font-size: 0.625rem;
+      font-weight: 600;
+      line-height: 1;
+      color: rgba(232, 238, 252, 0.48);
+      white-space: nowrap;
+    }
+    .sa-perf-plot {
+      position: relative;
+      min-width: 0;
+      height: 100%;
+    }
+    .sa-perf-grid {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 26px;
+      bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .sa-perf-grid i {
+      display: block;
+      height: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-perf-cols {
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: stretch;
-      gap: 6px;
-      height: 156px;
-      min-height: 156px;
-      padding: 18px 2px 0;
-      margin: 0;
+      gap: 10px;
+      height: 100%;
+      min-width: 0;
+      padding: 26px 0 0;
     }
     .sa-perf-bar {
       flex: 1 1 0;
@@ -1216,25 +1266,55 @@
       min-height: 0;
     }
     .sa-perf-bar__fill {
-      width: 68%;
-      max-width: 32px;
-      height: var(--h, 0%);
-      border-radius: 5px 5px 2px 2px;
+      width: 58%;
+      max-width: 28px;
+      height: 0;
+      border-radius: 6px 6px 0 0;
       background: rgba(148, 163, 184, 0.42);
+      animation: sa-perf-grow 0.55s ease forwards;
     }
     .sa-perf-bar.is-current .sa-perf-bar__fill {
       background: #4ade80;
     }
     .sa-perf-bar.is-zero .sa-perf-bar__fill {
-      height: 3px;
-      background: rgba(255, 255, 255, 0.12);
+      display: none;
+      animation: none;
     }
-    .sa-perf-bar.is-current.is-zero .sa-perf-bar__fill {
-      background: rgba(74, 222, 128, 0.4);
+    .sa-perf-bar__zero {
+      display: none;
+      width: 58%;
+      max-width: 28px;
+      height: 0;
+      border-top: 2px solid rgba(255, 255, 255, 0.22);
+    }
+    .sa-perf-bar.is-zero .sa-perf-bar__zero {
+      display: block;
+    }
+    .sa-perf-bar.is-current.is-zero .sa-perf-bar__zero {
+      border-top-color: rgba(74, 222, 128, 0.7);
+    }
+    .sa-perf-bar__meta {
+      flex: 0 0 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      min-width: 0;
+    }
+    .sa-perf-bar__current {
+      display: none;
+      font-size: 0.5625rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #4ade80;
+      line-height: 1;
+    }
+    .sa-perf-bar.is-current .sa-perf-bar__current {
+      display: block;
     }
     .sa-perf-bar__label {
-      flex: 0 0 auto;
-      margin-top: 6px;
       font-size: 0.6875rem;
       font-weight: 700;
       letter-spacing: 0.04em;
@@ -1242,52 +1322,64 @@
       color: rgba(232, 238, 252, 0.55);
       text-align: center;
       white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .sa-perf-bar.is-current .sa-perf-bar__label {
       color: #4ade80;
     }
-    .sa-perf-bar__value {
+    .sa-perf-tip {
       position: absolute;
-      left: 50%;
-      bottom: calc(var(--h, 0%) + 8px);
-      transform: translateX(-50%);
-      z-index: 2;
-      padding: 4px 6px;
+      z-index: 3;
+      max-width: calc(100% - 8px);
+      padding: 5px 8px;
       border-radius: 6px;
       border: 1px solid rgba(255, 255, 255, 0.12);
       background: #0b1220;
       color: #e8eefc;
       font-size: 0.6875rem;
       font-weight: 700;
+      line-height: 1.3;
       white-space: nowrap;
-      opacity: 0;
       pointer-events: none;
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-    }
-    .sa-perf-bar.is-zero .sa-perf-bar__value {
-      bottom: 12px;
-    }
-    .sa-perf-bar:hover .sa-perf-bar__value,
-    .sa-perf-bar:focus-visible .sa-perf-bar__value,
-    .sa-perf-bar.is-active .sa-perf-bar__value {
-      opacity: 1;
     }
     .sa-perf-bar:focus-visible {
       outline: 0;
     }
-    .sa-perf-bar:focus-visible .sa-perf-bar__fill {
+    .sa-perf-bar:focus-visible .sa-perf-bar__track {
       box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45);
+      border-radius: 6px;
+    }
+    @keyframes sa-perf-grow {
+      from { height: 0; }
+      to { height: var(--h, 0%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .sa-perf-bar__fill {
+        animation: none;
+        height: var(--h, 0%);
+      }
     }
     @media (max-width: 520px) {
       .sa-perf-chart {
-        height: 132px;
-        min-height: 132px;
-        gap: 4px;
-        padding-top: 16px;
+        height: 176px;
+        min-height: 176px;
+        column-gap: 6px;
+      }
+      .sa-perf-y {
+        font-size: 0.5625rem;
+      }
+      .sa-perf-cols {
+        gap: 6px;
       }
       .sa-perf-bar__label {
         font-size: 0.625rem;
         letter-spacing: 0.02em;
+      }
+      .sa-perf-tip {
+        white-space: normal;
       }
     }
     .sa-pipe {
@@ -1483,6 +1575,7 @@
             <section class="sa-card" aria-labelledby="saPerfTitle">
               <h3 id="saPerfTitle">Sales Performance</h3>
               <p class="sa-card__sub">Labor sold by month</p>
+              <p id="saPerfRangeTotal" class="sa-perf-total">Last 6 months · —</p>
               <div id="saPerfChart" class="sa-perf-chart" aria-label="Labor sold by month, last 6 months"></div>
             </section>
             <section class="sa-card" aria-labelledby="saPipeTitle">

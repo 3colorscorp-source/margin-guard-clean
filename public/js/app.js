@@ -19700,39 +19700,148 @@ window.renderSupervisor = renderSupervisor;
     return buckets;
   }
 
+  function saFormatSummaryMoney(value, currency) {
+    const n = Number(value || 0);
+    const amount = (Number.isFinite(n) ? n : 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const raw = String(currency == null ? "USD" : currency).trim() || "USD";
+    const code = raw === "$" ? "USD" : raw.replace(/\s+/g, "");
+    return `${code} ${amount}`;
+  }
+
+  let saPerfTipTimer = 0;
+  let saPerfDocBound = false;
+
+  function saClearPerfTooltip() {
+    window.clearTimeout(saPerfTipTimer);
+    const chart = $("saPerfChart");
+    if (chart) {
+      chart.querySelectorAll(".sa-perf-bar.is-active").forEach((el) => el.classList.remove("is-active"));
+    }
+    const tip = $("saPerfTooltip");
+    if (tip) {
+      tip.hidden = true;
+      tip.textContent = "";
+    }
+  }
+
+  function saPlacePerfTooltip(bar) {
+    const plot = bar && bar.closest(".sa-perf-plot");
+    const tip = $("saPerfTooltip");
+    if (!plot || !tip) return;
+    const text = String(bar.getAttribute("data-sa-tip") || "").trim();
+    if (!text) return;
+    plot.querySelectorAll(".sa-perf-bar.is-active").forEach((el) => {
+      if (el !== bar) el.classList.remove("is-active");
+    });
+    bar.classList.add("is-active");
+    tip.hidden = false;
+    tip.textContent = text;
+    const plotRect = plot.getBoundingClientRect();
+    const barRect = bar.getBoundingClientRect();
+    const fill = bar.querySelector(".sa-perf-bar__fill") || bar.querySelector(".sa-perf-bar__zero") || bar;
+    const fillRect = fill.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    let left = barRect.left - plotRect.left + (barRect.width / 2) - (tipW / 2);
+    left = Math.max(4, Math.min(left, plotRect.width - tipW - 4));
+    let top = fillRect.top - plotRect.top - tipH - 8;
+    top = Math.max(4, Math.min(top, plotRect.height - tipH - 4));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+
+  function saBindPerfChartDocOnce() {
+    if (saPerfDocBound) return;
+    saPerfDocBound = true;
+    const dismissIfOutside = (ev) => {
+      const chart = $("saPerfChart");
+      if (!chart || chart.contains(ev.target)) return;
+      saClearPerfTooltip();
+    };
+    document.addEventListener("pointerdown", dismissIfOutside);
+    document.addEventListener("focusin", dismissIfOutside);
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") saClearPerfTooltip();
+    });
+  }
+
   function saRenderPerformanceChart(convertedRows, settings) {
     const host = $("saPerfChart");
     if (!host) return;
     const currency = settings?.currency || DEFAULTS.currency;
     const buckets = saBuildLaborSoldMonthBuckets(convertedRows);
-    const max = buckets.reduce((sum, bucket) => Math.max(sum, bucket.labor), 0);
-    host.innerHTML = buckets.map((bucket) => {
+    const max = buckets.reduce((highest, bucket) => Math.max(highest, bucket.labor), 0);
+    const rangeTotal = buckets.reduce((sum, bucket) => sum + bucket.labor, 0);
+    const rangeEl = $("saPerfRangeTotal");
+    if (rangeEl) {
+      rangeEl.textContent = `Last 6 months · ${saFormatSummaryMoney(rangeTotal, currency)}`;
+    }
+    const ticks = max > 0 ? [max, max / 2, 0] : [0, 0, 0];
+    const yHtml = ticks.map((tick) => `<span>${escapeHtml(saFormatSummaryMoney(tick, currency))}</span>`).join("");
+    const colsHtml = buckets.map((bucket) => {
       const pct = max > 0 ? Math.max(0, Math.round((bucket.labor / max) * 100)) : 0;
-      const amount = money(bucket.labor, currency);
-      const label = `${bucket.label} ${bucket.year}: ${amount} labor sold`;
+      const amount = saFormatSummaryMoney(bucket.labor, currency);
+      const tip = `${bucket.label} · ${amount}`;
       const cls = [
         "sa-perf-bar",
         bucket.isCurrent ? "is-current" : "",
         bucket.labor <= 0 ? "is-zero" : ""
       ].filter(Boolean).join(" ");
       return (
-        `<button type="button" class="${cls}" style="--h:${pct}%" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
+        `<button type="button" class="${cls}" data-sa-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">` +
         `<span class="sa-perf-bar__track">` +
-        `<span class="sa-perf-bar__value">${escapeHtml(amount)}</span>` +
-        `<span class="sa-perf-bar__fill"></span>` +
+        `<span class="sa-perf-bar__fill" style="--h:${pct}%"></span>` +
+        `<span class="sa-perf-bar__zero"></span>` +
         `</span>` +
+        `<span class="sa-perf-bar__meta">` +
+        `<span class="sa-perf-bar__current">Current</span>` +
         `<span class="sa-perf-bar__label">${escapeHtml(bucket.label)}</span>` +
+        `</span>` +
         `</button>`
       );
     }).join("");
+    host.innerHTML =
+      `<div class="sa-perf-y" aria-hidden="true">${yHtml}</div>` +
+      `<div class="sa-perf-plot">` +
+      `<div class="sa-perf-grid" aria-hidden="true"><i></i><i></i><i></i></div>` +
+      `<div class="sa-perf-cols">${colsHtml}</div>` +
+      `<div id="saPerfTooltip" class="sa-perf-tip" role="tooltip" hidden></div>` +
+      `</div>`;
+    saBindPerfChartDocOnce();
+    const plot = host.querySelector(".sa-perf-plot");
     host.querySelectorAll(".sa-perf-bar").forEach((el) => {
+      el.onpointerenter = () => {
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
+      };
+      el.onfocus = () => {
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
+      };
+      el.onblur = (ev) => {
+        const chart = $("saPerfChart");
+        if (chart && chart.contains(ev.relatedTarget)) return;
+        saClearPerfTooltip();
+      };
       el.onclick = () => {
-        host.querySelectorAll(".sa-perf-bar.is-active").forEach((open) => {
-          if (open !== el) open.classList.remove("is-active");
-        });
-        el.classList.toggle("is-active");
+        window.clearTimeout(saPerfTipTimer);
+        saPlacePerfTooltip(el);
       };
     });
+    if (plot) {
+      plot.onpointerleave = (ev) => {
+        if (plot.contains(ev.relatedTarget)) return;
+        window.clearTimeout(saPerfTipTimer);
+        saPerfTipTimer = window.setTimeout(saClearPerfTooltip, 80);
+      };
+      plot.onfocusout = (ev) => {
+        if (plot.contains(ev.relatedTarget)) return;
+        saClearPerfTooltip();
+      };
+    }
   }
 
   function saEstimatedCommissionFromLabor(laborBudget, settings) {
