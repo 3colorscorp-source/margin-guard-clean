@@ -21040,9 +21040,6 @@ window.renderSupervisor = renderSupervisor;
     loadQueue();
     saRenderSaViewsMenu("sales-summary");
     saUpdateSalesAdminViewChrome("sales-summary");
-    if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
-      void window.__mgSaLoadPipelineStageCounts();
-    }
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       syncContractHubRowResolver();

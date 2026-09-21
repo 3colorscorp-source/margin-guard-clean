@@ -1893,8 +1893,6 @@
     };
     window.__mgSaLoadPipelineStageCounts = () => loadPipelineStageCounts();
 
-    void loadPipelineStageCounts();
-
     window.setTimeout(applyPublishedKpi, 0);
     window.setTimeout(applyPublishedKpi, 250);
     window.setTimeout(applyPublishedKpi, 1000);
