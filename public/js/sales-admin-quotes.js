@@ -1739,6 +1739,38 @@
     await loadQuotePipelineForView("all-quotes");
   }
 
+  const PIPELINE_COUNT_LIMIT = 200;
+
+  function formatPipelineStageCount(quotes, ok) {
+    if (!ok) return "—";
+    const list = Array.isArray(quotes) ? quotes : [];
+    if (list.length >= PIPELINE_COUNT_LIMIT) return "—";
+    return String(list.length);
+  }
+
+  async function loadPipelineStageCounts() {
+    const draftEl = $("saPipeDraft");
+    const sentEl = $("saPipeSent");
+    if (!draftEl && !sentEl) return;
+    try {
+      const [draftRes, sentRes] = await Promise.all([
+        fetchQuotesList(buildListQuery({ status: "draft", limit: PIPELINE_COUNT_LIMIT })),
+        fetchQuotesList(buildListQuery({ status: "sent", limit: PIPELINE_COUNT_LIMIT })),
+      ]);
+      if (draftEl) {
+        const ok = draftRes.response.ok && draftRes.data?.ok === true;
+        draftEl.textContent = formatPipelineStageCount(ok ? draftRes.data.quotes : [], ok);
+      }
+      if (sentEl) {
+        const ok = sentRes.response.ok && sentRes.data?.ok === true;
+        sentEl.textContent = formatPipelineStageCount(ok ? sentRes.data.quotes : [], ok);
+      }
+    } catch (_err) {
+      if (draftEl) draftEl.textContent = "—";
+      if (sentEl) sentEl.textContent = "—";
+    }
+  }
+
   function installEditModalHandlers() {
     const modal = $("saQuoteEditModal");
     const closeBtn = $("saQuoteEditClose");
@@ -1859,6 +1891,9 @@
     window.__mgSaQuotesLoadForView = (viewId) => {
       void loadQuotePipelineForView(viewId);
     };
+    window.__mgSaLoadPipelineStageCounts = () => loadPipelineStageCounts();
+
+    void loadPipelineStageCounts();
 
     window.setTimeout(applyPublishedKpi, 0);
     window.setTimeout(applyPublishedKpi, 250);

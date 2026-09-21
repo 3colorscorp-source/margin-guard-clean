@@ -19600,16 +19600,18 @@ window.renderSupervisor = renderSupervisor;
     const convertedEl = $("saKpiConverted");
     const laborEl = $("saKpiLabor");
     const commissionEl = $("saKpiCommission");
+    const pipePendingEl = $("saPipePending");
     const currency = settings?.currency || DEFAULTS.currency;
+    let pendingCount = null;
 
     if (!Array.isArray(mapped)) {
       if (pendingEl) pendingEl.textContent = "—";
       if (approvedEl) approvedEl.textContent = "—";
+      if (pipePendingEl) pipePendingEl.textContent = "—";
     } else {
-      if (pendingEl) {
-        const pending = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
-        pendingEl.textContent = String(pending);
-      }
+      pendingCount = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
+      if (pendingEl) pendingEl.textContent = String(pendingCount);
+      if (pipePendingEl) pipePendingEl.textContent = String(pendingCount);
       if (approvedEl) {
         const approved = mapped.filter((row) => String(row?.status || "").toLowerCase() === "approved").length;
         approvedEl.textContent = String(approved);
@@ -19621,11 +19623,20 @@ window.renderSupervisor = renderSupervisor;
     const converted = Array.isArray(convertedRows) ? convertedRows : [];
     if (convertedEl) convertedEl.textContent = converted.length ? String(converted.length) : "—";
 
+    const needsCount = saFilterMainProjectRows(converted, "needs-supervisor").length;
     const needsSupervisorEl = $("saKpiNeedsSupervisor");
     if (needsSupervisorEl) {
-      const needsCount = saFilterMainProjectRows(converted, "needs-supervisor").length;
       needsSupervisorEl.textContent = converted.length ? String(needsCount) : "—";
     }
+    const needsCard = document.querySelector('[data-sa-kpi-view="needs-supervisor"]');
+    if (needsCard) needsCard.classList.toggle("sa-kpi--alert", needsCount > 0);
+
+    const attnCountEl = $("saAttnCount");
+    if (attnCountEl) {
+      attnCountEl.textContent = converted.length ? `${needsCount} projects need a supervisor` : "—";
+    }
+    const attnCard = $("saAttnCard");
+    if (attnCard) attnCard.classList.toggle("sa-attn--alert", needsCount > 0);
 
     let laborSum = 0;
     let commissionSum = 0;
@@ -19635,9 +19646,18 @@ window.renderSupervisor = renderSupervisor;
       commissionSum += finiteNumber(row.estCommission, 0);
     }
     if (laborEl) laborEl.textContent = converted.length ? money(laborSum, currency) : "—";
+    if (laborEl && laborEl.parentElement) {
+      laborEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+    }
+    if (convertedEl && convertedEl.parentElement) {
+      convertedEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+    }
     if (commissionEl) {
       commissionEl.textContent = converted.length ? money(commissionSum, currency) : "—";
       commissionEl.title = converted.length ? `${rate}% of labor budget (estimate only)` : "";
+      if (commissionEl.parentElement) {
+        commissionEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
+      }
     }
   }
 
@@ -19724,6 +19744,11 @@ window.renderSupervisor = renderSupervisor;
   }
 
   const SA_VIEW_META = {
+    "sales-summary": {
+      kind: "summary",
+      title: "Sales Summary",
+      desc: "Sales performance, pipeline, and project handoff."
+    },
     "approved-projects": {
       kind: "projects",
       mode: "all",
@@ -19779,6 +19804,7 @@ window.renderSupervisor = renderSupervisor;
     {
       label: "Projects",
       items: [
+        { id: "sales-summary", label: "Sales Summary" },
         { id: "approved-projects", label: "Approved projects" },
         { id: "needs-supervisor", label: "Needs supervisor" },
         { id: "pending-approval", label: "Pending approvals" }
@@ -19908,7 +19934,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function saUpdateSalesAdminViewChrome(activeViewId) {
-    const meta = SA_VIEW_META[activeViewId] || SA_VIEW_META["approved-projects"];
+    const meta = SA_VIEW_META[activeViewId] || SA_VIEW_META["sales-summary"];
     const titleLabel = $("saViewTitleLabel");
     if (titleLabel && meta?.title) titleLabel.textContent = meta.title;
     const desc = $("saViewDesc");
@@ -19919,6 +19945,8 @@ window.renderSupervisor = renderSupervisor;
     if (viewsBtn && meta?.title) {
       viewsBtn.setAttribute("aria-label", `Views menu — current view: ${meta.title}`);
     }
+    const viewHead = $("saViewHead");
+    if (viewHead) viewHead.hidden = !meta || meta.kind === "summary";
   }
 
   function saProjectStatusNorm(row) {
@@ -19948,7 +19976,70 @@ window.renderSupervisor = renderSupervisor;
         return !uid && !saIsSaProjectCompleted(row);
       });
     }
+    if (mode === "completed") {
+      return list.filter((row) => saIsSaProjectCompleted(row));
+    }
     return list;
+  }
+
+  function saFormatProjectStage(row) {
+    const st = saProjectStatusNorm(row);
+    if (!st || st === "—") return "—";
+    return st.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function saSortConvertedBySignedAtDesc(rows) {
+    return (Array.isArray(rows) ? rows : []).slice().sort((a, b) =>
+      String(b.signedAt || "").localeCompare(String(a.signedAt || ""))
+    );
+  }
+
+  function saUpdateHandoffFilterChrome(activeFilter) {
+    document.querySelectorAll("[data-sa-handoff-filter]").forEach((el) => {
+      el.classList.toggle(
+        "is-active",
+        el.getAttribute("data-sa-handoff-filter") === activeFilter
+      );
+    });
+  }
+
+  const SA_HANDOFF_RECENT_LIMIT = 8;
+
+  function saRenderHandoffTable(convertedRows, settings, mode) {
+    const body = $("saHandoffBody");
+    const wrap = $("saHandoffTableWrap");
+    const empty = $("saHandoffEmpty");
+    if (!body) return;
+
+    const filterMode = mode === "needs-supervisor" || mode === "completed" ? mode : "all";
+    const filtered = saSortConvertedBySignedAtDesc(
+      saFilterMainProjectRows(convertedRows, filterMode)
+    ).slice(0, SA_HANDOFF_RECENT_LIMIT);
+    saUpdateHandoffFilterChrome(filterMode);
+
+    if (!filtered.length) {
+      body.innerHTML = "";
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
+    }
+
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.hidden = false;
+
+    const currency = settings?.currency || DEFAULTS.currency;
+    body.innerHTML = filtered
+      .map((row) => (
+        `<tr>` +
+        `<td>${escapeHtml(row.projectName)}</td>` +
+        `<td data-label="Client">${escapeHtml(row.clientName)}</td>` +
+        `<td data-label="Sale Price">${money(row.salePrice, currency)}</td>` +
+        `<td data-label="Stage">${escapeHtml(saFormatProjectStage(row))}</td>` +
+        `<td data-label="Supervisor">${saSupervisorBadgeHtml(row)}</td>` +
+        `<td>${saProjectActionsMenuHtml(row)}</td>` +
+        `</tr>`
+      ))
+      .join("");
   }
 
   function saProjectActionsMenuHtml(row) {
@@ -20493,6 +20584,10 @@ window.renderSupervisor = renderSupervisor;
       if (empty) empty.hidden = true;
       if (mainWrap) mainWrap.hidden = true;
       if (mainEmpty) mainEmpty.hidden = true;
+      const handoffWrap = $("saHandoffTableWrap");
+      const handoffEmpty = $("saHandoffEmpty");
+      if (handoffWrap) handoffWrap.hidden = true;
+      if (handoffEmpty) handoffEmpty.hidden = true;
     }
   }
 
@@ -20609,7 +20704,8 @@ window.renderSupervisor = renderSupervisor;
     };
     syncContractHubRowResolver();
 
-    let currentView = "approved-projects";
+    let currentView = "sales-summary";
+    let handoffFilter = "all";
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -20750,7 +20846,7 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const saSetMainView = (viewId) => {
-      const next = SA_VIEW_META[viewId] ? viewId : "approved-projects";
+      const next = SA_VIEW_META[viewId] ? viewId : "sales-summary";
       currentView = next;
       const meta = SA_VIEW_META[next];
 
@@ -20759,6 +20855,7 @@ window.renderSupervisor = renderSupervisor;
       saUpdateSalesAdminViewChrome(next);
 
       const panels = {
+        summary: $("saSummaryViewWrap"),
         projects: $("saProjectsViewWrap"),
         quotes: $("saQuotesViewWrap"),
         approval: $("saApprovalViewWrap"),
@@ -20773,7 +20870,13 @@ window.renderSupervisor = renderSupervisor;
       saCloseSalesAdminActionsMenu();
       saCloseSaViewsMenu();
 
-      if (meta.kind === "projects" && panels.projects) {
+      if (meta.kind === "summary" && panels.summary) {
+        panels.summary.hidden = false;
+        saRenderHandoffTable(convertedRows, settings, handoffFilter);
+        if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
+          void window.__mgSaLoadPipelineStageCounts();
+        }
+      } else if (meta.kind === "projects" && panels.projects) {
         panels.projects.hidden = false;
         saRenderMainProjectsTable(
           convertedRows,
@@ -20806,6 +20909,16 @@ window.renderSupervisor = renderSupervisor;
       if (currentView === "pending-approval") loadQueue();
       else if (SA_VIEW_META[currentView]?.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
         window.__mgSaQuotesLoadForView(currentView);
+      } else if (SA_VIEW_META[currentView]?.kind === "summary") {
+        if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
+          void window.__mgSaLoadPipelineStageCounts();
+        }
+        void saLoadConvertedProjectsData(settings, (joined) => {
+          convertedRows = joined;
+          syncContractHubRowResolver();
+          saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+          saRenderHandoffTable(convertedRows, settings, handoffFilter);
+        });
       } else if (SA_VIEW_META[currentView]?.kind === "projects") {
         void saLoadConvertedProjectsData(settings, (joined) => {
           convertedRows = joined;
@@ -20856,6 +20969,30 @@ window.renderSupervisor = renderSupervisor;
       };
     });
 
+    document.querySelectorAll("[data-sa-summary-view]").forEach((el) => {
+      el.onclick = () => {
+        const viewId = String(el.getAttribute("data-sa-summary-view") || "").trim();
+        if (viewId) saSetMainView(viewId);
+      };
+    });
+
+    document.querySelectorAll("[data-sa-handoff-filter]").forEach((el) => {
+      el.onclick = () => {
+        const nextFilter = String(el.getAttribute("data-sa-handoff-filter") || "all").trim();
+        handoffFilter = nextFilter === "needs-supervisor" || nextFilter === "completed" ? nextFilter : "all";
+        saRenderHandoffTable(convertedRows, settings, handoffFilter);
+      };
+    });
+
+    const reviewProjectsBtn = $("saReviewProjectsBtn");
+    if (reviewProjectsBtn) {
+      reviewProjectsBtn.onclick = () => saSetMainView("needs-supervisor");
+    }
+    const viewAllProjectsBtn = $("saViewAllProjectsBtn");
+    if (viewAllProjectsBtn) {
+      viewAllProjectsBtn.onclick = () => saSetMainView("approved-projects");
+    }
+
     const loadQueue = () => {
       fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
@@ -20901,13 +21038,16 @@ window.renderSupervisor = renderSupervisor;
     }
 
     loadQueue();
-    saRenderSaViewsMenu("approved-projects");
-    saUpdateSalesAdminViewChrome("approved-projects");
+    saRenderSaViewsMenu("sales-summary");
+    saUpdateSalesAdminViewChrome("sales-summary");
+    if (typeof window.__mgSaLoadPipelineStageCounts === "function") {
+      void window.__mgSaLoadPipelineStageCounts();
+    }
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       syncContractHubRowResolver();
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
-      saSetMainView("approved-projects");
+      saSetMainView("sales-summary");
     });
   }
 
