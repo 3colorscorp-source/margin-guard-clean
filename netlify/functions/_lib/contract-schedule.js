@@ -157,6 +157,132 @@ function buildQuoteScheduleFillPatch(quoteRow, startRaw, dueRaw) {
   };
 }
 
+function sameIsoDate(a, b) {
+  return normIsoDate(a) === normIsoDate(b);
+}
+
+function idsEqual(a, b) {
+  const left = String(a || "").trim().toLowerCase();
+  const right = String(b || "").trim().toLowerCase();
+  return Boolean(left) && left === right;
+}
+
+/**
+ * CH-012H — Article 8 is COMPLETE only when the server confirmation row
+ * matches the current quote dates for the same tenant/project/quote.
+ * Browser flags and localStorage are not inputs.
+ */
+function evaluatePersistedScheduleConfirmation(input = {}) {
+  const setup = input.setup && typeof input.setup === "object" ? input.setup : null;
+  const quote = input.quote && typeof input.quote === "object" ? input.quote : null;
+  const tenantId = input.tenantId;
+  const projectId = input.projectId;
+  const quoteId = input.quoteId;
+
+  const quoteStart = normIsoDate(quote?.start_date ?? quote?.startDate ?? null);
+  const quoteDue = normIsoDate(quote?.due_date ?? quote?.dueDate ?? null);
+  const confirmedAt = setup?.schedule_confirmed_at || null;
+  const confirmedStart = normIsoDate(setup?.schedule_confirmed_start_date ?? null);
+  const confirmedDue = normIsoDate(setup?.schedule_confirmed_due_date ?? null);
+  const confirmedBy = setup?.schedule_confirmed_by || null;
+
+  const scopeOk = Boolean(
+    setup &&
+      idsEqual(setup.tenant_id || tenantId, tenantId) &&
+      idsEqual(setup.project_id, projectId) &&
+      idsEqual(setup.quote_id, quoteId)
+  );
+  const datesMatch =
+    sameIsoDate(confirmedStart, quoteStart) && sameIsoDate(confirmedDue, quoteDue);
+  const datesComplete = Boolean(quoteStart && quoteDue && quoteDue >= quoteStart);
+  const confirmationComplete = Boolean(
+    confirmedAt && confirmedStart && confirmedDue && confirmedBy
+  );
+  const confirmed = Boolean(
+    confirmationComplete && scopeOk && datesMatch && datesComplete
+  );
+  const stale = Boolean(confirmationComplete && scopeOk && !datesMatch);
+  const wrongScope = Boolean(setup && !scopeOk);
+  const freezeReady = Boolean(confirmed && datesComplete);
+
+  return {
+    confirmed,
+    stale,
+    missing: !confirmedAt || !setup,
+    wrong_scope: wrongScope,
+    freeze_ready: freezeReady,
+    start_date: quoteStart,
+    due_date: quoteDue,
+    confirmed_at: confirmedAt,
+    confirmed_start_date: confirmedStart,
+    confirmed_due_date: confirmedDue,
+    confirmed_by: confirmedBy,
+    readiness_status: confirmed ? "confirmed" : "needs_confirmation",
+    readiness_caption: confirmed
+      ? "COMPLETE — ESTIMATED SCHEDULE"
+      : "NEEDS CONFIRMATION — ESTIMATED SCHEDULE",
+  };
+}
+
+function scheduleDatesChanged(existingQuote, patch = {}) {
+  const currentStart = normIsoDate(existingQuote?.start_date ?? existingQuote?.startDate);
+  const currentDue = normIsoDate(existingQuote?.due_date ?? existingQuote?.dueDate);
+  const nextStart = Object.prototype.hasOwnProperty.call(patch, "start_date")
+    ? normIsoDate(patch.start_date)
+    : currentStart;
+  const nextDue = Object.prototype.hasOwnProperty.call(patch, "due_date")
+    ? normIsoDate(patch.due_date)
+    : currentDue;
+  return {
+    changed: !sameIsoDate(nextStart, currentStart) || !sameIsoDate(nextDue, currentDue),
+    currentStart,
+    currentDue,
+    nextStart,
+    nextDue,
+    updateStart: Object.prototype.hasOwnProperty.call(patch, "start_date"),
+    updateDue: Object.prototype.hasOwnProperty.call(patch, "due_date"),
+  };
+}
+
+function confirmationClearPatch() {
+  return {
+    schedule_confirmed_at: null,
+    schedule_confirmed_start_date: null,
+    schedule_confirmed_due_date: null,
+    schedule_confirmed_by: null,
+  };
+}
+
+function validateConfirmableQuoteDates(startRaw, dueRaw) {
+  const start_date = normIsoDate(startRaw);
+  const due_date = normIsoDate(dueRaw);
+  const errors = [];
+  if (!start_date) {
+    errors.push({
+      code: "schedule_start_missing",
+      message: "Estimated start date is required.",
+    });
+  }
+  if (!due_date) {
+    errors.push({
+      code: "schedule_completion_missing",
+      message: "Estimated completion date is required.",
+    });
+  }
+  if (start_date && due_date && due_date < start_date) {
+    errors.push({
+      code: "schedule_completion_before_start",
+      message: "Completion date must be on or after the start date.",
+    });
+  }
+  return {
+    ok: errors.length === 0,
+    start_date,
+    due_date,
+    errors,
+  };
+}
+
 module.exports = {
   normIsoDate,
   resolveCanonicalContractSchedule,
@@ -164,6 +290,10 @@ module.exports = {
   isAuthorizedLockedScheduleFillPatch,
   buildQuoteScheduleFillPatch,
   scheduleSourceLabel,
+  evaluatePersistedScheduleConfirmation,
+  scheduleDatesChanged,
+  confirmationClearPatch,
+  validateConfirmableQuoteDates,
   SOURCE_APPROVED_QUOTE,
   SOURCE_APPROVED_QUOTE_PARTIAL,
   SOURCE_PROJECT_LEGACY,

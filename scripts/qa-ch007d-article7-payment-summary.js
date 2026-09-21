@@ -1945,7 +1945,7 @@ async function testAsync(name, fn) {
     const readinessFn = slice(js, "function renderReadiness", "function renderLogo");
     assert.ok(readinessFn.includes("presentAuthenticatedPaymentChrome"));
     assert.ok(readinessFn.includes('i.label !== "Payment terms"'));
-    assert.ok(html.includes("contract-builder.js?v=pt-src-4"));
+    assert.ok(html.includes("contract-builder.js?v=ch012h-4"));
     assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-4"));
 
     const source = {

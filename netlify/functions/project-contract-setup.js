@@ -5,6 +5,10 @@
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
+const {
+  evaluatePersistedScheduleConfirmation,
+  normIsoDate,
+} = require("./_lib/contract-schedule");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -47,6 +51,7 @@ const WARRANTY_RPC_UPDATE_KEYS = new Set([
 const CONFIRMATION_FIELDS = new Set([
   "confirm_property_address",
   "confirm_warranty",
+  "confirm_estimated_schedule",
 ]);
 const CONFIG_FIELDS = new Set([
   ...PROPERTY_FIELDS,
@@ -175,11 +180,22 @@ function normalizeInput(body) {
   if (warrantyConfirmation.error) {
     return { error: warrantyConfirmation.error, code: "invalid_confirmation" };
   }
+  const scheduleConfirmation = normalizeBoolean(body, "confirm_estimated_schedule");
+  if (scheduleConfirmation.error) {
+    return { error: scheduleConfirmation.error, code: "invalid_confirmation" };
+  }
+  if (scheduleConfirmation.value === false) {
+    return {
+      error: "confirm_estimated_schedule can only be true",
+      code: "invalid_confirmation",
+    };
+  }
 
   return {
     changes,
     confirmProperty: propertyConfirmation.value,
     confirmWarranty: warrantyConfirmation.value,
+    confirmEstimatedSchedule: scheduleConfirmation.value,
   };
 }
 
@@ -201,7 +217,7 @@ async function verifyProjectAndQuote(tenantId, projectId, quoteId) {
   }
 
   const quotes = await supabaseRequest(
-    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=id,project_address,job_site&limit=1`,
+    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=id,project_address,job_site,start_date,due_date&limit=1`,
     { method: "GET" }
   );
   const quote = Array.isArray(quotes) && quotes[0] ? quotes[0] : null;
@@ -244,6 +260,7 @@ function serializeSetup(row) {
     id: row.id,
     project_id: row.project_id,
     quote_id: row.quote_id,
+    tenant_id: row.tenant_id || null,
     property_address_line1: trimField(row.property_address_line1),
     property_address_line2: trimField(row.property_address_line2),
     property_city: trimField(row.property_city),
@@ -264,12 +281,27 @@ function serializeSetup(row) {
     state_notice_pack_status:
       trimField(row.state_notice_pack_status) || "unsupported",
     state_notice_pack_version: trimField(row.state_notice_pack_version),
+    schedule_confirmed_at: row.schedule_confirmed_at || null,
+    schedule_confirmed_start_date: row.schedule_confirmed_start_date
+      ? normIsoDate(row.schedule_confirmed_start_date)
+      : null,
+    schedule_confirmed_due_date: row.schedule_confirmed_due_date
+      ? normIsoDate(row.schedule_confirmed_due_date)
+      : null,
+    schedule_confirmed_by: row.schedule_confirmed_by || null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   };
 }
 
-function evaluateReadiness(setup) {
+function evaluateReadiness(setup, quote, ids = {}) {
+  const estimated = evaluatePersistedScheduleConfirmation({
+    setup,
+    quote,
+    tenantId: ids.tenantId,
+    projectId: ids.projectId || setup?.project_id,
+    quoteId: ids.quoteId || setup?.quote_id,
+  });
   const hasProperty = [...PROPERTY_FIELDS].some((field) =>
     trimField(setup?.[field])
   );
@@ -303,7 +335,115 @@ function evaluateReadiness(setup) {
       trimField(setup?.state_notice_pack_status) || "unsupported",
     actual_signature_status: "not_requested",
     signature_ready: false,
+    estimated_schedule: estimated.readiness_status,
+    estimated_schedule_caption: estimated.readiness_caption,
   };
+}
+
+function parseMgRpcError(err) {
+  const text = [err?.message, err?.supabaseRaw, err?.details]
+    .filter(Boolean)
+    .join(" ");
+  const match = String(text).match(/MG_ERR:([a-z0-9_]+):([^|]*)/i);
+  if (!match) return null;
+  return { code: match[1], message: trimField(match[2]) };
+}
+
+function mapScheduleConfirmFailure(err) {
+  const parsed = parseMgRpcError(err) || parseMgError(err);
+  if (parsed?.code === "schedule_start_missing") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error: parsed.message || "Estimated start date is required.",
+        code: "schedule_start_missing",
+      },
+    };
+  }
+  if (parsed?.code === "schedule_completion_missing") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error: parsed.message || "Estimated completion date is required.",
+        code: "schedule_completion_missing",
+      },
+    };
+  }
+  if (parsed?.code === "schedule_completion_before_start") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error:
+          parsed.message || "Completion date must be on or after the start date.",
+        code: "schedule_completion_before_start",
+      },
+    };
+  }
+  if (parsed?.code === "project_quote_mismatch") {
+    return {
+      statusCode: 409,
+      body: {
+        ok: false,
+        error: "Quote does not belong to this project",
+        code: "project_quote_mismatch",
+      },
+    };
+  }
+  if (parsed?.code === "setup_unavailable") {
+    return {
+      statusCode: 404,
+      body: {
+        ok: false,
+        error: "Project contract setup unavailable",
+        code: "setup_unavailable",
+      },
+    };
+  }
+  if (parsed?.code === "invalid_id") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error: parsed.message || "Invalid project_id or quote_id",
+        code: "invalid_id",
+      },
+    };
+  }
+  return {
+    statusCode: 500,
+    body: {
+      ok: false,
+      error: "Project contract setup is temporarily unavailable",
+      code: "server_error",
+    },
+  };
+}
+
+async function confirmEstimatedScheduleAtomically(
+  tenantId,
+  projectId,
+  quoteId,
+  confirmedBy
+) {
+  const raw = await supabaseRequest("rpc/confirm_project_estimated_schedule", {
+    method: "POST",
+    body: {
+      p_tenant_id: tenantId,
+      p_project_id: projectId,
+      p_quote_id: quoteId,
+      p_confirmed_by: confirmedBy,
+    },
+  });
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && raw.setup) {
+    return raw;
+  }
+  if (Array.isArray(raw) && raw[0] && typeof raw[0] === "object") {
+    return raw[0].confirm_project_estimated_schedule || raw[0];
+  }
+  return raw;
 }
 
 function requestTouchesWarranty(normalized) {
@@ -473,7 +613,9 @@ async function saveSetup(tenantId, projectId, quoteId, existing, updates) {
   if (existing?.id) {
     const rows = await supabaseRequest(
       `project_contract_setups?id=eq.${encodeURIComponent(existing.id)}` +
-        `&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+        `&tenant_id=eq.${encodeURIComponent(tenantId)}` +
+        `&project_id=eq.${encodeURIComponent(projectId)}` +
+        `&quote_id=eq.${encodeURIComponent(quoteId)}`,
       { method: "PATCH", body: updates }
     );
     return Array.isArray(rows) && rows[0] ? rows[0] : null;
@@ -515,8 +657,9 @@ exports.handler = async (event) => {
       return json(405, { ok: false, error: "Method not allowed" });
     }
 
-    const { tenant } = await requireOwnerOrAdmin(event);
+    const { tenant, membership } = await requireOwnerOrAdmin(event);
     const tenantId = trimField(tenant.id);
+    const confirmedBy = trimField(membership?.id);
 
     const query = event.queryStringParameters || {};
     if (query.tenant_id != null) {
@@ -604,6 +747,7 @@ exports.handler = async (event) => {
     }
 
     const existing = await loadSetup(tenantId, projectId, quoteId);
+    const readinessIds = { tenantId, projectId, quoteId };
     if (method === "GET") {
       const setup = serializeSetup(existing);
       const legacyAddress = trimField(
@@ -612,7 +756,7 @@ exports.handler = async (event) => {
       return json(200, {
         ok: true,
         setup,
-        readiness: evaluateReadiness(setup),
+        readiness: evaluateReadiness(setup, relation.quote, readinessIds),
         suggestions: { legacy_quote_address: legacyAddress },
       });
     }
@@ -628,7 +772,8 @@ exports.handler = async (event) => {
     const hasChanges =
       Object.keys(normalized.changes).length > 0 ||
       normalized.confirmProperty !== undefined ||
-      normalized.confirmWarranty !== undefined;
+      normalized.confirmWarranty !== undefined ||
+      normalized.confirmEstimatedSchedule === true;
     if (!hasChanges) {
       return json(400, {
         ok: false,
@@ -679,8 +824,38 @@ exports.handler = async (event) => {
         saved,
         otherUpdates
       );
+      if (!saved) {
+        return json(500, {
+          ok: false,
+          error: "Project contract setup save failed",
+          code: "save_failed",
+        });
+      }
     }
-    if (!saved) {
+
+    if (normalized.confirmEstimatedSchedule === true) {
+      if (!confirmedBy) {
+        return json(403, {
+          ok: false,
+          error: "Owner or admin membership required",
+          code: "owner_required",
+        });
+      }
+      try {
+        const confirmed = await confirmEstimatedScheduleAtomically(
+          tenantId,
+          projectId,
+          quoteId,
+          confirmedBy
+        );
+        saved = confirmed?.setup || confirmed || saved;
+      } catch (err) {
+        const mapped = mapScheduleConfirmFailure(err);
+        return json(mapped.statusCode, mapped.body);
+      }
+    }
+
+    if (!saved && normalized.confirmEstimatedSchedule !== true) {
       return json(500, {
         ok: false,
         error: "Project contract setup save failed",
@@ -692,7 +867,7 @@ exports.handler = async (event) => {
     return json(200, {
       ok: true,
       setup,
-      readiness: evaluateReadiness(setup),
+      readiness: evaluateReadiness(setup, relation.quote, readinessIds),
     });
   } catch (err) {
     if (err?.isGuardError) {
@@ -719,4 +894,8 @@ exports._test = {
   parseMgError,
   pickWarrantyRpcUpdates,
   saveWarrantyAtomically,
+  evaluateReadiness,
+  serializeSetup,
+  confirmEstimatedScheduleAtomically,
+  mapScheduleConfirmFailure,
 };

@@ -334,11 +334,16 @@
     return (
       '<div class="cs-grid">' +
       '<div class="cs-kv"><span class="k">Estimated Start Date</span><span class="v">' +
-      text(fmt(start)) +
+      text(start ? fmt(start) : "Not scheduled") +
       "</span></div>" +
-      '<div class="cs-kv"><span class="k">Estimated Completion Date</span><span class="v">' +
-      text(fmt(due)) +
-      "</span></div></div>"
+      '<div class="cs-kv"><span class="k">Target Completion</span><span class="v">' +
+      text(due ? fmt(due) : "Not scheduled") +
+      "</span></div></div>" +
+      '<p class="cs-prose">' +
+      text(
+        "Project dates may change due to site conditions, material availability, approved changes, or events outside either party's reasonable control."
+      ) +
+      "</p>"
     );
   }
 

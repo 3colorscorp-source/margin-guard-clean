@@ -1,0 +1,591 @@
+/**
+ * CH-007D — Article 8 Estimated Schedule presentation + confirm behavior.
+ * Executes real confirm logic via contract-schedule-confirm.js. Does not POST live.
+ * Run: node scripts/qa-ch007d-article8-estimated-schedule.js
+ */
+"use strict";
+
+const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+const ROOT = path.join(__dirname, "..");
+const htmlPath = path.join(ROOT, "public/contract-builder.html");
+const jsPath = path.join(ROOT, "public/js/contract-builder.js");
+const helperPath = path.join(ROOT, "public/js/contract-schedule-confirm.js");
+const paymentHelperPath = path.join(ROOT, "public/js/contract-payment-confirm.js");
+const portalPath = path.join(ROOT, "public/js/contract-sign-portal.js");
+const pdfPath = path.join(ROOT, "netlify/functions/_lib/contract-signed-pdf.js");
+const freezePath = path.join(ROOT, "netlify/functions/contract-package-freeze.js");
+
+const html = fs.readFileSync(htmlPath, "utf8");
+const js = fs.readFileSync(jsPath, "utf8");
+const helperSrc = fs.readFileSync(helperPath, "utf8");
+const paymentHelperSrc = fs.readFileSync(paymentHelperPath, "utf8");
+const portalSrc = fs.readFileSync(portalPath, "utf8");
+const pdfSrc = fs.readFileSync(pdfPath, "utf8");
+const freezeSrc = fs.readFileSync(freezePath, "utf8");
+const ScheduleConfirm = require("../public/js/contract-schedule-confirm.js");
+
+let passed = 0;
+let failed = 0;
+const pending = [];
+function test(name, fn) {
+  try {
+    fn();
+    console.log("PASS", name);
+    passed += 1;
+  } catch (err) {
+    console.log("FAIL", name, "-", err.message);
+    failed += 1;
+  }
+}
+
+function testAsync(name, fn) {
+  pending.push({ name, fn });
+}
+
+function slice(src, startToken, endToken) {
+  const start = src.indexOf(startToken);
+  const end = src.indexOf(endToken, start + startToken.length);
+  assert.ok(start >= 0 && end > start, `missing slice ${startToken}`);
+  return src.slice(start, end);
+}
+
+const art8 = slice(html, 'id="art-schedule"', 'id="art-changes"');
+const art7 = slice(html, 'id="art-payment"', 'id="art-schedule"');
+
+function memoryStore(seed) {
+  const map = new Map(Object.entries(seed || {}));
+  return {
+    getItem(key) {
+      return map.has(key) ? map.get(key) : null;
+    },
+    setItem(key, value) {
+      map.set(key, String(value));
+    },
+    removeItem(key) {
+      map.delete(key);
+    },
+    map,
+  };
+}
+
+function view(input) {
+  return ScheduleConfirm.presentScheduleArticle(input);
+}
+
+function plan(input) {
+  return ScheduleConfirm.scheduleFooterPlan(input);
+}
+
+test("0 syntax helper + builder", () => {
+  [helperPath, jsPath].forEach((file) => {
+    const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
+    assert.strictEqual(r.status, 0, r.stderr || r.stdout || file);
+  });
+});
+
+test("1 both dates empty: Not scheduled, hide completion, Set Project Dates only", () => {
+  const v = view({ startDate: "", dueDate: "" });
+  const p = plan({ startDate: "", dueDate: "" });
+  assert.strictEqual(v.kind, "missing_start");
+  assert.strictEqual(v.startValue, "Not scheduled");
+  assert.strictEqual(v.showCompletion, false);
+  assert.strictEqual(v.message, "Add the project start date to continue.");
+  assert.strictEqual(p.primaryLabel, "Set Project Dates");
+  assert.strictEqual(p.primaryEnabledCount, 1);
+  assert.strictEqual(p.continueVisible, false);
+  assert.ok(!p.buttons.some((b) => b.label === "Confirm Schedule"));
+  assert.ok(!p.buttons.some((b) => b.id === "continue"));
+});
+
+test("2 start absent, completion present: show completion, Set Project Dates", () => {
+  const v = view({ startDate: "", dueDate: "2026-09-30" });
+  const p = plan({ startDate: "", dueDate: "2026-09-30" });
+  assert.strictEqual(v.kind, "missing_start");
+  assert.strictEqual(v.startValue, "Not scheduled");
+  assert.strictEqual(v.showCompletion, true);
+  assert.ok(v.completionValue.includes("2026") || v.completionValue.includes("Sep"));
+  assert.strictEqual(p.primaryLabel, "Set Project Dates");
+  assert.strictEqual(p.continueVisible, false);
+});
+
+test("3 start present, completion absent: Target Completion Not scheduled", () => {
+  const v = view({ startDate: "2026-09-01", dueDate: "" });
+  const p = plan({ startDate: "2026-09-01", dueDate: "" });
+  assert.strictEqual(v.kind, "missing_completion");
+  assert.strictEqual(v.showCompletion, true);
+  assert.strictEqual(v.completionValue, "Not scheduled");
+  assert.strictEqual(v.message, "Add the target completion date to continue.");
+  assert.strictEqual(p.primaryLabel, "Set Project Dates");
+  assert.strictEqual(p.continueVisible, false);
+});
+
+test("4 both valid unconfirmed: Confirm Schedule primary, Continue hidden", () => {
+  const v = view({ startDate: "2026-09-01", dueDate: "2026-09-30", confirmed: false });
+  const p = plan({ startDate: "2026-09-01", dueDate: "2026-09-30", confirmed: false });
+  assert.strictEqual(v.kind, "unconfirmed");
+  assert.ok(v.notice.includes("Project dates may change due to site conditions"));
+  assert.strictEqual(v.readinessCaption, "NEEDS CONFIRMATION — ESTIMATED SCHEDULE");
+  assert.strictEqual(p.primaryLabel, "Confirm Schedule");
+  assert.strictEqual(p.primaryEnabledCount, 1);
+  assert.strictEqual(p.continueVisible, false);
+  assert.ok(p.buttons.some((b) => b.label === "Edit Project Dates" && b.style === "ghost"));
+  assert.ok(!p.buttons.some((b) => b.label === "Set Project Dates"));
+});
+
+test("5 both confirmed: Continue primary, Edit secondary unless frozen", () => {
+  const v = view({ startDate: "2026-09-01", dueDate: "2026-09-30", confirmed: true });
+  const p = plan({ startDate: "2026-09-01", dueDate: "2026-09-30", confirmed: true });
+  assert.strictEqual(v.kind, "confirmed");
+  assert.strictEqual(v.readinessCaption, "COMPLETE — ESTIMATED SCHEDULE");
+  assert.strictEqual(p.primaryLabel, "Continue");
+  assert.strictEqual(p.continueVisible, true);
+  assert.ok(p.buttons.some((b) => b.label === "Edit Project Dates" && b.style === "ghost"));
+  const frozen = plan({
+    startDate: "2026-09-01",
+    dueDate: "2026-09-30",
+    confirmed: true,
+    frozen: true,
+  });
+  assert.ok(!frozen.buttons.some((b) => b.id === "edit"));
+  assert.strictEqual(frozen.primaryLabel, "Continue");
+});
+
+test("6 completion before start: block confirm, no persist, open edit", () => {
+  const v = view({ startDate: "2026-09-30", dueDate: "2026-09-01" });
+  assert.strictEqual(v.kind, "invalid");
+  assert.strictEqual(v.message, "Completion date must be on or after the start date.");
+  assert.strictEqual(v.persistBlocked, true);
+  assert.strictEqual(v.confirmBlocked, true);
+  assert.strictEqual(v.readinessCaption, "NEEDS CONFIRMATION — ESTIMATED SCHEDULE");
+});
+
+testAsync("6b invalid confirm does not persist or change readiness", async () => {
+  let posted = false;
+  const runner = ScheduleConfirm.createScheduleConfirmRunner({
+    getBusy: () => false,
+    getDates: () => ({ startDate: "2026-09-30", dueDate: "2026-09-01" }),
+    getIds: () => ({ projectId: "p1", quoteId: "q1" }),
+    postJson: async () => {
+      posted = true;
+      return { ok: true, data: { ok: true } };
+    },
+  });
+  const result = await runner.confirm();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "invalid");
+  assert.strictEqual(result.posted, false);
+  assert.strictEqual(result.openEdit, true);
+  assert.strictEqual(result.readinessUnchanged, true);
+  assert.strictEqual(posted, false);
+});
+
+testAsync("7 HTTP failure does not confirm", async () => {
+  let applied = false;
+  const runner = ScheduleConfirm.createScheduleConfirmRunner({
+    getBusy: () => false,
+    isConfirmed: () => false,
+    getDates: () => ({ startDate: "2026-09-01", dueDate: "2026-09-30" }),
+    getIds: () => ({ projectId: "p1", quoteId: "q1" }),
+    getQuote: () => ({ status: "draft", start_date: null, due_date: null }),
+    postJson: async () => ({ ok: false, status: 500, data: { ok: false, error: "boom" } }),
+    applySuccess: () => {
+      applied = true;
+    },
+  });
+  const result = await runner.confirm();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "http");
+  assert.strictEqual(result.posted, true);
+  assert.strictEqual(applied, false);
+});
+
+testAsync("8 double click: second call is busy, one POST", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const posts = [];
+  const runner = ScheduleConfirm.createScheduleConfirmRunner({
+    getBusy: () => false,
+    isConfirmed: () => false,
+    getDates: () => ({ startDate: "2026-09-01", dueDate: "2026-09-30" }),
+    getIds: () => ({ projectId: "p1", quoteId: "q1" }),
+    getQuote: () => ({ status: "draft" }),
+    postJson: async (_url, body) => {
+      posts.push(body);
+      await gate;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          ok: true,
+          setup: {
+            project_id: "p1",
+            quote_id: "q1",
+            schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+            schedule_confirmed_start_date: "2026-09-01",
+            schedule_confirmed_due_date: "2026-09-30",
+          },
+        },
+      };
+    },
+  });
+  const first = runner.confirm();
+  const second = await runner.confirm();
+  assert.strictEqual(second.reason, "busy");
+  assert.strictEqual(second.posted, false);
+  release();
+  const firstResult = await first;
+  assert.strictEqual(firstResult.ok, true);
+  assert.strictEqual(posts.length, 1);
+});
+
+testAsync("9 project change during await is ignored", async () => {
+  let applied = false;
+  let quoteId = "q-a";
+  const runner = ScheduleConfirm.createScheduleConfirmRunner({
+    getBusy: () => false,
+    isConfirmed: () => false,
+    getDates: () => ({ startDate: "2026-09-01", dueDate: "2026-09-30" }),
+    getIds: () => ({ projectId: "p1", quoteId }),
+    getQuote: () => ({ status: "draft" }),
+    postJson: async () => {
+      quoteId = "q-b";
+      return { ok: true, status: 200, data: { ok: true, quote: {} } };
+    },
+    applySuccess: () => {
+      applied = true;
+    },
+  });
+  const result = await runner.confirm();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "stale_project");
+  assert.strictEqual(applied, false);
+});
+
+test("localStorage is visual cache only and cannot mark COMPLETE", () => {
+  const store = memoryStore();
+  const source = {
+    projectId: "p-a",
+    quoteId: "q-a",
+    startDate: "2026-09-01",
+    dueDate: "2026-09-30",
+  };
+  ScheduleConfirm.writeStoredConfirmation("p-a", "q-a", "2026-09-01", "2026-09-30", store);
+  assert.strictEqual(
+    ScheduleConfirm.scheduleConfirmed(source, {}, store),
+    false
+  );
+  const serverSource = {
+    ...source,
+    scheduleConfirmedAt: "2026-09-20T12:00:00.000Z",
+    scheduleConfirmedStart: "2026-09-01",
+    scheduleConfirmedDue: "2026-09-30",
+    contractSetup: {
+      setup: {
+        project_id: "p-a",
+        quote_id: "q-a",
+        schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+        schedule_confirmed_start_date: "2026-09-01",
+        schedule_confirmed_due_date: "2026-09-30",
+      },
+    },
+  };
+  assert.strictEqual(ScheduleConfirm.scheduleConfirmed(serverSource, {}), true);
+  assert.strictEqual(
+    ScheduleConfirm.scheduleConfirmed(
+      serverSource,
+      { startDate: "2026-09-02", dueDate: "2026-09-30" }
+    ),
+    false
+  );
+});
+
+test("11 mobile CSS avoids schedule overflow", () => {
+  assert.ok(html.includes("overflow-wrap: anywhere"));
+  assert.ok(html.includes("#art-schedule .cb-meta-grid { grid-template-columns: 1fr; }"));
+});
+
+test("12 preview, print, freeze, portal, and PDF keep dates and notice only", () => {
+  assert.ok(art8.includes("Estimated Start Date"));
+  assert.ok(art8.includes("Target Completion"));
+  assert.ok(art8.includes("Project dates may change due to site conditions"));
+  assert.ok(html.includes("@media print"));
+  assert.ok(js.includes("Do not send browser flags or dates as freeze authority"));
+  assert.ok(js.includes("scheduleConfigured()"));
+  assert.ok(!/body\.confirmed_start_date\s*=/.test(js));
+  assert.ok(portalSrc.includes("Estimated Start Date"));
+  assert.ok(portalSrc.includes("Target Completion"));
+  assert.ok(portalSrc.includes("Project dates may change due to site conditions"));
+  assert.ok(pdfSrc.includes("Estimated Start Date"));
+  assert.ok(pdfSrc.includes("Target Completion"));
+  assert.ok(pdfSrc.includes("Project dates may change due to site conditions"));
+  assert.ok(!pdfSrc.includes("Schedule source"));
+  assert.ok(!portalSrc.includes("Schedule source"));
+});
+
+test("13 Article 7 Payment Terms is unchanged", () => {
+  assert.ok(art7.includes("Payment Terms"));
+  assert.ok(paymentHelperSrc.includes("Confirm Payment Terms"));
+  assert.ok(!paymentHelperSrc.includes("Set Project Dates"));
+  assert.ok(!paymentHelperSrc.includes("Confirm Schedule"));
+  assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-4"));
+});
+
+test("14 negative search: no technical schedule copy", () => {
+  assert.ok(!art8.includes("Schedule Source"));
+  assert.ok(!art8.includes("Schedule source"));
+  assert.ok(!art8.includes("Project legacy fallback"));
+  assert.ok(!art8.includes("Continue does not change readiness"));
+  assert.ok(!art8.includes("Review this article, then Continue"));
+  assert.ok(!art8.includes("To be confirmed"));
+  assert.ok(!helperSrc.includes("Schedule Source"));
+  assert.ok(!helperSrc.includes("Project legacy fallback"));
+  assert.ok(!js.includes("Project legacy fallback"));
+  assert.ok(!js.includes("scheduleSourceDisplayLabel"));
+  assert.ok(!pdfSrc.includes("approved_quote"));
+  assert.ok(!portalSrc.includes("project_legacy"));
+});
+
+test("no invented today date and no auto-confirm", () => {
+  assert.ok(!/startDate\s*=\s*new Date\(\)/.test(helperSrc));
+  assert.ok(!helperSrc.includes("toISOString"));
+  const empty = view({ startDate: "", dueDate: "" });
+  assert.strictEqual(empty.kind, "missing_start");
+  const both = view({ startDate: "2026-09-01", dueDate: "2026-09-30" });
+  assert.strictEqual(both.kind, "unconfirmed");
+  assert.ok(helperSrc.includes("confirm_estimated_schedule: true"));
+  assert.ok(helperSrc.includes("SETUP_API"));
+  assert.ok(js.includes("saveCanonicalScheduleDates"));
+  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-4"));
+});
+
+test("edit date inputs have accessible contrast and a visible calendar icon", () => {
+  const art8CssStart = html.indexOf("#art-schedule .cb-editor input[type=\"date\"]");
+  assert.ok(art8CssStart >= 0, "missing Article 8 date input CSS");
+  const art8Css = html.slice(art8CssStart, html.indexOf("@media print", art8CssStart));
+  assert.ok(art8Css.includes("color: #1c1917"));
+  assert.ok(art8Css.includes("color: #57534e"));
+  assert.ok(art8Css.includes("background-color: #ffffff"));
+  assert.ok(art8Css.includes("color-scheme: light"));
+  assert.ok(art8Css.includes("::-webkit-datetime-edit"));
+  assert.ok(art8Css.includes("::-webkit-calendar-picker-indicator"));
+  assert.ok(art8Css.includes("stroke='%231c1917'"));
+  assert.ok(js.includes("syncScheduleDateInputChrome"));
+  assert.ok(js.includes('el.classList.toggle("is-empty"'));
+});
+
+test("schedule edit footer has exactly one Back and Save Project Dates", () => {
+  const footerFn = slice(js, "function renderWorkspaceFooter", "function articleAllowsOwnerEdit");
+  assert.ok(
+    /"art-schedule": defaultWorkspaceCaps\(\{[\s\S]*?saveLabel: "Save Project Dates"[\s\S]*?cancelLabel: "Back"/.test(
+      js
+    )
+  );
+  assert.ok(footerFn.includes("hideStepBackOnScheduleEdit"));
+  assert.ok(footerFn.includes("if (!hideStepBackOnScheduleEdit)"));
+  const editStart = footerFn.indexOf("if (mode === WS_MODE.EDIT)");
+  const editEnd = footerFn.indexOf(
+    "if (caps.supportsEdit && articleAllowsOwnerEdit",
+    editStart
+  );
+  assert.ok(editStart >= 0 && editEnd > editStart, "missing EDIT footer branch");
+  const editSlice = footerFn.slice(editStart, editEnd);
+  assert.ok(editSlice.includes('id: "cbWsCancel"'));
+  assert.ok(editSlice.includes("caps.cancelLabel"));
+  assert.ok(editSlice.includes('id: "cbWsSave"'));
+  assert.ok(editSlice.includes("caps.saveLabel"));
+  assert.ok(!editSlice.includes('id: "cbStepBack"'));
+  assert.strictEqual((editSlice.match(/id: "cbWsCancel"/g) || []).length, 1);
+  assert.ok(editSlice.includes("return;"));
+});
+
+test("same-day completion is valid", () => {
+  const v = view({ startDate: "2026-09-01", dueDate: "2026-09-01", confirmed: false });
+  assert.strictEqual(v.kind, "unconfirmed");
+  assert.strictEqual(v.confirmBlocked, false);
+});
+
+test("locked accepted quote shows zero Edit Project Dates buttons", () => {
+  assert.strictEqual(
+    ScheduleConfirm.quoteAllowsScheduleWrite({
+      status: "accepted",
+      start_date: "2026-09-15",
+      due_date: "2026-09-30",
+    }),
+    false
+  );
+  const p = plan({
+    startDate: "2026-09-15",
+    dueDate: "2026-09-30",
+    confirmed: true,
+    datesWritable: false,
+  });
+  assert.strictEqual(p.buttons.filter((b) => b.label === "Edit Project Dates").length, 0);
+  assert.ok(!p.buttons.some((b) => b.id === "edit"));
+  assert.ok(!p.buttons.some((b) => b.label === "Set Project Dates"));
+  assert.strictEqual(p.primaryLabel, "Continue");
+  assert.ok(js.includes("scheduleDatesWritable()"));
+  assert.ok(js.includes('if (articleId === "art-schedule") return scheduleDatesWritable()'));
+});
+
+test("editable quote keeps Edit Project Dates and Save Project Dates", () => {
+  assert.strictEqual(
+    ScheduleConfirm.quoteAllowsScheduleWrite({
+      status: "draft",
+      start_date: "2026-09-01",
+      due_date: "2026-09-30",
+    }),
+    true
+  );
+  const p = plan({
+    startDate: "2026-09-01",
+    dueDate: "2026-09-30",
+    confirmed: true,
+    datesWritable: true,
+  });
+  assert.ok(p.buttons.some((b) => b.label === "Edit Project Dates" && b.style === "ghost"));
+  assert.ok(
+    /"art-schedule": defaultWorkspaceCaps\(\{[\s\S]*?saveLabel: "Save Project Dates"/.test(js)
+  );
+  assert.ok(js.includes("createScheduleDateSaveRunner"));
+});
+
+testAsync("direct save on a locked quote is rejected without POST", async () => {
+  let posts = 0;
+  const runner = ScheduleConfirm.createScheduleDateSaveRunner({
+    getQuote: () => ({
+      status: "accepted",
+      start_date: "2026-09-15",
+      due_date: "2026-09-30",
+    }),
+    getIds: () => ({ quoteId: "q-locked" }),
+    getDates: () => ({ startDate: "2026-09-21", dueDate: "2026-10-01" }),
+    postJson: async () => {
+      posts += 1;
+      return { ok: true, data: { ok: true, quote: {} } };
+    },
+  });
+  const result = await runner.save();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "quote_locked");
+  assert.strictEqual(result.posted, false);
+  assert.strictEqual(result.restoreCanonical, true);
+  assert.strictEqual(result.error, ScheduleConfirm.DATES_LOCKED_MESSAGE);
+  assert.strictEqual(posts, 0);
+  assert.ok(helperSrc.includes('code === "quote_locked"'));
+  assert.ok(/Quote is locked and cannot be edited/.test(fs.readFileSync(
+    path.join(ROOT, "netlify/functions/update-tenant-quote-edit.js"),
+    "utf8"
+  )));
+});
+
+testAsync("HTTP save error leaves no Saving state and restores canonical dates", async () => {
+  let busy = false;
+  const edits = { startDate: "2026-09-21", dueDate: "2026-12-01" };
+  const runner = ScheduleConfirm.createScheduleDateSaveRunner({
+    setBusy: (value) => {
+      busy = Boolean(value);
+    },
+    getQuote: () => ({ status: "draft", start_date: "2026-09-15", due_date: "2026-09-30" }),
+    getIds: () => ({ quoteId: "q-edit" }),
+    getDates: () => edits,
+    postJson: async () => ({
+      ok: false,
+      status: 500,
+      data: { ok: false, error: "boom" },
+    }),
+  });
+  assert.strictEqual(runner.isLocked(), false);
+  const result = await runner.save();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "http");
+  assert.strictEqual(result.restoreCanonical, true);
+  assert.strictEqual(busy, false);
+  assert.strictEqual(runner.isLocked(), false);
+  const restored = ScheduleConfirm.restoreCanonicalDates(edits, {
+    startDate: "2026-09-15",
+    dueDate: "2026-09-30",
+  });
+  assert.strictEqual(restored.startDate, "2026-09-15");
+  assert.strictEqual(restored.dueDate, "2026-09-30");
+  assert.ok(js.includes("restoreCanonicalScheduleDatesFromSource"));
+  assert.ok(js.includes("showScheduleSaveError"));
+  const saveFn = slice(js, "async function workspaceSave", "async function workspaceConfirmPayment");
+  const schedCatchStart = saveFn.indexOf('if (articleId === "art-schedule")');
+  assert.ok(schedCatchStart >= 0, "missing schedule save-error branch");
+  const schedCatch = saveFn.slice(
+    schedCatchStart,
+    saveFn.indexOf("setArticleMode(articleId, WS_MODE.EDIT)", schedCatchStart)
+  );
+  assert.ok(schedCatch.includes("restoreCanonicalScheduleDatesFromSource"));
+  assert.ok(schedCatch.includes("showScheduleSaveError"));
+  assert.ok(!schedCatch.includes("window.alert"));
+});
+
+test("date save on editable TEST quotes still posts quote dates for trigger invalidation", () => {
+  assert.ok(helperSrc.includes("createScheduleDateSaveRunner"));
+  assert.ok(helperSrc.includes("QUOTE_UPDATE_API"));
+  assert.ok(js.includes("createScheduleDateSaveRunner"));
+  assert.ok(!js.includes("apply_quote_schedule_date_change"));
+  assert.ok(js.includes("never rewrite accepted quote"));
+});
+
+testAsync("locked quote with dates already present still confirms on the server", async () => {
+  let posts = 0;
+  const runner = ScheduleConfirm.createScheduleConfirmRunner({
+    getBusy: () => false,
+    isConfirmed: () => false,
+    getDates: () => ({ startDate: "2026-09-01", dueDate: "2026-09-30" }),
+    getIds: () => ({ projectId: "p1", quoteId: "q1" }),
+    getQuote: () => ({
+      status: "accepted",
+      start_date: "2026-09-01",
+      due_date: "2026-09-30",
+    }),
+    postJson: async () => {
+      posts += 1;
+      return {
+        ok: true,
+        data: {
+          ok: true,
+          setup: {
+            project_id: "p1",
+            quote_id: "q1",
+            schedule_confirmed_at: "2026-09-20T12:00:00.000Z",
+            schedule_confirmed_start_date: "2026-09-01",
+            schedule_confirmed_due_date: "2026-09-30",
+          },
+        },
+      };
+    },
+    applySuccess: () => {},
+  });
+  const result = await runner.confirm();
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.posted, true);
+  assert.strictEqual(posts, 1);
+  assert.strictEqual(result.payload.confirm_estimated_schedule, true);
+  assert.ok(!Object.prototype.hasOwnProperty.call(result.payload, "start_date"));
+  assert.ok(!Object.prototype.hasOwnProperty.call(result.payload, "due_date"));
+});
+
+(async () => {
+  for (const item of pending) {
+    try {
+      await item.fn();
+      console.log("PASS", item.name);
+      passed += 1;
+    } catch (err) {
+      console.log("FAIL", item.name, "-", err.message);
+      failed += 1;
+    }
+  }
+  console.log("");
+  console.log("CH-007D Article 8 Estimated Schedule:", passed, "passed,", failed, "failed");
+  process.exit(failed === 0 ? 0 : 1);
+})();
