@@ -26,7 +26,6 @@ const {
 const {
   isAuthorizedLockedScheduleFillPatch,
   validateContractSchedule,
-  scheduleDatesChanged,
 } = require("./_lib/contract-schedule");
 
 const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
@@ -117,34 +116,6 @@ function normalizeDepositRequiredForEdit(raw, quoteTotal) {
     };
   }
   return resolveSchedulingPaymentAmount(raw, { total: quoteTotal });
-}
-
-function parseMgRpcError(err) {
-  const text = [err?.message, err?.supabaseRaw, err?.details]
-    .filter(Boolean)
-    .join(" ");
-  const match = String(text).match(/MG_ERR:([a-z0-9_]+):([^|]*)/i);
-  if (!match) return null;
-  return { code: match[1], message: String(match[2] || "").trim() };
-}
-
-async function applyQuoteScheduleDateChange(tenantId, quoteId, change) {
-  const raw = await supabaseRequest("rpc/apply_quote_schedule_date_change", {
-    method: "POST",
-    body: {
-      p_tenant_id: tenantId,
-      p_quote_id: quoteId,
-      p_start_date: change.nextStart,
-      p_due_date: change.nextDue,
-      p_update_start: change.updateStart === true,
-      p_update_due: change.updateDue === true,
-    },
-  });
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
-  if (Array.isArray(raw) && raw[0] && typeof raw[0] === "object") {
-    return raw[0].apply_quote_schedule_date_change || raw[0];
-  }
-  return raw;
 }
 
 function findUnknownBodyKeys(body) {
@@ -391,59 +362,13 @@ exports.handler = async (event) => {
     const tidEnc = encodeURIComponent(tenantId);
     const qidEnc = encodeURIComponent(quoteId);
 
-    const remainingPatch = { ...patch };
-    const dateChange = scheduleDatesChanged(guardBefore.quote, patch);
-    if (dateChange.updateStart || dateChange.updateDue) {
-      const nextStart = dateChange.nextStart;
-      const nextDue = dateChange.nextDue;
-      if (nextStart && nextDue && nextDue < nextStart) {
-        return json(400, {
-          ok: false,
-          error: "Completion date must be on or after the start date.",
-          code: "schedule_completion_before_start",
-        });
-      }
-      try {
-        await applyQuoteScheduleDateChange(tenantId, quoteId, dateChange);
-      } catch (err) {
-        const parsed = parseMgRpcError(err);
-        if (parsed?.code === "schedule_completion_before_start") {
-          return json(400, {
-            ok: false,
-            error:
-              parsed.message ||
-              "Completion date must be on or after the start date.",
-            code: "schedule_completion_before_start",
-          });
-        }
-        if (parsed?.code === "quote_not_found") {
-          return json(404, {
-            ok: false,
-            error: "Quote not found",
-            code: "quote_not_found",
-          });
-        }
-        console.error("[update-tenant-quote-edit] schedule date change", err);
-        return json(500, {
-          ok: false,
-          error:
-            "Quote dates could not be saved without clearing schedule confirmation.",
-          code: "schedule_date_change_failed",
-        });
-      }
-      delete remainingPatch.start_date;
-      delete remainingPatch.due_date;
-    }
-
-    if (Object.keys(remainingPatch).length) {
-      await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
-        method: "PATCH",
-        body: {
-          ...remainingPatch,
-          updated_at: nowIso,
-        },
-      });
-    }
+    await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
+      method: "PATCH",
+      body: {
+        ...patch,
+        updated_at: nowIso,
+      },
+    });
 
     const guardAfter = await evaluateQuoteEditGuard(tenantId, quoteId);
 
@@ -474,6 +399,4 @@ exports._test = {
   OWNER_ADMIN_ROLES,
   isAuthorizedLockedScopeOnlyPatch,
   findUnknownBodyKeys,
-  scheduleDatesChanged,
-  applyQuoteScheduleDateChange,
 };

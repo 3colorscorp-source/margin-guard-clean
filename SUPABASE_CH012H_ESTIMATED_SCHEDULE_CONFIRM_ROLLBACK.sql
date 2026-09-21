@@ -22,6 +22,8 @@ begin
 end;
 $preflight$;
 
+drop trigger if exists trg_quotes_invalidate_estimated_schedule on public.quotes;
+drop function if exists public.invalidate_estimated_schedule_on_quote_date_change();
 drop function if exists public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid);
 drop function if exists public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean);
 
@@ -46,7 +48,8 @@ begin
     where n.nspname = 'public'
       and p.proname in (
         'confirm_project_estimated_schedule',
-        'apply_quote_schedule_date_change'
+        'apply_quote_schedule_date_change',
+        'invalidate_estimated_schedule_on_quote_date_change'
       )
   ) then
     raise exception 'CH-012H rollback postflight failed: CH-012H functions still present';
@@ -76,6 +79,18 @@ begin
     )
   ) then
     raise exception 'CH-012H rollback postflight failed: CH-012H constraints still present';
+  end if;
+
+  if exists (
+    select 1
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'quotes'
+      and t.tgname = 'trg_quotes_invalidate_estimated_schedule'
+  ) then
+    raise exception 'CH-012H rollback postflight failed: quote date trigger still present';
   end if;
 end;
 $postflight$;

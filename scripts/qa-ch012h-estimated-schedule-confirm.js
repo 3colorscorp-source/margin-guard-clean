@@ -60,7 +60,6 @@ const pdfSrc = read("netlify/functions/_lib/contract-signed-pdf.js");
 
 const TOUCHED_JS = [
   "netlify/functions/project-contract-setup.js",
-  "netlify/functions/update-tenant-quote-edit.js",
   "netlify/functions/_lib/contract-schedule.js",
   "netlify/functions/_lib/contract-package.js",
   "public/js/contract-schedule-confirm.js",
@@ -68,6 +67,15 @@ const TOUCHED_JS = [
   "scripts/qa-ch012h-estimated-schedule-confirm.js",
   "scripts/qa-ch007d-article8-estimated-schedule.js",
 ];
+
+test("Invoice Hub quote-edit remains origin/main (no hub file touch)", () => {
+  const r = spawnSync(
+    "git",
+    ["diff", "--exit-code", "origin/main", "--", "netlify/functions/update-tenant-quote-edit.js"],
+    { cwd: ROOT, encoding: "utf8" }
+  );
+  assert.strictEqual(r.status, 0, r.stdout || r.stderr || "quote-edit diverged from origin/main");
+});
 
 test("syntax on CH-012H JS", () => {
   TOUCHED_JS.forEach((rel) => {
@@ -189,11 +197,12 @@ test("4+5. changing start or due invalidates confirmation", () => {
   );
   assert.strictEqual(startChange.changed, true);
   assert.strictEqual(dueChange.changed, true);
-  assert.ok(quoteEditSrc.includes("applyQuoteScheduleDateChange"));
+  assert.ok(sql.includes("trg_quotes_invalidate_estimated_schedule"));
+  assert.ok(sql.includes("NEW.start_date is distinct from OLD.start_date"));
+  assert.ok(sql.includes("NEW.due_date is distinct from OLD.due_date"));
   assert.ok(sql.includes("schedule_confirmed_at = null"));
-  assert.ok(sql.includes("schedule_confirmed_start_date = null"));
-  assert.ok(sql.includes("schedule_confirmed_due_date = null"));
-  assert.ok(sql.includes("schedule_confirmed_by = null"));
+  assert.ok(!quoteEditSrc.includes("applyQuoteScheduleDateChange"));
+  assert.ok(quoteEditSrc.includes("start_date"));
   const staleStart = schedule.evaluatePersistedScheduleConfirmation({
     setup: {
       tenant_id: "t1",
@@ -230,15 +239,11 @@ test("4+5. changing start or due invalidates confirmation", () => {
 });
 
 test("6. date change and invalidation are atomic or fail-closed", () => {
-  assert.ok(sql.includes("CH-012H-INVALIDATE-BEGIN"));
-  assert.ok(quoteEditSrc.includes("schedule_date_change_failed"));
-  assert.ok(quoteEditSrc.includes("Quote dates could not be saved without clearing schedule confirmation"));
-  assert.ok(sql.includes("update public.quotes q"));
-  assert.ok(sql.includes("update public.project_contract_setups s"));
-  const invalidateDefStart = sql.indexOf("CH-012H-INVALIDATE-BEGIN");
-  const quoteUpdate = sql.indexOf("update public.quotes q", invalidateDefStart);
-  const setupClear = sql.indexOf("update public.project_contract_setups s", invalidateDefStart);
-  assert.ok(quoteUpdate > 0 && setupClear > quoteUpdate);
+  assert.ok(sql.includes("CH-012H-TRIGGER-BEGIN"));
+  assert.ok(sql.includes("after update of start_date, due_date on public.quotes"));
+  assert.ok(sql.includes("s.tenant_id = NEW.tenant_id"));
+  assert.ok(sql.includes("s.quote_id = NEW.id"));
+  assert.ok(rollback.includes("drop trigger if exists trg_quotes_invalidate_estimated_schedule"));
 });
 
 test("7. other tenant cannot read, confirm, or invalidate", () => {
@@ -260,7 +265,7 @@ test("7. other tenant cannot read, confirm, or invalidate", () => {
   assert.strictEqual(otherTenant.wrong_scope, true);
   assert.ok(setupSrc.includes("tenant_id must not be sent by client"));
   assert.ok(setupSrc.includes("p_tenant_id: tenantId"));
-  assert.ok(quoteEditSrc.includes("p_tenant_id: tenantId"));
+  assert.ok(!quoteEditSrc.includes("p_tenant_id: tenantId"));
   assert.ok(sql.includes("and q.tenant_id = p_tenant_id"));
   assert.ok(sql.includes("and tp.tenant_id = p_tenant_id"));
 });
@@ -298,6 +303,9 @@ test("8. other quote/project cannot contaminate state", () => {
   assert.strictEqual(otherProject.confirmed, false);
   assert.ok(sql.includes("and s.project_id = p_project_id"));
   assert.ok(sql.includes("and s.quote_id = p_quote_id"));
+  assert.ok(sql.includes("s.project_id in ("));
+  assert.ok(sql.includes("tp.tenant_id = NEW.tenant_id"));
+  assert.ok(sql.includes("tp.quote_id = NEW.id"));
   assert.ok(setupSrc.includes("project_quote_mismatch"));
 });
 
@@ -473,6 +481,11 @@ test("null due_date is allowed by server policy; missing start is not", () => {
   const regs = [
     ["13. Article 7 Payment Terms", "scripts/qa-ch007d-article7-payment-summary.js"],
     ["Article 8 UI A-E", "scripts/qa-ch007d-article8-estimated-schedule.js"],
+    ["14. Owner Shield V2", "scripts/test-owner-shield-v2.js"],
+    ["14. Core Security Shield V2", "scripts/test-core-security-shield-v2.js"],
+    ["14. Seller Shield V2", "scripts/test-seller-shield-v2.js"],
+    ["14. Invoice Hub Shield V2", "scripts/test-invoice-hub-shield-v2.js"],
+    ["14. Invoice Hub scope guard", "scripts/guard-invoice-hub-scope.js"],
   ];
   for (const [label, rel] of regs) {
     const full = path.join(ROOT, rel);

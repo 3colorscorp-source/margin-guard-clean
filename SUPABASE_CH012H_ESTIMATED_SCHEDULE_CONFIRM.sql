@@ -12,6 +12,7 @@
 --   * project_contract_setups.schedule_confirmed_by  (FK → public.profiles)
 --   * confirm_project_estimated_schedule(...)
 --   * apply_quote_schedule_date_change(...)
+--   * trg_quotes_invalidate_estimated_schedule (AFTER UPDATE OF start_date, due_date)
 --
 -- KEY: tenant_id + project_id + quote_id
 -- Confirmation copies quotes.start_date / quotes.due_date. Browser dates are
@@ -396,9 +397,55 @@ $$;
 comment on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean) is
   'CH-012H: update quote start/due and clear matching estimated-schedule confirmation in one transaction. Service-role only.';
 
+create or replace function public.invalidate_estimated_schedule_on_quote_date_change()
+returns trigger
+language plpgsql
+security definer
+set search_path to pg_catalog, public
+as $$
+begin
+  -- CH-012H-TRIGGER-BEGIN
+  if TG_OP = 'UPDATE'
+     and (
+       NEW.start_date is distinct from OLD.start_date
+       or NEW.due_date is distinct from OLD.due_date
+     ) then
+    update public.project_contract_setups s
+    set
+      schedule_confirmed_at = null,
+      schedule_confirmed_start_date = null,
+      schedule_confirmed_due_date = null,
+      schedule_confirmed_by = null,
+      updated_at = now()
+    where s.tenant_id = NEW.tenant_id
+      and s.quote_id = NEW.id
+      and s.project_id in (
+        select tp.id
+        from public.tenant_projects tp
+        where tp.tenant_id = NEW.tenant_id
+          and tp.quote_id = NEW.id
+      );
+  end if;
+  return NEW;
+  -- CH-012H-TRIGGER-END
+end;
+$$;
+
+comment on function public.invalidate_estimated_schedule_on_quote_date_change() is
+  'CH-012H: when quotes.start_date or due_date actually change, clear matching estimated-schedule confirmation in the same transaction.';
+
+drop trigger if exists trg_quotes_invalidate_estimated_schedule
+  on public.quotes;
+create trigger trg_quotes_invalidate_estimated_schedule
+after update of start_date, due_date on public.quotes
+for each row
+execute function public.invalidate_estimated_schedule_on_quote_date_change();
+
 alter function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid)
   owner to postgres;
 alter function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean)
+  owner to postgres;
+alter function public.invalidate_estimated_schedule_on_quote_date_change()
   owner to postgres;
 
 revoke all on function public.confirm_project_estimated_schedule(uuid, uuid, uuid, uuid) from public;
@@ -412,6 +459,10 @@ grant execute on function public.confirm_project_estimated_schedule(uuid, uuid, 
   to service_role;
 grant execute on function public.apply_quote_schedule_date_change(uuid, uuid, date, date, boolean, boolean)
   to service_role;
+
+revoke all on function public.invalidate_estimated_schedule_on_quote_date_change() from public;
+revoke all on function public.invalidate_estimated_schedule_on_quote_date_change() from anon;
+revoke all on function public.invalidate_estimated_schedule_on_quote_date_change() from authenticated;
 
 do $postflight$
 declare
@@ -487,6 +538,28 @@ begin
        )
      ) = 0 then
     raise exception 'CH-012H postflight failed: invalidate function markers missing';
+  end if;
+
+  if position(
+       'CH-012H-TRIGGER-BEGIN'
+       in pg_get_functiondef(
+         'public.invalidate_estimated_schedule_on_quote_date_change()'::regprocedure
+       )
+     ) = 0 then
+    raise exception 'CH-012H postflight failed: quote date trigger markers missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'quotes'
+      and t.tgname = 'trg_quotes_invalidate_estimated_schedule'
+      and t.tgenabled <> 'D'
+  ) then
+    raise exception 'CH-012H postflight failed: quote date invalidation trigger missing';
   end if;
 end;
 $postflight$;

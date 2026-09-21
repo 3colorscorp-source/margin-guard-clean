@@ -86,6 +86,16 @@ SELECT
       )
     ) > 0
   ) AS invalidate_is_isolated,
+  EXISTS (
+    SELECT 1
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'quotes'
+      AND t.tgname = 'trg_quotes_invalidate_estimated_schedule'
+      AND t.tgenabled <> 'D'
+  ) AS quote_date_trigger_ok,
   (
     EXISTS (
       SELECT 1
@@ -109,7 +119,8 @@ SELECT
       WHERE rp.specific_schema = 'public'
         AND rp.routine_name IN (
           'confirm_project_estimated_schedule',
-          'apply_quote_schedule_date_change'
+          'apply_quote_schedule_date_change',
+          'invalidate_estimated_schedule_on_quote_date_change'
         )
         AND rp.privilege_type = 'EXECUTE'
         AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
@@ -166,6 +177,12 @@ SELECT
         'public.apply_quote_schedule_date_change(uuid,uuid,date,date,boolean,boolean)'::regprocedure
       )
     ) > 0
+    AND position(
+      'CH-012H-TRIGGER-BEGIN'
+      in pg_get_functiondef(
+        'public.invalidate_estimated_schedule_on_quote_date_change()'::regprocedure
+      )
+    ) > 0
     AND EXISTS (
       SELECT 1
       FROM information_schema.routine_privileges rp
@@ -180,9 +197,20 @@ SELECT
       WHERE rp.specific_schema = 'public'
         AND rp.routine_name IN (
           'confirm_project_estimated_schedule',
-          'apply_quote_schedule_date_change'
+          'apply_quote_schedule_date_change',
+          'invalidate_estimated_schedule_on_quote_date_change'
         )
         AND rp.privilege_type = 'EXECUTE'
         AND rp.grantee IN ('PUBLIC', 'anon', 'authenticated')
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = 'quotes'
+        AND t.tgname = 'trg_quotes_invalidate_estimated_schedule'
+        AND t.tgenabled <> 'D'
     )
   ) AS ch012h_verify_pass;
