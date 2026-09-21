@@ -19645,7 +19645,7 @@ window.renderSupervisor = renderSupervisor;
       laborSum += finiteNumber(row.laborBudget, 0);
       commissionSum += finiteNumber(row.estCommission, 0);
     }
-    if (laborEl) laborEl.textContent = converted.length ? money(laborSum, currency) : "—";
+    if (laborEl) laborEl.textContent = converted.length ? saFormatSummaryMoney(laborSum, currency) : "—";
     if (laborEl && laborEl.parentElement) {
       laborEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
     }
@@ -19653,7 +19653,7 @@ window.renderSupervisor = renderSupervisor;
       convertedEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
     }
     if (commissionEl) {
-      commissionEl.textContent = converted.length ? money(commissionSum, currency) : "—";
+      commissionEl.textContent = converted.length ? saFormatSummaryMoney(commissionSum, currency) : "—";
       commissionEl.title = converted.length ? `${rate}% of labor budget (estimate only)` : "";
       if (commissionEl.parentElement) {
         commissionEl.parentElement.classList.toggle("sa-kpi--ok", converted.length > 0);
@@ -20216,7 +20216,7 @@ window.renderSupervisor = renderSupervisor;
         `<tr>` +
         `<td>${escapeHtml(row.projectName)}</td>` +
         `<td data-label="Client">${escapeHtml(row.clientName)}</td>` +
-        `<td data-label="Sale Price">${money(row.salePrice, currency)}</td>` +
+        `<td data-label="Sale Price">${saFormatSummaryMoney(row.salePrice, currency)}</td>` +
         `<td data-label="Stage">${escapeHtml(saFormatProjectStage(row))}</td>` +
         `<td data-label="Supervisor">${saSupervisorBadgeHtml(row)}</td>` +
         `<td>${saProjectActionsMenuHtml(row)}</td>` +
