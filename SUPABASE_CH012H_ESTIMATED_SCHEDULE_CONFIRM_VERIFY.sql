@@ -66,13 +66,25 @@ SELECT
       )
     ) > 0
     AND position(
-      'quotes.start_date'
+      'v_start := v_quote.start_date'
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) > 0
+    AND position(
+      'v_due := v_quote.due_date'
       in pg_get_functiondef(
         'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
     ) > 0
     AND position(
       'p_start_date'
+      in pg_get_functiondef(
+        'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
+      )
+    ) = 0
+    AND position(
+      'p_due_date'
       in pg_get_functiondef(
         'public.confirm_project_estimated_schedule(uuid,uuid,uuid,uuid)'::regprocedure
       )
