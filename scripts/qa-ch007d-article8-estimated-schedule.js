@@ -361,7 +361,7 @@ test("no invented today date and no auto-confirm", () => {
   assert.ok(helperSrc.includes("confirm_estimated_schedule: true"));
   assert.ok(helperSrc.includes("SETUP_API"));
   assert.ok(js.includes("saveCanonicalScheduleDates"));
-  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-2"));
+  assert.ok(html.includes("contract-schedule-confirm.js?v=ch012h-4"));
 });
 
 test("edit date inputs have accessible contrast and a visible calendar icon", () => {
@@ -408,6 +408,131 @@ test("same-day completion is valid", () => {
   const v = view({ startDate: "2026-09-01", dueDate: "2026-09-01", confirmed: false });
   assert.strictEqual(v.kind, "unconfirmed");
   assert.strictEqual(v.confirmBlocked, false);
+});
+
+test("locked accepted quote shows zero Edit Project Dates buttons", () => {
+  assert.strictEqual(
+    ScheduleConfirm.quoteAllowsScheduleWrite({
+      status: "accepted",
+      start_date: "2026-09-15",
+      due_date: "2026-09-30",
+    }),
+    false
+  );
+  const p = plan({
+    startDate: "2026-09-15",
+    dueDate: "2026-09-30",
+    confirmed: true,
+    datesWritable: false,
+  });
+  assert.strictEqual(p.buttons.filter((b) => b.label === "Edit Project Dates").length, 0);
+  assert.ok(!p.buttons.some((b) => b.id === "edit"));
+  assert.ok(!p.buttons.some((b) => b.label === "Set Project Dates"));
+  assert.strictEqual(p.primaryLabel, "Continue");
+  assert.ok(js.includes("scheduleDatesWritable()"));
+  assert.ok(js.includes('if (articleId === "art-schedule") return scheduleDatesWritable()'));
+});
+
+test("editable quote keeps Edit Project Dates and Save Project Dates", () => {
+  assert.strictEqual(
+    ScheduleConfirm.quoteAllowsScheduleWrite({
+      status: "draft",
+      start_date: "2026-09-01",
+      due_date: "2026-09-30",
+    }),
+    true
+  );
+  const p = plan({
+    startDate: "2026-09-01",
+    dueDate: "2026-09-30",
+    confirmed: true,
+    datesWritable: true,
+  });
+  assert.ok(p.buttons.some((b) => b.label === "Edit Project Dates" && b.style === "ghost"));
+  assert.ok(
+    /"art-schedule": defaultWorkspaceCaps\(\{[\s\S]*?saveLabel: "Save Project Dates"/.test(js)
+  );
+  assert.ok(js.includes("createScheduleDateSaveRunner"));
+});
+
+testAsync("direct save on a locked quote is rejected without POST", async () => {
+  let posts = 0;
+  const runner = ScheduleConfirm.createScheduleDateSaveRunner({
+    getQuote: () => ({
+      status: "accepted",
+      start_date: "2026-09-15",
+      due_date: "2026-09-30",
+    }),
+    getIds: () => ({ quoteId: "q-locked" }),
+    getDates: () => ({ startDate: "2026-09-21", dueDate: "2026-10-01" }),
+    postJson: async () => {
+      posts += 1;
+      return { ok: true, data: { ok: true, quote: {} } };
+    },
+  });
+  const result = await runner.save();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "quote_locked");
+  assert.strictEqual(result.posted, false);
+  assert.strictEqual(result.restoreCanonical, true);
+  assert.strictEqual(result.error, ScheduleConfirm.DATES_LOCKED_MESSAGE);
+  assert.strictEqual(posts, 0);
+  assert.ok(helperSrc.includes('code === "quote_locked"'));
+  assert.ok(/Quote is locked and cannot be edited/.test(fs.readFileSync(
+    path.join(ROOT, "netlify/functions/update-tenant-quote-edit.js"),
+    "utf8"
+  )));
+});
+
+testAsync("HTTP save error leaves no Saving state and restores canonical dates", async () => {
+  let busy = false;
+  const edits = { startDate: "2026-09-21", dueDate: "2026-12-01" };
+  const runner = ScheduleConfirm.createScheduleDateSaveRunner({
+    setBusy: (value) => {
+      busy = Boolean(value);
+    },
+    getQuote: () => ({ status: "draft", start_date: "2026-09-15", due_date: "2026-09-30" }),
+    getIds: () => ({ quoteId: "q-edit" }),
+    getDates: () => edits,
+    postJson: async () => ({
+      ok: false,
+      status: 500,
+      data: { ok: false, error: "boom" },
+    }),
+  });
+  assert.strictEqual(runner.isLocked(), false);
+  const result = await runner.save();
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "http");
+  assert.strictEqual(result.restoreCanonical, true);
+  assert.strictEqual(busy, false);
+  assert.strictEqual(runner.isLocked(), false);
+  const restored = ScheduleConfirm.restoreCanonicalDates(edits, {
+    startDate: "2026-09-15",
+    dueDate: "2026-09-30",
+  });
+  assert.strictEqual(restored.startDate, "2026-09-15");
+  assert.strictEqual(restored.dueDate, "2026-09-30");
+  assert.ok(js.includes("restoreCanonicalScheduleDatesFromSource"));
+  assert.ok(js.includes("showScheduleSaveError"));
+  const saveFn = slice(js, "async function workspaceSave", "async function workspaceConfirmPayment");
+  const schedCatchStart = saveFn.indexOf('if (articleId === "art-schedule")');
+  assert.ok(schedCatchStart >= 0, "missing schedule save-error branch");
+  const schedCatch = saveFn.slice(
+    schedCatchStart,
+    saveFn.indexOf("setArticleMode(articleId, WS_MODE.EDIT)", schedCatchStart)
+  );
+  assert.ok(schedCatch.includes("restoreCanonicalScheduleDatesFromSource"));
+  assert.ok(schedCatch.includes("showScheduleSaveError"));
+  assert.ok(!schedCatch.includes("window.alert"));
+});
+
+test("date save on editable TEST quotes still posts quote dates for trigger invalidation", () => {
+  assert.ok(helperSrc.includes("createScheduleDateSaveRunner"));
+  assert.ok(helperSrc.includes("QUOTE_UPDATE_API"));
+  assert.ok(js.includes("createScheduleDateSaveRunner"));
+  assert.ok(!js.includes("apply_quote_schedule_date_change"));
+  assert.ok(js.includes("never rewrite accepted quote"));
 });
 
 testAsync("locked quote with dates already present still confirms on the server", async () => {

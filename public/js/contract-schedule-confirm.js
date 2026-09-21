@@ -24,8 +24,13 @@
   var NOT_SCHEDULED = "Not scheduled";
   var START_MISSING_MESSAGE = "Add the project start date to continue.";
   var COMPLETION_MISSING_MESSAGE = "Add the target completion date to continue.";
+  var DATES_LOCKED_MESSAGE =
+    "These project dates are locked on the approved quote and cannot be changed.";
+  var SAVE_FAILED_RESTORED_MESSAGE =
+    "Project dates could not be saved. The original dates were restored.";
   var STORAGE_PREFIX = "mg.art8.scheduleConfirmed.";
   var confirmLock = false;
+  var saveLock = false;
 
   function trimField(value) {
     return String(value == null ? "" : value).trim();
@@ -187,6 +192,7 @@
     else if (kind === "missing_completion") message = COMPLETION_MISSING_MESSAGE;
     var showNotice = kind === "unconfirmed" || kind === "confirmed";
     var readinessStatus = kind === "confirmed" ? "available" : "needs_confirmation";
+    var datesWritable = src.datesWritable !== false;
     return {
       kind: kind,
       startLabel: "Estimated Start Date",
@@ -214,12 +220,17 @@
           : kind === "unconfirmed"
             ? "Confirm Schedule"
             : "Set Project Dates",
-      editVisible: frozen ? false : kind === "unconfirmed" || kind === "confirmed",
+      editVisible:
+        frozen || !datesWritable ? false : kind === "unconfirmed" || kind === "confirmed",
       editLabel: "Edit Project Dates",
       continueVisible: kind === "confirmed",
       continueEnabled: kind === "confirmed" && src.busy !== true,
       confirmVisible: kind === "unconfirmed",
-      setDatesVisible: kind === "missing_start" || kind === "missing_completion" || kind === "invalid",
+      setDatesVisible:
+        !frozen &&
+        datesWritable &&
+        (kind === "missing_start" || kind === "missing_completion" || kind === "invalid"),
+      datesWritable: datesWritable && !frozen,
     };
   }
 
@@ -293,6 +304,23 @@
     if (!start && !due && (status === "accepted" || status === "approved")) return true;
     if (status && status !== "accepted" && status !== "approved") return true;
     return false;
+  }
+
+  function restoreCanonicalDates(edits, canonical) {
+    var next = edits || {};
+    var src = canonical || {};
+    next.startDate = normIsoDate(src.startDate || src.start_date);
+    next.dueDate = normIsoDate(src.dueDate || src.due_date);
+    return next;
+  }
+
+  function scheduleSaveErrorMessage(res) {
+    var code = trimField(res && res.data && res.data.code);
+    var err = trimField(res && res.data && res.data.error);
+    if (code === "quote_locked" || /quote is locked/i.test(err)) {
+      return DATES_LOCKED_MESSAGE;
+    }
+    return err || SAVE_FAILED_RESTORED_MESSAGE;
   }
 
   function buildScheduleDatePayload(quoteId, startDate, dueDate) {
@@ -430,6 +458,122 @@
     };
   }
 
+  function createScheduleDateSaveRunner(hooks) {
+    var h = hooks || {};
+
+    function tryLock() {
+      if (saveLock) return false;
+      saveLock = true;
+      if (typeof h.setBusy === "function") h.setBusy(true);
+      return true;
+    }
+
+    function unlock() {
+      saveLock = false;
+      if (typeof h.setBusy === "function") h.setBusy(false);
+    }
+
+    async function save() {
+      if (!tryLock()) {
+        return { ok: false, reason: "busy", posted: false, restoreCanonical: false };
+      }
+      try {
+        var quote = typeof h.getQuote === "function" ? h.getQuote() || {} : {};
+        if (!quoteAllowsScheduleWrite(quote)) {
+          return {
+            ok: false,
+            reason: "quote_locked",
+            posted: false,
+            restoreCanonical: true,
+            error: DATES_LOCKED_MESSAGE,
+          };
+        }
+        var ids = typeof h.getIds === "function" ? h.getIds() || {} : {};
+        var quoteId = trimField(ids.quoteId);
+        if (!quoteId) {
+          return {
+            ok: false,
+            reason: "missing_quote",
+            posted: false,
+            restoreCanonical: true,
+            error: SAVE_FAILED_RESTORED_MESSAGE,
+          };
+        }
+        var dates = typeof h.getDates === "function" ? h.getDates() || {} : {};
+        var check = validateScheduleDates(dates.startDate, dates.dueDate);
+        if (check.orderInvalid) {
+          return {
+            ok: false,
+            reason: "invalid",
+            posted: false,
+            restoreCanonical: false,
+            error: INVALID_ORDER,
+          };
+        }
+        if (!check.startDate) {
+          return {
+            ok: false,
+            reason: "missing_start",
+            posted: false,
+            restoreCanonical: false,
+            error: START_MISSING_MESSAGE,
+          };
+        }
+        var payload = buildScheduleDatePayload(quoteId, check.startDate, check.dueDate);
+        if (typeof h.postJson !== "function") {
+          throw new Error("postJson is required to save project dates.");
+        }
+        var posted = false;
+        var res;
+        try {
+          res = await h.postJson(h.apiUrl || QUOTE_UPDATE_API, payload);
+          posted = true;
+        } catch (err) {
+          return {
+            ok: false,
+            reason: "http",
+            posted: posted,
+            restoreCanonical: true,
+            error: trimField(err && err.message) || SAVE_FAILED_RESTORED_MESSAGE,
+          };
+        }
+        if (!res || res.ok !== true || !res.data || res.data.ok !== true) {
+          return {
+            ok: false,
+            reason:
+              trimField(res && res.data && res.data.code) === "quote_locked"
+                ? "quote_locked"
+                : "http",
+            posted: true,
+            restoreCanonical: true,
+            error: scheduleSaveErrorMessage(res),
+            status: res && res.status,
+            payload: payload,
+          };
+        }
+        if (typeof h.applySuccess === "function") {
+          h.applySuccess(res.data, payload);
+        }
+        return {
+          ok: true,
+          reason: "saved",
+          posted: true,
+          payload: payload,
+          data: res.data,
+        };
+      } finally {
+        unlock();
+      }
+    }
+
+    return {
+      save: save,
+      isLocked: function () {
+        return saveLock;
+      },
+    };
+  }
+
   function applyConfirmationToEdits(edits, startDate, dueDate) {
     var next = edits || {};
     next.startDate = normIsoDate(startDate);
@@ -479,6 +623,8 @@
     NOT_SCHEDULED: NOT_SCHEDULED,
     START_MISSING_MESSAGE: START_MISSING_MESSAGE,
     COMPLETION_MISSING_MESSAGE: COMPLETION_MISSING_MESSAGE,
+    DATES_LOCKED_MESSAGE: DATES_LOCKED_MESSAGE,
+    SAVE_FAILED_RESTORED_MESSAGE: SAVE_FAILED_RESTORED_MESSAGE,
     normIsoDate: normIsoDate,
     formatDisplayDate: formatDisplayDate,
     validateScheduleDates: validateScheduleDates,
@@ -489,9 +635,12 @@
     scheduleTermsReadiness: scheduleTermsReadiness,
     scheduleConfirmed: scheduleConfirmed,
     quoteAllowsScheduleWrite: quoteAllowsScheduleWrite,
+    restoreCanonicalDates: restoreCanonicalDates,
+    scheduleSaveErrorMessage: scheduleSaveErrorMessage,
     buildScheduleDatePayload: buildScheduleDatePayload,
     buildScheduleConfirmPayload: buildScheduleConfirmPayload,
     createScheduleConfirmRunner: createScheduleConfirmRunner,
+    createScheduleDateSaveRunner: createScheduleDateSaveRunner,
     readStoredConfirmation: readStoredConfirmation,
     writeStoredConfirmation: writeStoredConfirmation,
     clearStoredConfirmation: clearStoredConfirmation,

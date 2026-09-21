@@ -94,6 +94,7 @@
   let workspaceBusy = false;
   /** Footer busy label while payment POST is in flight. */
   let workspaceBusyLabel = "Saving…";
+  let scheduleSaveError = "";
 
   /** CH-007D-P2 — payment schedule local draft (Save Draft / Confirm → existing POST). */
   let paymentDraftItems = [];
@@ -312,8 +313,9 @@
       onBeforeSave: () => {
         const dates = currentScheduleDates();
         const check = validateScheduleDatesClient(dates.startDate, dates.dueDate);
-        const errorEl = $("cbScheduleEditError");
         if (check.orderInvalid) {
+          clearScheduleSaveError();
+          const errorEl = $("cbScheduleEditError");
           if (errorEl) {
             errorEl.hidden = false;
             errorEl.textContent = ScheduleConfirm.INVALID_ORDER;
@@ -321,14 +323,12 @@
           renderWorkspaceChrome();
           return false;
         }
-        if (errorEl) {
-          errorEl.hidden = true;
-          errorEl.textContent = "";
-        }
+        clearScheduleSaveError();
         return true;
       },
       onSave: async () => {
         await saveCanonicalScheduleDates();
+        clearScheduleSaveError();
       },
     }),
     "art-changes": defaultWorkspaceCaps({
@@ -489,6 +489,12 @@
       showError("Payment Terms", "Confirmed payment terms are read-only.");
       return false;
     }
+    if (articleId === "art-schedule" && !scheduleDatesWritable()) {
+      showScheduleSaveError(ScheduleConfirm.DATES_LOCKED_MESSAGE);
+      renderWorkspaceChrome();
+      return false;
+    }
+    if (articleId === "art-schedule") clearScheduleSaveError();
     readEditsFromInputs();
     workspaceEditBaseline = draftEdits ? { ...draftEdits } : null;
     if (articleId === "art-payment") {
@@ -573,6 +579,20 @@
       await workspaceEnterPreview(articleId);
       return true;
     } catch (err) {
+      workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
+      if (articleId === "art-schedule") {
+        restoreCanonicalScheduleDatesFromSource();
+        setArticleMode(
+          articleId,
+          scheduleDatesWritable() ? WS_MODE.EDIT : WS_MODE.PREVIEW
+        );
+        showScheduleSaveError(
+          err?.message || ScheduleConfirm.SAVE_FAILED_RESTORED_MESSAGE
+        );
+        renderWorkspaceChrome();
+        return false;
+      }
       setArticleMode(articleId, WS_MODE.EDIT);
       renderWorkspaceChrome();
       window.alert(err?.message || "Save failed. Changes were not written.");
@@ -1162,6 +1182,7 @@
 
   function articleAllowsOwnerEdit(articleId) {
     if (articleId === "art-payment") return paymentScheduleAllowsOwnerEdit();
+    if (articleId === "art-schedule") return scheduleDatesWritable();
     return true;
   }
 
@@ -1323,6 +1344,7 @@
       confirmed: scheduleConfigured(),
       frozen: Boolean(lastFrozenPackage),
       busy: workspaceBusy,
+      datesWritable: scheduleDatesWritable(),
     });
   }
 
@@ -1334,7 +1356,51 @@
       confirmed: scheduleConfigured(),
       frozen: Boolean(lastFrozenPackage),
       busy: Boolean(busy),
+      datesWritable: scheduleDatesWritable(),
     });
+  }
+
+  function scheduleDatesWritable() {
+    return ScheduleConfirm.quoteAllowsScheduleWrite({
+      status: sourceSnapshot?.quoteStatus,
+      start_date: sourceSnapshot?.startDate,
+      due_date: sourceSnapshot?.dueDate,
+    });
+  }
+
+  function showScheduleSaveError(message) {
+    scheduleSaveError = String(message || "").trim();
+    const errorEl = $("cbScheduleEditError");
+    if (errorEl) {
+      errorEl.hidden = !scheduleSaveError;
+      errorEl.textContent = scheduleSaveError;
+    }
+  }
+
+  function clearScheduleSaveError() {
+    scheduleSaveError = "";
+    const errorEl = $("cbScheduleEditError");
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+    }
+  }
+
+  function restoreCanonicalScheduleDatesFromSource() {
+    if (!draftEdits) return;
+    ScheduleConfirm.restoreCanonicalDates(draftEdits, {
+      startDate: sourceSnapshot?.startDate,
+      dueDate: sourceSnapshot?.dueDate,
+    });
+    if (sourceSnapshot) hydrateScheduleConfirmation(sourceSnapshot, draftEdits);
+    if (workspaceEditBaseline) {
+      workspaceEditBaseline.startDate = draftEdits.startDate;
+      workspaceEditBaseline.dueDate = draftEdits.dueDate;
+    }
+    syncInputsFromEdits(draftEdits);
+    syncScheduleDateInputChrome();
+    if (sourceSnapshot) renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
   }
 
   function scheduleConfigured() {
@@ -1951,6 +2017,7 @@
       return false;
     }
     if (result.ok) {
+      clearScheduleSaveError();
       workspaceEditBaseline = null;
       setArticleMode("art-schedule", WS_MODE.SAVED);
       renderWorkspaceChrome();
@@ -3596,60 +3663,58 @@
   }
 
   async function saveCanonicalScheduleDates() {
-    const quoteId = String(sourceSnapshot?.quoteId || "").trim();
-    if (!quoteId) {
-      throw new Error("Quote id is required to save project dates.");
-    }
-    const dates = currentScheduleDates();
-    const check = validateScheduleDatesClient(dates.startDate, dates.dueDate);
-    if (check.orderInvalid) {
-      throw new Error(ScheduleConfirm.INVALID_ORDER);
-    }
-    if (!check.startDate) {
-      throw new Error(ScheduleConfirm.START_MISSING_MESSAGE);
-    }
-    const payload = ScheduleConfirm.buildScheduleDatePayload(
-      quoteId,
-      check.startDate,
-      check.dueDate
-    );
-    const res = await postJson(QUOTE_UPDATE_API, payload);
-    if (!res.ok || res.data?.ok !== true) {
-      throw new Error(res.data?.error || "Project dates could not be saved.");
-    }
-    const quote = res.data.quote || {};
-    if (sourceSnapshot) {
-      sourceSnapshot.startDate = ScheduleConfirm.normIsoDate(
-        quote.start_date || check.startDate
-      );
-      sourceSnapshot.dueDate = ScheduleConfirm.normIsoDate(
-        quote.due_date || check.dueDate
-      );
-      sourceSnapshot.scheduleConfirmedAt = "";
-      sourceSnapshot.scheduleConfirmedStart = "";
-      sourceSnapshot.scheduleConfirmedDue = "";
-      sourceSnapshot.scheduleConfirmed = false;
-      if (sourceSnapshot.contractSetup?.setup) {
-        sourceSnapshot.contractSetup.setup.schedule_confirmed_at = null;
-        sourceSnapshot.contractSetup.setup.schedule_confirmed_start_date = null;
-        sourceSnapshot.contractSetup.setup.schedule_confirmed_due_date = null;
-        sourceSnapshot.contractSetup.setup.schedule_confirmed_by = null;
-      }
-    }
-    draftEdits.startDate = sourceSnapshot.startDate;
-    draftEdits.dueDate = sourceSnapshot.dueDate;
-    ScheduleConfirm.clearConfirmationOnDateChange(draftEdits);
-    ScheduleConfirm.clearStoredConfirmation(
-      sourceSnapshot?.projectId,
-      sourceSnapshot?.quoteId
-    );
-    draftBaseline = cloneEdits({
-      ...sourceSnapshot,
-      ...draftEdits,
+    const runner = ScheduleConfirm.createScheduleDateSaveRunner({
+      getQuote: () => ({
+        status: sourceSnapshot?.quoteStatus,
+        start_date: sourceSnapshot?.startDate,
+        due_date: sourceSnapshot?.dueDate,
+      }),
+      getIds: () => ({ quoteId: sourceSnapshot?.quoteId }),
+      getDates: () => currentScheduleDates(),
+      postJson,
+      applySuccess: (data, payload) => {
+        const quote = (data && data.quote) || {};
+        const savedStart = ScheduleConfirm.normIsoDate(
+          quote.start_date || payload.start_date
+        );
+        const savedDue = ScheduleConfirm.normIsoDate(
+          quote.due_date || payload.due_date
+        );
+        if (sourceSnapshot) {
+          sourceSnapshot.startDate = savedStart;
+          sourceSnapshot.dueDate = savedDue;
+          sourceSnapshot.scheduleConfirmedAt = "";
+          sourceSnapshot.scheduleConfirmedStart = "";
+          sourceSnapshot.scheduleConfirmedDue = "";
+          sourceSnapshot.scheduleConfirmed = false;
+          if (sourceSnapshot.contractSetup?.setup) {
+            sourceSnapshot.contractSetup.setup.schedule_confirmed_at = null;
+            sourceSnapshot.contractSetup.setup.schedule_confirmed_start_date = null;
+            sourceSnapshot.contractSetup.setup.schedule_confirmed_due_date = null;
+            sourceSnapshot.contractSetup.setup.schedule_confirmed_by = null;
+          }
+        }
+        draftEdits.startDate = savedStart;
+        draftEdits.dueDate = savedDue;
+        ScheduleConfirm.clearConfirmationOnDateChange(draftEdits);
+        ScheduleConfirm.clearStoredConfirmation(
+          sourceSnapshot?.projectId,
+          sourceSnapshot?.quoteId
+        );
+        draftBaseline = cloneEdits({
+          ...sourceSnapshot,
+          ...draftEdits,
+        });
+        renderDocument(sourceSnapshot, draftEdits);
+        updateIndexNavStatus();
+      },
     });
-    renderDocument(sourceSnapshot, draftEdits);
-    updateIndexNavStatus();
-    return res.data;
+    const result = await runner.save();
+    if (result.restoreCanonical) restoreCanonicalScheduleDatesFromSource();
+    if (!result.ok) {
+      throw new Error(result.error || ScheduleConfirm.SAVE_FAILED_RESTORED_MESSAGE);
+    }
+    return result.data;
   }
 
   function looksLikeTechnicalQaLabel(text) {
@@ -5276,6 +5341,7 @@
       dueDate: dates.dueDate,
       confirmed: ScheduleConfirm.scheduleConfirmed(source, edits),
       frozen: Boolean(lastFrozenPackage),
+      datesWritable: scheduleDatesWritable(),
     });
     setText("cbStartDisplay", view.startValue);
     setText("cbDueDisplay", view.completionValue);
@@ -5299,11 +5365,14 @@
       status.classList.toggle("is-needs", view.kind !== "confirmed");
     }
     const errorEl = $("cbScheduleEditError");
-    if (errorEl && getArticleMode("art-schedule") !== WS_MODE.EDIT) {
-      if (view.orderInvalid) {
+    if (errorEl) {
+      if (scheduleSaveError) {
+        errorEl.hidden = false;
+        errorEl.textContent = scheduleSaveError;
+      } else if (view.orderInvalid) {
         errorEl.hidden = false;
         errorEl.textContent = view.message;
-      } else {
+      } else if (getArticleMode("art-schedule") !== WS_MODE.EDIT) {
         errorEl.hidden = true;
         errorEl.textContent = "";
       }
