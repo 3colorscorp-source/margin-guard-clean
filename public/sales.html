@@ -6757,6 +6757,13 @@
         return voicePlanDictationCapture;
       }
 
+      function lockVoicePlanTranscriptForCapture(on) {
+        const transcript = document.getElementById('voicePlanTranscript');
+        if (!transcript) return;
+        transcript.readOnly = !!on;
+        if (on && typeof transcript.blur === 'function') transcript.blur();
+      }
+
       function stopVoicePlanRecognition() {
         if (!voicePlanRecognition) return;
         try { voicePlanRecognition.stop(); } catch (_err) {}
@@ -6800,6 +6807,7 @@
         voicePlanRecognitionFinal = '';
         const capture = getVoicePlanDictationCapture();
         voicePlanDictationGeneration = capture ? capture.start(voicePlanRecognitionBase) : 0;
+        lockVoicePlanTranscriptForCapture(true);
         recognition.lang = String((language && language.value) || 'es-US');
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -6830,6 +6838,7 @@
           if (voicePlanRecognition !== recognition) return;
           if (voicePlanDictationCapture) voicePlanDictationCapture.end();
           voicePlanRecognition = null;
+          lockVoicePlanTranscriptForCapture(false);
           resetVoicePlanRecognitionUi();
           if (!voicePlanAiBusy) setVoicePlanCaptureStatus('Dictation stopped. Review the text, then choose Interpret and preview.', false, false);
         };
@@ -6838,6 +6847,7 @@
         } catch (_err) {
           if (voicePlanDictationCapture) voicePlanDictationCapture.stop();
           voicePlanRecognition = null;
+          lockVoicePlanTranscriptForCapture(false);
           resetVoicePlanRecognitionUi();
           setVoicePlanCaptureStatus('The microphone could not start. Check browser permission or type the instructions.', false, true);
         }
@@ -6903,6 +6913,7 @@
         if (voicePlanDictationCapture) voicePlanDictationCapture.cancel();
         const rec = voicePlanRecognition;
         voicePlanRecognition = null;
+        lockVoicePlanTranscriptForCapture(false);
         if (rec) {
           try { rec.stop(); } catch (_err) {}
         }

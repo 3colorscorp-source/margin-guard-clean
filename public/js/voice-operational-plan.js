@@ -699,7 +699,12 @@
   const MAX_DICTATION_CHARS = 6000;
 
   function speechResultTranscript(result) {
-    const alt = result && result[0];
+    const alt =
+      result && result[0]
+        ? result[0]
+        : result && typeof result.item === "function"
+          ? result.item(0)
+          : null;
     return String(alt && alt.transcript != null ? alt.transcript : "").trim();
   }
 
@@ -728,17 +733,22 @@
     let generation = 0;
     let listening = false;
     let base = "";
-    let finalsByIndex = [];
+    let slots = [];
 
-    function compose(interimParts) {
+    function isGrowingHypothesis(prev, next) {
+      const a = String(prev || "").trim();
+      const b = String(next || "").trim();
+      if (!a || !b || a === b) return false;
+      const al = a.toLowerCase();
+      const bl = b.toLowerCase();
+      return bl.indexOf(al) === 0 && bl.length > al.length;
+    }
+
+    function compose() {
       const parts = [];
       if (base) parts.push(base);
-      for (let i = 0; i < finalsByIndex.length; i += 1) {
-        if (finalsByIndex[i]) parts.push(finalsByIndex[i]);
-      }
-      const interims = Array.isArray(interimParts) ? interimParts : [];
-      for (let j = 0; j < interims.length; j += 1) {
-        if (interims[j]) parts.push(interims[j]);
+      for (let i = 0; i < slots.length; i += 1) {
+        if (slots[i] && slots[i].text) parts.push(slots[i].text);
       }
       return parts.join(" ").slice(0, maxChars);
     }
@@ -747,7 +757,7 @@
       generation += 1;
       listening = true;
       base = String(baseText == null ? "" : baseText).trim().slice(0, maxChars);
-      finalsByIndex = [];
+      slots = [];
       return generation;
     }
 
@@ -758,7 +768,7 @@
     function invalidate() {
       listening = false;
       generation += 1;
-      finalsByIndex = [];
+      slots = [];
       return generation;
     }
 
@@ -767,17 +777,30 @@
         return { ignored: true, text: null, generation: generation };
       }
       const results = event && event.results ? event.results : [];
+      const listLength = Number(results.length) || 0;
       let startIndex = Number(event && event.resultIndex);
       if (!Number.isFinite(startIndex) || startIndex < 0) startIndex = 0;
-      finalsByIndex.length = startIndex;
-      const interims = [];
-      for (let i = startIndex; i < results.length; i += 1) {
+      let keepCount = startIndex;
+      if (keepCount > slots.length) keepCount = slots.length;
+      const next = slots.slice(0, keepCount);
+      for (let i = startIndex; i < listLength; i += 1) {
         const words = speechResultTranscript(results[i]);
         if (!words) continue;
-        if (results[i].isFinal) finalsByIndex[i] = words;
-        else interims.push(words);
+        const isFinal = !!(results[i] && results[i].isFinal);
+        const prev = next.length ? next[next.length - 1] : null;
+        if (prev && isGrowingHypothesis(prev.text, words)) {
+          next[next.length - 1] = { text: words, isFinal: isFinal };
+        } else {
+          next.push({ text: words, isFinal: isFinal });
+        }
       }
-      return { ignored: false, text: compose(interims), generation: generation };
+      slots = next;
+      return {
+        ignored: false,
+        text: compose(),
+        generation: generation,
+        slotCount: slots.length,
+      };
     }
 
     return {
@@ -792,6 +815,12 @@
       },
       currentGeneration: function () {
         return generation;
+      },
+      currentBase: function () {
+        return base;
+      },
+      slotCount: function () {
+        return slots.length;
       },
     };
   }

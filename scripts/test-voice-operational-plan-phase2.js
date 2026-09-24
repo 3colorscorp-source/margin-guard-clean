@@ -431,6 +431,8 @@ async function main() {
   ok("seller Cancel nulls recognition before late results", /voicePlanRecognition = null;[\s\S]*rec\.stop\(\)/.test(html));
   ok("seller onend ignores a replaced instance", /if \(voicePlanRecognition !== recognition\) return;/.test(html));
   ok("seller onend closes capture generation", /voicePlanDictationCapture\.end\(/.test(html));
+  ok("seller locks transcript during capture", /lockVoicePlanTranscriptForCapture\(true\)/.test(html));
+  ok("seller onresult assigns reconstructed text", /transcript\.value = folded\.text/.test(html) && !/transcript\.value \+=/.test(html));
   ok("seller folds SpeechRecognition from resultIndex", /createVoiceDictationCapture/.test(html) && /applyEvent\(event, voicePlanDictationGeneration\)/.test(html));
   ok("seller does not append SpeechRecognition finals", !/voicePlanRecognitionFinal\s*\+=/.test(html));
   ok("seller keeps a single recognition instance", /if \(voicePlanRecognition\) \{[\s\S]*stopVoicePlanRecognition\(\);[\s\S]*return;/.test(html));
@@ -560,6 +562,51 @@ async function main() {
   raceE.end();
   eq("seller E. Continue Stop keeps base plus one final", folded.text, "Base previa Agrega día 1");
   ok("seller E. Continue Stop then ignores the old generation", raceE.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceE).ignored === true);
+
+  const growCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growGen = growCap.start("");
+  growCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), growGen);
+  folded = growCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growGen
+  );
+  eq("seller phone. index-0 growing interims then final", folded.text, "agrega día 1 para preparar el piso");
+  eq("seller phone. one slot after growing interims", growCap.slotCount(), 1);
+  ok("seller phone. earlier hypotheses are gone", folded.text.indexOf("agrega día 1 para") === 0 && folded.text.split("agrega día").length === 2);
+
+  const growFinalsCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growFinalsGen = growFinalsCap.start("");
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", true)]), growFinalsGen);
+  folded = growFinalsCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growFinalsGen
+  );
+  eq("seller phone-final. each final at index 0 replaces the slot", folded.text, "agrega día 1 para preparar el piso");
+
+  const snapCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const snapGen = snapCap.start("");
+  folded = snapCap.applyEvent(
+    srEvent(0, [
+      phrase("agrega día", true),
+      phrase("agrega día 1", true),
+      phrase("agrega día 1 para", true),
+      phrase("agrega día 1 para preparar el piso", true),
+    ]),
+    snapGen
+  );
+  eq("seller phone-list. growing snapshot at resultIndex 0 collapses", folded.text, "agrega día 1 para preparar el piso");
+  eq("seller phone-list. collapsed to one slot", snapCap.slotCount(), 1);
+
+  const dirtyCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const dirtyGen = dirtyCap.start("");
+  dirtyCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), dirtyGen);
+  eq("seller phone. base is not the visible transcript", dirtyCap.currentBase(), "");
+  folded = dirtyCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), dirtyGen);
+  eq("seller phone. later event still ignores any external textarea", folded.text, "agrega día 1");
 
   const genContinue = capture.start("Agrega día 1");
   ok("seller 9. a new session generation is distinct", genContinue !== genNew);

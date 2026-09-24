@@ -36,6 +36,7 @@ function FakeEl(id, tag) {
   this.value = "";
   this.textContent = "";
   this.disabled = false;
+  this.readOnly = false;
   this.hidden = false;
   this.className = "";
   this.dataset = {};
@@ -77,6 +78,9 @@ FakeEl.prototype.addEventListener = function (type, fn) {
 };
 FakeEl.prototype.focus = function () {
   this.focused = true;
+};
+FakeEl.prototype.blur = function () {
+  this.focused = false;
 };
 FakeEl.prototype.dispatchEvent = function (event) {
   const type = event && event.type;
@@ -577,7 +581,8 @@ async function main() {
 
   ok("dictation helper is shared", typeof sharedVoice.createVoiceDictationCapture === "function");
   ok("owner does not append SpeechRecognition finals", !/recognitionFinal\s*\+=/.test(js));
-  ok("owner folds from resultIndex via capture", /dictationCapture\.applyEvent/.test(js));
+  ok("owner folds from resultIndex via capture", /dictation\.applyEvent/.test(js));
+  ok("owner onresult assigns reconstructed text", /transcript\.value = folded\.text/.test(js) && !/transcript\.value \+=/.test(js));
 
   FakeRecognition.instances = [];
   const docDup = makeDoc();
@@ -751,6 +756,97 @@ async function main() {
   recE.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
   recE.emitEnd();
   eq("E. owner Continue Stop keeps base plus one final", ownerTranscript(docRace), "Base previa Agrega día 1");
+
+  FakeRecognition.instances = [];
+  const docGrow = makeDoc();
+  const sessionGrow = voice.createOwnerVoiceSession({
+    document: docGrow,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: async () => {
+      throw new Error("growing-hypothesis tests must not fetch");
+    },
+  });
+  sessionGrow.openModal();
+  eq("phone. owner starts growing-hypothesis capture", sessionGrow.startDictation(false), "new");
+  const recGrow = FakeRecognition.instances[0];
+  recGrow.emitResult(srEvent(0, [phrase("agrega día", false)]));
+  eq("phone. owner interim 1 is only the current hypothesis", ownerTranscript(docGrow), "agrega día");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1", false)]));
+  eq("phone. owner interim 2 replaces index 0", ownerTranscript(docGrow), "agrega día 1");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para", false)]));
+  eq("phone. owner interim 3 replaces index 0", ownerTranscript(docGrow), "agrega día 1 para");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq(
+    "phone. owner final is only the last hypothesis",
+    ownerTranscript(docGrow),
+    "agrega día 1 para preparar el piso"
+  );
+  ok("phone. owner final does not keep earlier hypotheses", ownerTranscript(docGrow).indexOf("agrega día 1 para preparar el piso") === 0 && ownerTranscript(docGrow).split("agrega día").length === 2);
+  ok("phone. owner locked the textarea during capture", docGrow.els.ownerVoicePlanTranscript.readOnly === true);
+  const captureBase = sessionGrow.state.dictationCapture.currentBase();
+  docGrow.els.ownerVoicePlanTranscript.value = "textarea should not become the base " + ownerTranscript(docGrow);
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq("phone. owner onresult ignores textarea as source of truth", ownerTranscript(docGrow), "agrega día 1 para preparar el piso");
+  eq("phone. owner base stayed empty for New dictation", captureBase, "");
+  recGrow.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-final. owner starts all-final growing capture", sessionGrow.startDictation(false), "new");
+  const recFinals = FakeRecognition.instances[0];
+  recFinals.emitResult(srEvent(0, [phrase("agrega día", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1 para", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq(
+    "phone-final. owner replaces the same index when each hypothesis is final",
+    ownerTranscript(docGrow),
+    "agrega día 1 para preparar el piso"
+  );
+  recFinals.emitEnd();
+
+  const growCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growGen = growCap.start("");
+  growCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), growGen);
+  const growFinal = growCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growGen
+  );
+  eq("phone. capture index-0 growing interims then final", growFinal.text, "agrega día 1 para preparar el piso");
+  eq("phone. capture kept one slot", growCap.slotCount(), 1);
+
+  const growFinalsCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growFinalsGen = growFinalsCap.start("");
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", true)]), growFinalsGen);
+  const allFinal = growFinalsCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growFinalsGen
+  );
+  eq("phone-final. capture replaces each final at index 0", allFinal.text, "agrega día 1 para preparar el piso");
+
+  const snapCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const snapGen = snapCap.start("");
+  const snap = snapCap.applyEvent(
+    srEvent(0, [
+      phrase("agrega día", true),
+      phrase("agrega día 1", true),
+      phrase("agrega día 1 para", true),
+      phrase("agrega día 1 para preparar el piso", true),
+    ]),
+    snapGen
+  );
+  eq("phone-list. capture collapses a growing snapshot at resultIndex 0", snap.text, "agrega día 1 para preparar el piso");
+  eq("phone-list. capture collapsed to one slot", snapCap.slotCount(), 1);
+
+  const dirtyCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const dirtyGen = dirtyCap.start("Keep me");
+  dirtyCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), dirtyGen);
+  const afterDirty = dirtyCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), dirtyGen);
+  eq("phone. capture base is not the visible textarea", afterDirty.text, "Keep me agrega día 1");
+  eq("phone. capture base stayed the start value", dirtyCap.currentBase(), "Keep me");
 
   ok("syntax of owner voice script", spawnSync(process.execPath, ["--check", path.join(ROOT, "public/js/owner-voice-operational-plan.js")], { encoding: "utf8" }).status === 0);
 
