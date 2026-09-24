@@ -7670,20 +7670,46 @@
         return id === 'salesPrimaryPrice' || id === 'salesPriceDisplay';
       }
 
-      function coerceSellerMoneyTextToTenantCurrency(text) {
-        const tenant = readSellerTenantCurrency();
-        const raw = String(text == null ? '' : text);
+      function formatSellerWorkspaceMoney(amount) {
+        const n = Number(amount);
+        const value = Number.isFinite(n) ? n : 0;
+        const abs = Math.abs(value);
+        const formatted = abs.toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+        return (value < 0 ? '-$' : '$') + formatted;
+      }
+
+      function isSellerWorkspaceMoneyId(id) {
+        return (
+          id === 'salesPrimaryPrice' ||
+          id === 'salesPriceDisplay' ||
+          id === 'salesStageMin' ||
+          id === 'salesStageNegotiation' ||
+          id === 'salesStageRecommended'
+        );
+      }
+
+      function normalizeSellerWorkspaceMoneyText(value) {
+        const raw = value == null ? '' : String(value);
         const trimmed = raw.trim();
-        if (!tenant || !trimmed || trimmed === '—') return raw;
-        const shown = readSellerCurrencyFromDisplayText(trimmed);
-        if (!shown || shown === tenant) return raw;
-        return money(parseSellerMoneyTextToNumber(trimmed), tenant);
+        if (!trimmed || trimmed === '—') return trimmed === '—' ? '—' : raw;
+        return formatSellerWorkspaceMoney(parseSellerMoneyTextToNumber(raw));
+      }
+
+      function writeSellerNodeText(node, text) {
+        if (!node) return false;
+        const next = text == null ? '' : String(text);
+        if (node.textContent === next) return false;
+        node.textContent = next;
+        return true;
       }
 
       function writeSellerAuthoritativePriceText(id, value) {
-        const text = isSellerAuthoritativePrimaryPriceId(id)
-          ? coerceSellerMoneyTextToTenantCurrency(value)
-          : value == null ? '' : String(value);
+        const text = isSellerWorkspaceMoneyId(id)
+          ? normalizeSellerWorkspaceMoneyText(value)
+          : (value == null ? '' : String(value));
         const nodes = collectSellerMoneyNodesById(id);
         const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
         for (let i = 0; i < list.length; i += 1) {
@@ -7695,53 +7721,31 @@
       }
 
       function paintSellerAuthoritativePrimaryPricesNow() {
-        if (window.__mgSellerAuthoritativePaintActive) return false;
-        const tenant = readSellerTenantCurrency();
-        if (!tenant) return false;
-        window.__mgSellerAuthoritativePaintActive = true;
-        try {
-          sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
-            const nodes = collectSellerMoneyNodesById(id);
-            const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
-            let source = '';
-            for (let i = 0; i < list.length; i += 1) {
-              const raw = String(list[i].textContent || '');
-              if (raw.trim()) {
-                source = raw;
-                break;
-              }
-            }
-            if (!source) return;
-            writeSellerAuthoritativePriceText(id, source);
-          });
-          return true;
-        } finally {
-          window.__mgSellerAuthoritativePaintActive = false;
-        }
+        return false;
       }
       window.paintSellerAuthoritativePrimaryPricesNow = paintSellerAuthoritativePrimaryPricesNow;
+      window.formatSellerWorkspaceMoney = formatSellerWorkspaceMoney;
 
       function setSellerDisplayedMoneyText(id, value) {
-        if (isSellerAuthoritativePrimaryPriceId(id)) {
+        if (isSellerAuthoritativePrimaryPriceId(id) || isSellerWorkspaceMoneyId(id)) {
           writeSellerAuthoritativePriceText(id, value);
           return;
         }
         const text = value == null ? '' : String(value);
         const nodes = collectSellerMoneyNodesById(id);
         if (!nodes.length) {
-          const single = document.getElementById(id);
-          if (single) single.textContent = text;
+          writeSellerNodeText(document.getElementById(id), text);
           return;
         }
         let wroteVisible = false;
         for (let i = 0; i < nodes.length; i += 1) {
           if (isSellerDisplayedMoneyNode(nodes[i])) {
-            nodes[i].textContent = text;
+            writeSellerNodeText(nodes[i], text);
             wroteVisible = true;
           }
         }
         if (!wroteVisible) {
-          for (let i = 0; i < nodes.length; i += 1) nodes[i].textContent = text;
+          for (let i = 0; i < nodes.length; i += 1) writeSellerNodeText(nodes[i], text);
         }
       }
 
@@ -7810,7 +7814,7 @@
       }
 
       function sellerMoney(amount, settings, state) {
-        return money(amount, resolveSellerCurrency(settings, state));
+        return formatSellerWorkspaceMoney(amount);
       }
 
       function sellerRightPanelMoneyNodeIds() {
@@ -7911,7 +7915,7 @@
                 { label: 'Deposit', value: sellerMoney(metrics.depositRequired, settings, state) },
                 { label: 'Commission', value: sellerMoney(metrics.commissionDisplay, settings, state) },
               ];
-          salesKpis.innerHTML = kpiBlocks
+          const kpiHtml = kpiBlocks
             .map(function (item) {
               return (
                 '<article class="compact-stat"><span>' +
@@ -7922,6 +7926,7 @@
               );
             })
             .join('');
+          if (salesKpis.innerHTML !== kpiHtml) salesKpis.innerHTML = kpiHtml;
         }
 
         const negotiationList = document.getElementById('negotiationList');
@@ -7975,18 +7980,10 @@
         }
         applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
         const sellerCurrency = resolveSellerCurrency(settings, state);
-        const panel = document.querySelector('.sales-right-panel');
-        const panelText = panel ? String(panel.textContent || '') : '';
-        if (
-          !sellerStorageCurrencyExplicitlyMXN() &&
-          sellerRightPanelTextUsesMXN(panelText)
-        ) {
-          applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
-        }
         if (metrics.recommended > 0) {
           rememberSellerValidRecommendedPrice(metrics.recommended, sellerCurrency);
         }
-        return sellerCurrency === 'USD' ? !sellerRightPanelTextUsesMXN(panelText) : true;
+        return true;
       }
 
       function readSellerValidRecommendedPrice() {
@@ -8252,13 +8249,13 @@
       }
 
       function setText(targetId, value) {
-        if (isSellerAuthoritativePrimaryPriceId(targetId)) {
+        if (isSellerAuthoritativePrimaryPriceId(targetId) || isSellerWorkspaceMoneyId(targetId)) {
           writeSellerAuthoritativePriceText(targetId, value);
           return;
         }
         const node = document.getElementById(targetId);
         if (!node) return;
-        node.textContent = value == null ? '' : String(value);
+        writeSellerNodeText(node, value == null ? '' : String(value));
       }
 
       const BRANDING_CACHE_KEY = 'mg_business_branding_v1';

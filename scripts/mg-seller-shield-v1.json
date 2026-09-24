@@ -66,17 +66,22 @@
     {
       "id": "seller-owner-currency-render-order",
       "path": "scripts/test-seller-owner-currency-render-order.js",
-      "minPassed": 18
+      "minPassed": 19
     },
     {
       "id": "seller-owner-price-observer-freeze",
       "path": "scripts/test-seller-owner-price-observer-freeze.js",
-      "minPassed": 18
+      "minPassed": 27
+    },
+    {
+      "id": "seller-workspace-visual-dollar",
+      "path": "scripts/test-seller-workspace-visual-dollar.js",
+      "minPassed": 28
     },
     {
       "id": "seller-shield-v2-wiring",
       "path": "scripts/test-seller-shield-v2.js",
-      "minPassed": 101
+      "minPassed": 102
     }
   ],
   "optional": [

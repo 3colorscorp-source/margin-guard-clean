@@ -47,6 +47,17 @@ function readSellerCurrencyFromDisplayText(text) {
   return "";
 }
 
+function formatSellerWorkspaceMoney(amount) {
+  const n = Number(amount);
+  const value = Number.isFinite(n) ? n : 0;
+  const abs = Math.abs(value);
+  const formatted = abs.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return (value < 0 ? "-$" : "$") + formatted;
+}
+
 function createOwnerPreviewPriceSurface(initial) {
   const nodes = {
     salesPrimaryPrice: { id: "salesPrimaryPrice", textContent: initial.salesPrimaryPrice },
@@ -54,22 +65,23 @@ function createOwnerPreviewPriceSurface(initial) {
   };
   let tenant = "";
   let resizeCount = 0;
-
-  function coerce(text) {
-    const raw = String(text == null ? "" : text);
-    const trimmed = raw.trim();
-    if (!tenant || !trimmed || trimmed === "—") return raw;
-    const shown = readSellerCurrencyFromDisplayText(trimmed);
-    if (!shown || shown === tenant) return raw;
-    return money(parseSellerMoneyTextToNumber(trimmed), tenant);
-  }
+  let writes = 0;
 
   function writeAll(id, value) {
-    nodes[id].textContent = coerce(value);
+    const raw = String(value == null ? "" : value);
+    const trimmed = raw.trim();
+    const text =
+      !trimmed || trimmed === "—"
+        ? trimmed === "—"
+          ? "—"
+          : raw
+        : formatSellerWorkspaceMoney(parseSellerMoneyTextToNumber(raw));
+    if (nodes[id].textContent === text) return;
+    writes += 1;
+    nodes[id].textContent = text;
   }
 
   function paint() {
-    if (!tenant) return false;
     writeAll("salesPrimaryPrice", nodes.salesPrimaryPrice.textContent);
     writeAll("salesPriceDisplay", nodes.salesPriceDisplay.textContent);
     return true;
@@ -97,6 +109,7 @@ function createOwnerPreviewPriceSurface(initial) {
     lateWriter,
     resize,
     resizeCount: () => resizeCount,
+    writes: () => writes,
     tenant: () => tenant,
   };
 }
@@ -116,13 +129,14 @@ function main() {
 
   pass("Intl USD formatter is not hardcoded MXN", usd4365 !== mxn4365 && /\$/.test(usd4365) && !/MX/i.test(usd4365));
   pass("Intl MXN formatter remains MXN", /MX\$|MXN/i.test(mxn4365));
+  pass("Seller visual formatter is $4,365.09", formatSellerWorkspaceMoney(4365.09) === "$4,365.09");
 
   const desktop = createOwnerPreviewPriceSurface({
     salesPrimaryPrice: mxn4365,
     salesPriceDisplay: mxn4365,
   });
   pass(
-    "desktop Owner Preview starts with stale MXN paint",
+    "desktop Owner Preview can start with stale MXN paint",
     desktop.nodes.salesPrimaryPrice.textContent === mxn4365 &&
       desktop.nodes.salesPriceDisplay.textContent === mxn4365 &&
       desktop.tenant() === ""
@@ -131,18 +145,22 @@ function main() {
   const hydration = desktop.hydrate("USD");
   pass("async hydration returns USD tenant currency", hydration.ok === true && hydration.currency === "USD");
   pass(
-    "both primary nodes switch to USD immediately without resize",
+    "both primary nodes show visual $ immediately without resize",
     desktop.resizeCount() === 0 &&
-      desktop.nodes.salesPrimaryPrice.textContent === usd4365 &&
-      desktop.nodes.salesPriceDisplay.textContent === usd4365
+      desktop.tenant() === "USD" &&
+      desktop.nodes.salesPrimaryPrice.textContent === "$4,365.09" &&
+      desktop.nodes.salesPriceDisplay.textContent === "$4,365.09" &&
+      parseSellerMoneyTextToNumber(desktop.nodes.salesPrimaryPrice.textContent) === 4365.09
   );
 
+  const writesAfterHydrate = desktop.writes();
   desktop.lateWriter("salesPrimaryPrice", mxn4365);
   desktop.lateWriter("salesPriceDisplay", "MXN4365.09");
   pass(
-    "late MXN writer cannot replace USD on either primary node",
-    desktop.nodes.salesPrimaryPrice.textContent === usd4365 &&
-      desktop.nodes.salesPriceDisplay.textContent === usd4365
+    "late MXN writer still displays $ with the same amount",
+    desktop.nodes.salesPrimaryPrice.textContent === "$4,365.09" &&
+      desktop.nodes.salesPriceDisplay.textContent === "$4,365.09" &&
+      desktop.writes() === writesAfterHydrate
   );
 
   const delayedTimers = [0, 100, 300, 800, 1500, 3000, 6000, 12000, 15000];
@@ -151,11 +169,11 @@ function main() {
     desktop.lateWriter("salesPriceDisplay", mxn4365);
   });
   pass(
-    "Edit/Add/Remove/voice-confirm stay USD after 15s of delayed writes",
+    "Edit/Add/Remove/voice-confirm stay visual $ after delayed writes",
     delayedTimers.length >= 9 &&
       desktop.resizeCount() === 0 &&
-      desktop.nodes.salesPrimaryPrice.textContent === usd4365 &&
-      desktop.nodes.salesPriceDisplay.textContent === usd4365
+      desktop.tenant() === "USD" &&
+      desktop.nodes.salesPrimaryPrice.textContent === "$4,365.09"
   );
 
   const mxnTenant = createOwnerPreviewPriceSurface({
@@ -166,10 +184,11 @@ function main() {
   mxnTenant.lateWriter("salesPrimaryPrice", usd4365);
   mxnTenant.lateWriter("salesPriceDisplay", "USD4365.09");
   pass(
-    "legitimate MXN tenant remains MXN",
+    "legitimate MXN tenant stays MXN internally and $ visually",
     mxnTenant.tenant() === "MXN" &&
-      mxnTenant.nodes.salesPrimaryPrice.textContent === mxn4365 &&
-      mxnTenant.nodes.salesPriceDisplay.textContent === mxn4365
+      mxnTenant.nodes.salesPrimaryPrice.textContent === "$4,365.09" &&
+      mxnTenant.nodes.salesPriceDisplay.textContent === "$4,365.09" &&
+      parseSellerMoneyTextToNumber(mxnTenant.nodes.salesPrimaryPrice.textContent) === 4365.09
   );
 
   pass(

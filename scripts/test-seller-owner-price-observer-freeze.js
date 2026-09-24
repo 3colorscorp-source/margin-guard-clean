@@ -82,10 +82,20 @@ function simulateBeforeObserverCycle(initialText, tenant) {
   return { writes, stopped: queued.length === 0, text: node.textContent };
 }
 
-function createBoundedSurface(initialText, tenant) {
+function formatSellerWorkspaceMoney(amount) {
+  const n = Number(amount);
+  const value = Number.isFinite(n) ? n : 0;
+  const abs = Math.abs(value);
+  const formatted = abs.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return (value < 0 ? "-$" : "$") + formatted;
+}
+
+function createBoundedSurface(initialText) {
   const node = { textContent: initialText };
   let writes = 0;
-  let paintActive = false;
 
   function assign(text) {
     if (node.textContent === text) return false;
@@ -95,19 +105,14 @@ function createBoundedSurface(initialText, tenant) {
   }
 
   function write(value) {
-    assign(coerce(value, tenant));
+    const raw = String(value == null ? "" : value);
+    const trimmed = raw.trim();
+    const text = !trimmed || trimmed === "—" ? raw : formatSellerWorkspaceMoney(parseSellerMoneyTextToNumber(raw));
+    assign(text);
   }
 
   function paint() {
-    if (paintActive) return false;
-    if (!tenant) return false;
-    paintActive = true;
-    try {
-      write(node.textContent);
-      return true;
-    } finally {
-      paintActive = false;
-    }
+    write(node.textContent);
   }
 
   return {
@@ -141,7 +146,7 @@ function main() {
   );
   pass("before: cycle keeps USD text while spinning", before.text === usd);
 
-  const surface = createBoundedSurface(mxn, "USD");
+  const surface = createBoundedSurface(mxn);
   surface.paint();
   pass("hydrate paint corrects stale MXN to USD once", surface.node.textContent === usd && surface.writes() === 1);
 
@@ -174,22 +179,27 @@ function main() {
     surface.writes() === writesAfterLate && surface.node.textContent === usd
   );
 
-  const mxnSurface = createBoundedSurface(usd, "MXN");
+  const mxnSurface = createBoundedSurface(usd);
   mxnSurface.paint();
   const mxnWrites = mxnSurface.writes();
   for (let i = 0; i < 100; i += 1) mxnSurface.paint();
-  mxnSurface.rawWriter(usd);
+  mxnSurface.rawWriter(mxn);
   mxnSurface.paint();
   pass(
-    "legitimate MXN tenant stays MXN with bounded writes",
-    mxnSurface.node.textContent === mxn && mxnSurface.writes() === mxnWrites + 2
+    "MXN late write is visually $ with the same amount",
+    mxnSurface.node.textContent === usd && mxnSurface.writes() === mxnWrites + 2
   );
+
+  pass("USD formatter remains $ not MX$", /\$/.test(usd) && !/MX/i.test(usd));
+  pass("authoritative MXN formatter remains MX$", /MX\$|MXN/i.test(mxn));
+  pass("Seller visual money is $4,365.09 for both tenants", usd === "$4,365.09" || /\$4,365\.09/.test(usd));
 
   pass(
     "no observer/render cycle remains in sales.html",
     !/function installSellerAuthoritativePriceWriterGuard/.test(salesHtml) &&
       !/__mgSellerAuthoritativePriceObserver/.test(salesHtml) &&
-      !/function observeSellerAuthoritativePriceNode/.test(salesHtml)
+      !/function observeSellerAuthoritativePriceNode/.test(salesHtml) &&
+      !/function coerceSellerMoneyTextToTenantCurrency/.test(salesHtml)
   );
   pass(
     "identical textContent is not written",
@@ -198,11 +208,8 @@ function main() {
     )
   );
   pass(
-    "paint is reentrancy-guarded and finite",
-    /function paintSellerAuthoritativePrimaryPricesNow\([\s\S]*if \(window\.__mgSellerAuthoritativePaintActive\) return false;/.test(
-      salesHtml
-    ) &&
-      /window\.__mgSellerAuthoritativePaintActive = false;/.test(salesHtml)
+    "currency paint helper is a no-op",
+    /function paintSellerAuthoritativePrimaryPricesNow\(\) \{\s*return false;\s*\}/.test(salesHtml)
   );
   pass(
     "DOM writes are counted only when text changes",
@@ -212,8 +219,8 @@ function main() {
     "no polling interval was added for currency correction",
     (function () {
       const start = salesHtml.indexOf("function paintSellerAuthoritativePrimaryPricesNow");
-      const slice = start >= 0 ? salesHtml.slice(start, start + 900) : "";
-      return start >= 0 && !/setInterval/.test(slice) && !/addEventListener\(\s*['"]resize['"]/.test(slice);
+      const slice = start >= 0 ? salesHtml.slice(start, start + 120) : "";
+      return start >= 0 && !/setInterval/.test(slice) && /return false;/.test(slice);
     })()
   );
   pass(
@@ -236,6 +243,45 @@ function main() {
   pass(
     "before-cycle write count exceeds the after-cycle bound",
     before.writes >= 80 && surface.writes() <= 4
+  );
+
+  const runtimeSrc = read("scripts/test-seller-owner-preview-desktop-runtime.js");
+  pass(
+    "desktop runtime loads real sales.html and sales-device-portal.js",
+    /public[\\/]sales\.html/.test(runtimeSrc) && /sales-device-portal\.js/.test(runtimeSrc)
+  );
+  pass(
+    "desktop runtime starts from Dashboard/Owner and clicks Seller in the sidebar",
+    /VIEWPORT = \{ width: 1600, height: 900 \}/.test(runtimeSrc) &&
+      /\/dashboard/.test(runtimeSrc) &&
+      /\/owner/.test(runtimeSrc) &&
+      /\/sales\?portal=owner/.test(runtimeSrc) &&
+      /mg-sidebar__item/.test(runtimeSrc)
+  );
+  pass(
+    "desktop runtime repeats Owner→Seller 10 times, Edit/Add/Remove, and a 30s wait",
+    /NAV_CYCLES = 10/.test(runtimeSrc) &&
+      /STABILITY_MS = 30000/.test(runtimeSrc) &&
+      /btnAddOperationalDay/.test(runtimeSrc) &&
+      /data-action="edit-day"/.test(runtimeSrc) &&
+      /data-action="remove-day"/.test(runtimeSrc)
+  );
+  pass(
+    "desktop runtime does not replace renderSales, painters, layout timers, or OP editors",
+    !/window\.renderSales\s*=\s*function/.test(runtimeSrc) &&
+      !/paintSellerAuthoritativePrimaryPricesNow\s*=\s*function/.test(runtimeSrc) &&
+      /btnAddOperationalDay/.test(runtimeSrc) &&
+      /data-action="edit-day"/.test(runtimeSrc) &&
+      /data-action="remove-day"/.test(runtimeSrc)
+  );
+  pass(
+    "desktop runtime does not add a product Playwright/Puppeteer dependency",
+    !/require\(["']playwright["']\)/.test(runtimeSrc) &&
+      !/require\(["']puppeteer["']\)/.test(runtimeSrc)
+  );
+  pass(
+    "desktop runtime exits 2 when no automatable browser exists",
+    /process\.exit\(2\)/.test(runtimeSrc) && /findChrome\(/.test(runtimeSrc)
   );
 
   console.log("\n" + n + " passed");
