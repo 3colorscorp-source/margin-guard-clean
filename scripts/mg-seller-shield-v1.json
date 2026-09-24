@@ -76,7 +76,7 @@
     {
       "id": "seller-workspace-visual-dollar",
       "path": "scripts/test-seller-workspace-visual-dollar.js",
-      "minPassed": 28
+      "minPassed": 32
     },
     {
       "id": "seller-shield-v2-wiring",

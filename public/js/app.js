@@ -818,6 +818,19 @@ Thank you.`
   function formatMoney(amount) {
     return money(finiteNumber(amount, 0), loadSettings().currency);
   }
+
+  /** Seller workspace visual money only. Does not change internal currency or amounts. */
+  function formatSellerWorkspaceMoney(amount) {
+    const n = Number(amount);
+    const value = Number.isFinite(n) ? n : 0;
+    const abs = Math.abs(value);
+    const formatted = abs.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return (value < 0 ? "-$" : "$") + formatted;
+  }
+
   function buildEstimateNumber() {
     return "EST-" + String(Date.now());
   }
@@ -5912,7 +5925,9 @@ Thank you.`
   function setText(targetId, value) {
     const node = $(targetId);
     if (!node) return;
-    node.textContent = value == null ? "" : String(value);
+    const next = value == null ? "" : String(value);
+    if (node.textContent === next) return;
+    node.textContent = next;
   }
 
 
@@ -10625,8 +10640,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           </select>
         </td>
         <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
-        <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(workerRateFromSettings(worker, settings), settings.currency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
-        <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
+        <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${formatSellerWorkspaceMoney(workerRateFromSettings(worker, settings))}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
+        <td data-cell="labor">${formatSellerWorkspaceMoney(metrics.laborByWorker[index]?.cost || 0)}</td>
         <td>
           <div class="row-actions">
             <button class="btn ghost" data-action="copy">Copy</button>
@@ -10947,7 +10962,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
   const priceDisplay = document.getElementById("salesPriceDisplay");
   if (priceDisplay) {
-    priceDisplay.textContent = isReady ? formatMoney(offered) : "—";
+    const nextPrice = isReady ? formatSellerWorkspaceMoney(offered) : "—";
+    if (priceDisplay.textContent !== nextPrice) priceDisplay.textContent = nextPrice;
   }
   if (priceInput) priceInput.value = isReady ? String(round2(offered)) : "";
   if (messageToClientInput) messageToClientInput.value = state.messageToClient || "";
@@ -10966,14 +10982,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   setText("salesEstimateStatus", estimateStatusLabel);
-  setText("salesEstimateSummary", `Customer ${nonEmptyString(state.clientName, "Pending")} | ${toneLabel} | Total ${formatMoney(offered)}`);
+  setText("salesEstimateSummary", `Customer ${nonEmptyString(state.clientName, "Pending")} | ${toneLabel} | Total ${formatSellerWorkspaceMoney(offered)}`);
   setText("salesTraffic", toneLabel);
   setText("salesHeroState", tone === "green" ? "Green" : tone === "amber" ? "Amber" : "Red");
   setText("salesHeroMeta", heroMeta);
-  setText("salesPrimaryPrice", formatMoney(metrics.recommended));
-  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatMoney(offered)}`);
+  setText("salesPrimaryPrice", formatSellerWorkspaceMoney(metrics.recommended));
+  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatSellerWorkspaceMoney(offered)}`);
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
-  setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated · ${formatMoney(metrics.commissionLaborBase ?? metrics.labor)} labor cost`);
+  setText("salesPrimaryCommissionMeta", `${formatSellerWorkspaceMoney(metrics.commissionDisplay)} estimated · ${formatSellerWorkspaceMoney(metrics.commissionLaborBase ?? metrics.labor)} labor cost`);
   setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : belowRecommendation ? "Below recommendation" : "Ready to send");
   setText(
     "salesFlowCaption",
@@ -10983,9 +10999,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         ? "If the price is below the recommendation, you can still proceed — do it responsibly and confirm margin with your owner."
         : "Pricing is in a healthy range for this estimate."
   );
-  setText("salesStageMin", formatMoney(metrics.minimum));
-  setText("salesStageNegotiation", formatMoney(metrics.negotiation));
-  setText("salesStageRecommended", formatMoney(metrics.recommended));
+  setText("salesStageMin", formatSellerWorkspaceMoney(metrics.minimum));
+  setText("salesStageNegotiation", formatSellerWorkspaceMoney(metrics.negotiation));
+  setText("salesStageRecommended", formatSellerWorkspaceMoney(metrics.recommended));
   setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
   setText(
     "salesPricingGuidance",
@@ -11011,7 +11027,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (marginLine) {
     if (!isReady || !state._sliderTouched) {
       marginLine.style.display = "none";
-      marginLine.textContent = "";
+      if (marginLine.textContent !== "") marginLine.textContent = "";
     } else {
       marginLine.style.display = "block";
       marginLine.className =
@@ -11020,15 +11036,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           : metrics.marginLevel === "yellow"
             ? "notice amber"
             : "notice err";
-      marginLine.textContent = metrics.marginMessage || "";
+      const nextMsg = metrics.marginMessage || "";
+      if (marginLine.textContent !== nextMsg) marginLine.textContent = nextMsg;
     }
   }
 
   const kpiBlocks = [
-    { label: "Subtotal", value: formatMoney(offered) },
-    { label: "Recommended", value: formatMoney(metrics.recommended) },
-    { label: "Minimum", value: formatMoney(metrics.minimum) },
-    { label: "Commission", value: formatMoney(metrics.commissionDisplay) }
+    { label: "Subtotal", value: formatSellerWorkspaceMoney(offered) },
+    { label: "Recommended", value: formatSellerWorkspaceMoney(metrics.recommended) },
+    { label: "Minimum", value: formatSellerWorkspaceMoney(metrics.minimum) },
+    { label: "Commission", value: formatSellerWorkspaceMoney(metrics.commissionDisplay) }
   ];
   const salesKpis = document.getElementById("salesKpis");
   if (salesKpis) {
@@ -11039,7 +11056,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (negotiationList) {
     const guidance = [
       `Estimate status: ${estimateStatusLabel}.`,
-      `Offer range: ${formatMoney(metrics.minimum)} to ${formatMoney(metrics.recommended)}.`,
+      `Offer range: ${formatSellerWorkspaceMoney(metrics.minimum)} to ${formatSellerWorkspaceMoney(metrics.recommended)}.`,
       metrics.needsApproval
         ? "If price is below recommendation, proceed responsibly and confirm with your owner before signing."
         : "Estimate can be sent directly to the customer."
@@ -11051,13 +11068,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (portfolioCount) portfolioCount.textContent = `${signedProjects.length} active records`;
 
   const projectLink = projectIndex.get(state.projectName);
-  setText("salesProjectProgress", projectLink ? `${toTitleCase(projectLink.status)} | ${formatMoney(projectLink.finalPrice || projectLink.priceOffered || 0)}` : "No linked signed project yet.");
+  setText("salesProjectProgress", projectLink ? `${toTitleCase(projectLink.status)} | ${formatSellerWorkspaceMoney(projectLink.finalPrice || projectLink.priceOffered || 0)}` : "No linked signed project yet.");
 
   const changeOrderBody = document.getElementById("salesChangeOrderBody");
   if (changeOrderBody) {
     const orders = projectLink?.changeOrders || [];
     changeOrderBody.innerHTML = orders.length
-      ? orders.map((order) => `<tr><td>${escapeHtml(order.title || order.id || "Change order")}</td><td>${escapeHtml(toTitleCase(order.status || "draft"))}</td><td>${escapeHtml(formatMoney(order.price || 0))}</td><td><button class="secondary-button" data-sales-co-pdf="${escapeHtml(order.id || "")}">PDF</button></td></tr>`).join("")
+      ? orders.map((order) => `<tr><td>${escapeHtml(order.title || order.id || "Change order")}</td><td>${escapeHtml(toTitleCase(order.status || "draft"))}</td><td>${escapeHtml(formatSellerWorkspaceMoney(order.price || 0))}</td><td><button class="secondary-button" data-sales-co-pdf="${escapeHtml(order.id || "")}">PDF</button></td></tr>`).join("")
       : '<tr><td colspan="4" class="empty-row">No change orders linked yet.</td></tr>';
   }
 
@@ -11065,8 +11082,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesInvoiceNo", invoiceSummary.invoiceNo || "Not assigned");
   setText("salesInvoiceStatus", toTitleCase(invoiceSummary.status || "draft"));
   setText("salesInvoiceDue", invoiceSummary.dueDate || "Not scheduled");
-  setText("salesInvoicePaid", formatMoney(invoiceSummary.paid || 0));
-  setText("salesInvoiceBalance", formatMoney(invoiceSummary.balanceDue || 0));
+  setText("salesInvoicePaid", formatSellerWorkspaceMoney(invoiceSummary.paid || 0));
+  setText("salesInvoiceBalance", formatSellerWorkspaceMoney(invoiceSummary.balanceDue || 0));
 
   function persistSalesDraft(nextStatus) {
     state.estimateNumber = String(estimateNumberInput?.value ?? "").trim();

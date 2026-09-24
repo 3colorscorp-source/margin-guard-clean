@@ -174,7 +174,9 @@ function main() {
   pass("full suite still runs", yml.indexOf("node scripts/test-mg-seller-shield-v1.js --full") >= 0);
   pass(
     "desktop Chromium runtime is not a CI required job",
-    yml.indexOf("test-seller-owner-preview-desktop-runtime.js") < 0 && /timeout-minutes:\s*10/.test(yml)
+    yml.indexOf("test-seller-owner-preview-desktop-runtime.js") < 0 &&
+      yml.indexOf("test-seller-new-quote-day-visual-dollar.js") < 0 &&
+      /timeout-minutes:\s*10/.test(yml)
   );
   pass("does not set ALLOW_SELLER_TOUCH in workflow", !/ALLOW_SELLER_TOUCH:\s*["']?1/.test(yml));
   pass("does not use pull_request_target", yml.indexOf("pull_request_target") < 0);
