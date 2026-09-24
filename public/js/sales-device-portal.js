@@ -308,8 +308,13 @@
 
     if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
       const hydration = await window.hydrateSellerBusinessSettingsFromServer();
-      if (hydration && hydration.ok && typeof window.refreshSellerFromStandalone === "function") {
-        window.refreshSellerFromStandalone();
+      if (hydration && hydration.ok) {
+        if (typeof window.paintSellerAuthoritativePrimaryPricesNow === "function") {
+          window.paintSellerAuthoritativePrimaryPricesNow();
+        }
+        if (typeof window.refreshSellerFromStandalone === "function") {
+          window.refreshSellerFromStandalone();
+        }
       }
     }
   }
