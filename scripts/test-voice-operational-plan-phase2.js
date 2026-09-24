@@ -8,6 +8,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
+const clientVoice = require("../public/js/voice-operational-plan.js");
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -425,6 +426,15 @@ async function main() {
   ok("interpreted document only updates preview draft", /voicePlanPreviewSession\.draft = proposed/.test(html));
   ok("existing Confirm and apply remains required", /Confirm and apply/.test(html) && /applyVoicePlanConfirm/.test(html));
   ok("close aborts interpretation", /voicePlanInterpretController\.abort/.test(html));
+  ok("close cancels dictation capture", /voicePlanDictationCapture\.cancel/.test(html));
+  ok("seller Stop requests stop without invalidating capture", /if \(voicePlanRecognition\) \{[\s\S]*requestStop\(\);[\s\S]*stopVoicePlanRecognition\(\);[\s\S]*return;/.test(html));
+  ok("seller Cancel nulls recognition before late results", /voicePlanRecognition = null;[\s\S]*rec\.stop\(\)/.test(html));
+  ok("seller onend ignores a replaced instance", /if \(voicePlanRecognition !== recognition\) return;/.test(html));
+  ok("seller onend closes capture generation", /voicePlanDictationCapture\.end\(/.test(html));
+  ok("seller folds SpeechRecognition from resultIndex", /createVoiceDictationCapture/.test(html) && /applyEvent\(event, voicePlanDictationGeneration\)/.test(html));
+  ok("seller does not append SpeechRecognition finals", !/voicePlanRecognitionFinal\s*\+=/.test(html));
+  ok("seller keeps a single recognition instance", /if \(voicePlanRecognition\) \{[\s\S]*stopVoicePlanRecognition\(\);[\s\S]*return;/.test(html));
+  ok("seller still uses es-US default language", /language && language\.value\) \|\| 'es-US'/.test(html));
   ok("no audio blob is uploaded or stored", !/MediaRecorder|audio\/webm|FormData/.test(html + fnSrc));
   ok("endpoint never writes quote or project tables", !/quotes\?|tenant_projects|quote_internal_operational_plans/.test(fnSrc));
   ok("endpoint authenticates owner or seller", /resolveOwnerOrSellerContext/.test(fnSrc));
@@ -432,6 +442,144 @@ async function main() {
   ok("AI input receives explicit client scope language", /CLIENT_SCOPE_LANGUAGE/.test(fnSrc));
   ok("AI prompt keeps crew details out of task labels", /physical work activity/.test(fnSrc) && /worker_assignments/.test(fnSrc));
   ok("Netlify timeout configured", /\[functions\."voice-operational-plan-command"\][\s\S]*timeout = 30/.test(read("netlify.toml")));
+
+  function srEvent(resultIndex, items) {
+    return clientVoice.makeSpeechRecognitionEvent(resultIndex, items);
+  }
+  function phrase(text, isFinal) {
+    return { transcript: text, isFinal: !!isFinal };
+  }
+
+  const capture = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genNew = capture.start("");
+  let folded = capture.applyEvent(srEvent(0, [phrase("Agrega", false)]), genNew);
+  eq("seller 1. interim first draft", folded.text, "Agrega");
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día", false)]), genNew);
+  eq("seller 1. interim replacement is not stacked", folded.text, "Agrega día");
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", false)]), genNew);
+  eq("seller 1. later interim still one copy", folded.text, "Agrega día 1");
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genNew);
+  eq("seller 1. final after interims is one copy", folded.text, "Agrega día 1");
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genNew);
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genNew);
+  eq("seller 3. later events repeating the same final do not duplicate", folded.text, "Agrega día 1");
+  eq("seller 4. new dictation phrase appears once", folded.text, "Agrega día 1");
+
+  folded = capture.applyEvent(
+    srEvent(1, [phrase("Agrega día 1", true), phrase("Agrega día 2", false)]),
+    genNew
+  );
+  eq("seller 2. advancing resultIndex keeps prior final", folded.text, "Agrega día 1 Agrega día 2");
+  folded = capture.applyEvent(
+    srEvent(1, [phrase("Agrega día 1", true), phrase("Agrega día 2", true)]),
+    genNew
+  );
+  eq("seller 2. cumulative list with advancing resultIndex stays unique", folded.text, "Agrega día 1 Agrega día 2");
+  folded = capture.applyEvent(
+    srEvent(0, [phrase("Agrega día 1", true), phrase("Agrega día 2", true)]),
+    genNew
+  );
+  eq("seller 3. replaying the full cumulative list does not duplicate", folded.text, "Agrega día 1 Agrega día 2");
+
+  folded = capture.applyEvent(
+    srEvent(2, [
+      phrase("Agrega día 1", true),
+      phrase("Agrega día 2", true),
+      phrase("Agrega día 1", true),
+    ]),
+    genNew
+  );
+  eq(
+    "seller 6. legitimate repeated phrase in a later final index is kept twice",
+    folded.text,
+    "Agrega día 1 Agrega día 2 Agrega día 1"
+  );
+
+  const beforeStop = folded.text;
+  capture.requestStop();
+  eq("seller A. requestStop keeps generation", capture.currentGeneration(), genNew);
+  ok("seller A. requestStop stays listening", capture.isListening() === true);
+  folded = capture.applyEvent(
+    srEvent(0, [
+      phrase("Agrega día 1", true),
+      phrase("Agrega día 2", true),
+      phrase("Agrega día 1", true),
+    ]),
+    genNew
+  );
+  eq("seller A. last final after requestStop is kept once", folded.text, "Agrega día 1 Agrega día 2 Agrega día 1");
+  capture.end();
+  const afterEnd = capture.applyEvent(srEvent(0, [phrase(beforeStop + " extra", true)]), genNew);
+  ok("seller 7. onend ignores further events", afterEnd.ignored === true);
+  eq("seller 7. stop does not clear prior transcript", beforeStop, "Agrega día 1 Agrega día 2 Agrega día 1");
+
+  const raceA = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genRaceA = raceA.start("");
+  raceA.applyEvent(srEvent(0, [phrase("Agrega día", false)]), genRaceA);
+  raceA.requestStop();
+  eq("seller A. Stop does not bump generation", raceA.currentGeneration(), genRaceA);
+  folded = raceA.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceA);
+  eq("seller A. interim then Stop then final is one copy", folded.text, "Agrega día 1");
+  raceA.end();
+  ok("seller A. onend then ignores the same generation", raceA.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceA).ignored === true);
+
+  const raceB = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genRaceB = raceB.start("");
+  const interimB = raceB.applyEvent(srEvent(0, [phrase("Agrega día", false)]), genRaceB);
+  raceB.cancel();
+  const lateB = raceB.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceB);
+  ok("seller B. Cancel ignores the late final", lateB.ignored === true);
+  eq("seller B. Cancel leaves the last accepted transcript unchanged", interimB.text, "Agrega día");
+  ok("seller B. Cancel is no longer listening", raceB.isListening() === false);
+
+  const raceC = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genRaceC = raceC.start("");
+  folded = raceC.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceC);
+  raceC.requestStop();
+  raceC.end();
+  const lateC = raceC.applyEvent(srEvent(0, [phrase("Agrega día 1 extra", true)]), genRaceC);
+  ok("seller C. result after onend is ignored", lateC.ignored === true);
+  eq("seller C. transcript from before onend is unchanged", folded.text, "Agrega día 1");
+
+  const raceD = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genRaceD1 = raceD.start("");
+  raceD.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceD1);
+  raceD.requestStop();
+  raceD.end();
+  const genRaceD2 = raceD.start("");
+  const staleOld = raceD.applyEvent(srEvent(0, [phrase("resultado viejo", true)]), genRaceD1);
+  ok("seller D. previous generation is ignored after a new session", staleOld.ignored === true);
+  folded = raceD.applyEvent(srEvent(0, [phrase("Agrega día 2", true)]), genRaceD2);
+  eq("seller D. new session accepts only its own result", folded.text, "Agrega día 2");
+
+  const raceE = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genRaceE = raceE.start("Base previa");
+  raceE.applyEvent(srEvent(0, [phrase("Agrega día", false)]), genRaceE);
+  raceE.requestStop();
+  folded = raceE.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceE);
+  raceE.end();
+  eq("seller E. Continue Stop keeps base plus one final", folded.text, "Base previa Agrega día 1");
+  ok("seller E. Continue Stop then ignores the old generation", raceE.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genRaceE).ignored === true);
+
+  const genContinue = capture.start("Agrega día 1");
+  ok("seller 9. a new session generation is distinct", genContinue !== genNew);
+  const staleAfterRestart = capture.applyEvent(srEvent(0, [phrase("Agrega día 1 Agrega día 1", true)]), genNew);
+  ok("seller 8. restart ignores the previous session generation", staleAfterRestart.ignored === true);
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genContinue);
+  eq("seller 5. continue keeps prior text and adds one copy", folded.text, "Agrega día 1 Agrega día 1");
+  folded = capture.applyEvent(srEvent(0, [phrase("Agrega día 1", true)]), genContinue);
+  eq("seller 5. continue does not re-append the same Chrome final", folded.text, "Agrega día 1 Agrega día 1");
+  ok("seller 9. only the current capture generation is listening", capture.isListening() === true && capture.currentGeneration() === genContinue);
+
+  folded = capture.applyEvent(srEvent(0, [phrase("x".repeat(7000), true)]), genContinue);
+  eq("seller 10. dictation clamps to 6000", folded.text.length, 6000);
+
+  capture.cancel();
+  const late = capture.applyEvent(srEvent(0, [phrase("late event after cancel", true)]), genContinue);
+  ok("seller 11. cancel invalidates late recognition events", late.ignored === true);
+  ok("seller 12. typed fallback remains in the seller modal", /type the instructions/i.test(html));
+  ok("seller 13. owner voice ids stay out of sales.html", !/ownerVoicePlan|btnOwnerReviewConfirmOperationalPlan/.test(html));
+  ok("seller 13. shared helper is the SpeechRecognition fold", typeof clientVoice.createVoiceDictationCapture === "function");
 
   console.log(`\nVoice Operational Plan Phase 2: ${passed} passed`);
 }

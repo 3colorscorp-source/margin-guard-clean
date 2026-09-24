@@ -696,6 +696,106 @@
     return { applied: applied, changed: true };
   }
 
+  const MAX_DICTATION_CHARS = 6000;
+
+  function speechResultTranscript(result) {
+    const alt = result && result[0];
+    return String(alt && alt.transcript != null ? alt.transcript : "").trim();
+  }
+
+  function makeSpeechRecognitionEvent(resultIndex, items) {
+    const list = Array.isArray(items) ? items : [];
+    const results = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i] || {};
+      const result = [
+        {
+          transcript: String(item.transcript == null ? "" : item.transcript),
+          confidence: 1,
+        },
+      ];
+      result.isFinal = !!item.isFinal;
+      results.push(result);
+    }
+    return {
+      resultIndex: Number(resultIndex) || 0,
+      results: results,
+    };
+  }
+
+  function createVoiceDictationCapture(options) {
+    const maxChars = Math.max(1, Number(options && options.maxChars) || MAX_DICTATION_CHARS);
+    let generation = 0;
+    let listening = false;
+    let base = "";
+    let finalsByIndex = [];
+
+    function compose(interimParts) {
+      const parts = [];
+      if (base) parts.push(base);
+      for (let i = 0; i < finalsByIndex.length; i += 1) {
+        if (finalsByIndex[i]) parts.push(finalsByIndex[i]);
+      }
+      const interims = Array.isArray(interimParts) ? interimParts : [];
+      for (let j = 0; j < interims.length; j += 1) {
+        if (interims[j]) parts.push(interims[j]);
+      }
+      return parts.join(" ").slice(0, maxChars);
+    }
+
+    function start(baseText) {
+      generation += 1;
+      listening = true;
+      base = String(baseText == null ? "" : baseText).trim().slice(0, maxChars);
+      finalsByIndex = [];
+      return generation;
+    }
+
+    function requestStop() {
+      return generation;
+    }
+
+    function invalidate() {
+      listening = false;
+      generation += 1;
+      finalsByIndex = [];
+      return generation;
+    }
+
+    function applyEvent(event, expectedGeneration) {
+      if (expectedGeneration !== generation || !listening) {
+        return { ignored: true, text: null, generation: generation };
+      }
+      const results = event && event.results ? event.results : [];
+      let startIndex = Number(event && event.resultIndex);
+      if (!Number.isFinite(startIndex) || startIndex < 0) startIndex = 0;
+      finalsByIndex.length = startIndex;
+      const interims = [];
+      for (let i = startIndex; i < results.length; i += 1) {
+        const words = speechResultTranscript(results[i]);
+        if (!words) continue;
+        if (results[i].isFinal) finalsByIndex[i] = words;
+        else interims.push(words);
+      }
+      return { ignored: false, text: compose(interims), generation: generation };
+    }
+
+    return {
+      start: start,
+      requestStop: requestStop,
+      stop: invalidate,
+      end: invalidate,
+      cancel: invalidate,
+      applyEvent: applyEvent,
+      isListening: function () {
+        return listening;
+      },
+      currentGeneration: function () {
+        return generation;
+      },
+    };
+  }
+
   const api = {
     SCHEMA_VERSION: SCHEMA_VERSION,
     DOCUMENT_LIMITS: DOCUMENT_LIMITS,
@@ -727,6 +827,10 @@
     createPreviewSession: createPreviewSession,
     cancelPreview: cancelPreview,
     confirmPreview: confirmPreview,
+    MAX_DICTATION_CHARS: MAX_DICTATION_CHARS,
+    speechResultTranscript: speechResultTranscript,
+    makeSpeechRecognitionEvent: makeSpeechRecognitionEvent,
+    createVoiceDictationCapture: createVoiceDictationCapture,
   };
 
   global.MgVoiceOperationalPlan = api;

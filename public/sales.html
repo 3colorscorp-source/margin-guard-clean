@@ -6516,6 +6516,8 @@
       let voicePlanRecognition = null;
       let voicePlanRecognitionBase = '';
       let voicePlanRecognitionFinal = '';
+      let voicePlanDictationCapture = null;
+      let voicePlanDictationGeneration = 0;
       let voicePlanInterpretController = null;
 
       function escapeVoicePlanHtml(value) {
@@ -6747,6 +6749,14 @@
         return window.SpeechRecognition || window.webkitSpeechRecognition || null;
       }
 
+      function getVoicePlanDictationCapture() {
+        const voice = getVoicePlanApi();
+        if (!voicePlanDictationCapture && voice && typeof voice.createVoiceDictationCapture === 'function') {
+          voicePlanDictationCapture = voice.createVoiceDictationCapture({ maxChars: 6000 });
+        }
+        return voicePlanDictationCapture;
+      }
+
       function stopVoicePlanRecognition() {
         if (!voicePlanRecognition) return;
         try { voicePlanRecognition.stop(); } catch (_err) {}
@@ -6778,6 +6788,8 @@
           return;
         }
         if (voicePlanRecognition) {
+          const capture = getVoicePlanDictationCapture();
+          if (capture) capture.requestStop();
           stopVoicePlanRecognition();
           return;
         }
@@ -6786,6 +6798,8 @@
         if (!appendExisting) transcript.value = '';
         voicePlanRecognitionBase = String(transcript.value || '').trim();
         voicePlanRecognitionFinal = '';
+        const capture = getVoicePlanDictationCapture();
+        voicePlanDictationGeneration = capture ? capture.start(voicePlanRecognitionBase) : 0;
         recognition.lang = String((language && language.value) || 'es-US');
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -6799,14 +6813,12 @@
           setVoicePlanCaptureStatus('Listening… describe the plan or say which day to modify.', true, false);
         };
         recognition.onresult = function (event) {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; i += 1) {
-            const words = String(event.results[i][0] && event.results[i][0].transcript || '').trim();
-            if (!words) continue;
-            if (event.results[i].isFinal) voicePlanRecognitionFinal += (voicePlanRecognitionFinal ? ' ' : '') + words;
-            else interim += (interim ? ' ' : '') + words;
-          }
-          transcript.value = [voicePlanRecognitionBase, voicePlanRecognitionFinal, interim].filter(Boolean).join(' ').slice(0, 6000);
+          if (voicePlanRecognition !== recognition) return;
+          const dictation = getVoicePlanDictationCapture();
+          if (!dictation) return;
+          const folded = dictation.applyEvent(event, voicePlanDictationGeneration);
+          if (!folded || folded.ignored) return;
+          transcript.value = folded.text;
         };
         recognition.onerror = function (event) {
           const code = String(event && event.error || 'unknown');
@@ -6815,6 +6827,8 @@
           }
         };
         recognition.onend = function () {
+          if (voicePlanRecognition !== recognition) return;
+          if (voicePlanDictationCapture) voicePlanDictationCapture.end();
           voicePlanRecognition = null;
           resetVoicePlanRecognitionUi();
           if (!voicePlanAiBusy) setVoicePlanCaptureStatus('Dictation stopped. Review the text, then choose Interpret and preview.', false, false);
@@ -6822,6 +6836,7 @@
         try {
           recognition.start();
         } catch (_err) {
+          if (voicePlanDictationCapture) voicePlanDictationCapture.stop();
           voicePlanRecognition = null;
           resetVoicePlanRecognitionUi();
           setVoicePlanCaptureStatus('The microphone could not start. Check browser permission or type the instructions.', false, true);
@@ -6885,7 +6900,12 @@
 
       function closeVoicePlanPreviewModal() {
         if (voicePlanConfirmBusy) return;
-        stopVoicePlanRecognition();
+        if (voicePlanDictationCapture) voicePlanDictationCapture.cancel();
+        const rec = voicePlanRecognition;
+        voicePlanRecognition = null;
+        if (rec) {
+          try { rec.stop(); } catch (_err) {}
+        }
         if (voicePlanInterpretController) voicePlanInterpretController.abort();
         const modal = document.getElementById('voicePlanPreviewModal');
         if (modal) modal.setAttribute('aria-hidden', 'true');
