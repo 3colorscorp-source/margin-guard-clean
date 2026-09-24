@@ -293,7 +293,7 @@
     window.MGAppNav?.applyPortalMode?.("seller-device");
   }
 
-  function applyOwnerMode(ownerData) {
+  async function applyOwnerMode(ownerData) {
     sellerModeActive = false;
     window.MG_SALES_PORTAL_MODE = "owner";
     document.documentElement.dataset.authMode = "owner";
@@ -305,6 +305,13 @@
     bindOwnerAccountButtons();
     document.body.classList.add("auth-ready");
     window.MGAppNav?.applyPortalMode?.("owner");
+
+    if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
+      const hydration = await window.hydrateSellerBusinessSettingsFromServer();
+      if (hydration && hydration.ok && typeof window.refreshSellerFromStandalone === "function") {
+        window.refreshSellerFromStandalone();
+      }
+    }
   }
 
   function ensureSellerNotice() {
@@ -810,7 +817,7 @@
 
     const ownerData = await tryOwnerAuth();
     if (ownerData) {
-      applyOwnerMode(ownerData);
+      await applyOwnerMode(ownerData);
       return;
     }
 

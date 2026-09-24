@@ -100,6 +100,7 @@ async function runWith({ deviceImpl, fetchImpl }) {
     if (isGuardRequest(request)) {
       return {
         requireSellerDevice: deviceImpl,
+        resolveOwnerOrSellerContext: deviceImpl,
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -188,6 +189,44 @@ async function runWith({ deviceImpl, fetchImpl }) {
   eq("revoked session status 401", revoked.status, 401);
   eq("revoked session ok false", revoked.body.ok, false);
   eq("revoked session did not fetch snapshots", revoked.fetchLog.length, 0);
+
+  function ownerCtx(tenantId) {
+    return {
+      auth_mode: "owner",
+      tenant: { id: tenantId, name: "Owner tenant" },
+      session: { e: "owner@example.com", t: tenantId },
+    };
+  }
+
+  const ownerUsd = await runWith({
+    deviceImpl: async () => ownerCtx(TENANT_A),
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      eq("owner snapshot tenant query", parsed.searchParams.get("tenant_id"), "eq." + TENANT_A);
+      return jsonRes(200, [{ payload: { storage: { mg_settings_v2: VALID_MG } } }]);
+    },
+  });
+  eq("owner session status 200", ownerUsd.status, 200);
+  eq("owner session ok", ownerUsd.body.ok, true);
+  eq("owner session currency from snapshot", ownerUsd.body.settings.currency, "USD");
+  eq("owner session source is snapshot", ownerUsd.body.source, "tenant_snapshot");
+
+  const ownerMxn = await runWith({
+    deviceImpl: async () => ownerCtx(TENANT_A),
+    fetchImpl: async () =>
+      jsonRes(200, [
+        { payload: { storage: { mg_settings_v2: { ...VALID_MG, currency: "MXN" } } } },
+      ]),
+  });
+  eq("owner legitimate MXN stays MXN", ownerMxn.body.settings.currency, "MXN");
+  ok("owner path does not hardcode USD", ownerMxn.body.settings.currency !== "USD");
+
+  const src = require("fs").readFileSync(
+    path.join(ROOT, "netlify/functions/get-seller-business-settings.js"),
+    "utf8"
+  );
+  ok("endpoint uses owner or seller dual-auth", /resolveOwnerOrSellerContext\(event\)/.test(src));
+  ok("endpoint no longer seller-device-only", !/requireSellerDevice\(event\)/.test(src));
 
   console.log("\n" + passed + " passed");
 })().catch((err) => {

@@ -51,7 +51,7 @@
     {
       "id": "get-seller-business-settings",
       "path": "scripts/test-get-seller-business-settings.js",
-      "minPassed": 21
+      "minPassed": 30
     },
     {
       "id": "seller-device-pairing",
@@ -66,7 +66,7 @@
     {
       "id": "seller-shield-v2-wiring",
       "path": "scripts/test-seller-shield-v2.js",
-      "minPassed": 71
+      "minPassed": 89
     }
   ],
   "optional": [
