@@ -241,6 +241,66 @@ function main() {
     }).ok === false
   );
 
+  const salesHtml = read("public/sales.html");
+  pass(
+    "seller preserves rendered currency helper exists",
+    /function refreshSellerFromStandalonePreservingRenderedCurrency\(/.test(salesHtml)
+  );
+  pass(
+    "seller captures visible currency before the operational-plan refresh",
+    /const visible = readSellerCurrencyFromVisiblePanel\(\);\s*if \(visible\) window\.__mgSellerOpPlanCurrencyHold = visible;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "seller restores the previous currency hold in finally",
+    /function refreshSellerFromStandalonePreservingRenderedCurrency\([\s\S]*finally \{[\s\S]*delete window\.__mgSellerOpPlanCurrencyHold;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "add day preserves the currently rendered currency",
+    /saveSalesState\(state\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);\s*openSalesOpDayEditor/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "timeline remove day preserves the currently rendered currency",
+    /action === 'remove-day' && dayIndex >= 0\) \{[\s\S]*?refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "edit day save preserves the currently rendered currency",
+    /persistSalesOpDayEditorFromDom\(\);\s*closeSalesOpDayEditor\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "modal remove day preserves the currently rendered currency",
+    /closeSalesOpDayEditor\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(salesHtml)
+  );
+  pass(
+    "voice plan confirm preserves the currently rendered currency",
+    /closeVoicePlanPreviewModal\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(salesHtml)
+  );
+  pass(
+    "visible currency reader inspects Recommended Price",
+    /function readSellerCurrencyFromVisiblePanel\([\s\S]*salesPrimaryPrice/.test(salesHtml)
+  );
+  pass(
+    "visible currency reader inspects Price Estimate",
+    /function readSellerCurrencyFromVisiblePanel\([\s\S]*salesPriceDisplay/.test(salesHtml)
+  );
+  pass(
+    "visible MXN display stays MXN",
+    /function readSellerCurrencyFromDisplayText\([\s\S]*MXN/.test(salesHtml)
+  );
+  pass(
+    "resolver prefers the operational-plan currency hold",
+    /function resolveSellerCurrency\([\s\S]*holdCode[\s\S]*if \(holdCode\) \{[\s\S]*return holdCode;/.test(salesHtml)
+  );
+
   console.log("\n" + n + " passed");
 }
 
