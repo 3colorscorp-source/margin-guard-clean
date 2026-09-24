@@ -583,6 +583,10 @@ async function main() {
   ok("owner does not append SpeechRecognition finals", !/recognitionFinal\s*\+=/.test(js));
   ok("owner folds from resultIndex via capture", /dictation\.applyEvent/.test(js));
   ok("owner onresult assigns reconstructed text", /transcript\.value = folded\.text/.test(js) && !/transcript\.value \+=/.test(js));
+  ok("owner sets interimResults from shared helper", /prefersInterimSpeechResults/.test(js));
+  eq("desktop keeps live interims", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"), true);
+  eq("android uses finals only", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120.0.0.0 Mobile"), false);
+  eq("iphone uses finals only", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"), false);
 
   FakeRecognition.instances = [];
   const docDup = makeDoc();
@@ -804,6 +808,54 @@ async function main() {
   );
   recFinals.emitEnd();
 
+  FakeRecognition.instances = [];
+  eq("exact-0. owner starts index-0 capture", sessionGrow.startDictation(false), "new");
+  const recExact = FakeRecognition.instances[0];
+  recExact.emitResult(srEvent(0, [phrase("agrega", false)]));
+  eq("exact-0. owner provisional 1", ownerTranscript(docGrow), "agrega");
+  recExact.emitResult(srEvent(0, [phrase("agrega día", false)]));
+  eq("exact-0. owner provisional 2", ownerTranscript(docGrow), "agrega día");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para", false)]));
+  eq("exact-0. owner provisional 3", ownerTranscript(docGrow), "agrega día 1 para");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para proteger", false)]));
+  eq("exact-0. owner provisional 4", ownerTranscript(docGrow), "agrega día 1 para proteger");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para proteger el piso", true)]));
+  eq("exact-0. owner final is one phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recExact.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-observed. owner starts incrementing-index capture", sessionGrow.startDictation(false), "new");
+  const recObserved = FakeRecognition.instances[0];
+  const observedPhrases = [
+    "agrega",
+    "agrega día",
+    "agrega día 1 para",
+    "agrega día 1 para proteger",
+    "agrega día 1 para proteger el piso",
+  ];
+  observedPhrases.forEach((text, index) => {
+    const items = observedPhrases.slice(0, index + 1).map((item) => phrase(item, true));
+    recObserved.emitResult(srEvent(index, items));
+    eq("phone-observed. owner visible text after event " + index, ownerTranscript(docGrow), text);
+  });
+  eq("phone-observed. owner final is one phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recObserved.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-words. owner starts word-then-restatement capture", sessionGrow.startDictation(false), "new");
+  const recWords = FakeRecognition.instances[0];
+  recWords.emitResult(srEvent(0, [phrase("agrega", true)]));
+  recWords.emitResult(srEvent(1, [phrase("agrega", true), phrase("día", true)]));
+  recWords.emitResult(
+    srEvent(2, [
+      phrase("agrega", true),
+      phrase("día", true),
+      phrase("agrega día 1 para proteger el piso", true),
+    ])
+  );
+  eq("phone-words. owner collapses restated full phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recWords.emitEnd();
+
   const growCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
   const growGen = growCap.start("");
   growCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), growGen);
@@ -847,6 +899,44 @@ async function main() {
   const afterDirty = dirtyCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), dirtyGen);
   eq("phone. capture base is not the visible textarea", afterDirty.text, "Keep me agrega día 1");
   eq("phone. capture base stayed the start value", dirtyCap.currentBase(), "Keep me");
+
+  const exactCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const exactGen = exactCap.start("");
+  exactCap.applyEvent(srEvent(0, [phrase("agrega", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para proteger", false)]), exactGen);
+  const exactFinal = exactCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para proteger el piso", true)]),
+    exactGen
+  );
+  eq("exact-0. capture final is one phrase", exactFinal.text, "agrega día 1 para proteger el piso");
+  eq("exact-0. capture kept one live slot", exactCap.slotCount(), 1);
+
+  const observedCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const observedGen = observedCap.start("");
+  let observedFolded = null;
+  observedPhrases.forEach((text, index) => {
+    const items = observedPhrases.slice(0, index + 1).map((item) => phrase(item, true));
+    observedFolded = observedCap.applyEvent(srEvent(index, items), observedGen);
+    eq("phone-observed. capture after event " + index, observedFolded.text, text);
+  });
+  eq("phone-observed. capture final is one phrase", observedFolded.text, "agrega día 1 para proteger el piso");
+  eq("phone-observed. capture kept one live slot", observedCap.slotCount(), 1);
+
+  const wordsCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const wordsGen = wordsCap.start("");
+  wordsCap.applyEvent(srEvent(0, [phrase("agrega", true)]), wordsGen);
+  wordsCap.applyEvent(srEvent(1, [phrase("agrega", true), phrase("día", true)]), wordsGen);
+  const wordsFinal = wordsCap.applyEvent(
+    srEvent(2, [
+      phrase("agrega", true),
+      phrase("día", true),
+      phrase("agrega día 1 para proteger el piso", true),
+    ]),
+    wordsGen
+  );
+  eq("phone-words. capture collapses restated full phrase", wordsFinal.text, "agrega día 1 para proteger el piso");
 
   ok("syntax of owner voice script", spawnSync(process.execPath, ["--check", path.join(ROOT, "public/js/owner-voice-operational-plan.js")], { encoding: "utf8" }).status === 0);
 

@@ -728,36 +728,132 @@
     };
   }
 
+  function normalizeSpeechText(value) {
+    return String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+  }
+
+  function prefersInterimSpeechResults(userAgent) {
+    let ua = userAgent;
+    if (ua == null) {
+      ua =
+        typeof navigator !== "undefined" && navigator && navigator.userAgent
+          ? navigator.userAgent
+          : "";
+    }
+    // Chrome/Edge on Android and iOS WebKit often mark growing hypotheses as
+    // isFinal and increment resultIndex. Live interims are not a reliable
+    // "replace previous provisional" signal there, so mobile uses finals only.
+    // New, Continue, Stop, Cancel, and manual typing are unchanged: base is
+    // captured once at start, Stop still accepts the last final before onend,
+    // and the textarea stays editable when capture is not listening.
+    return !/Android|iPhone|iPad|iPod|Mobile|webOS|IEMobile|BlackBerry/i.test(String(ua));
+  }
+
   function createVoiceDictationCapture(options) {
     const maxChars = Math.max(1, Number(options && options.maxChars) || MAX_DICTATION_CHARS);
     let generation = 0;
     let listening = false;
     let base = "";
-    let slots = [];
+    let finals = [];
+    let provisional = "";
 
     function isGrowingHypothesis(prev, next) {
-      const a = String(prev || "").trim();
-      const b = String(next || "").trim();
+      const a = normalizeSpeechText(prev).toLowerCase();
+      const b = normalizeSpeechText(next).toLowerCase();
       if (!a || !b || a === b) return false;
-      const al = a.toLowerCase();
-      const bl = b.toLowerCase();
-      return bl.indexOf(al) === 0 && bl.length > al.length;
+      if (b.indexOf(a) !== 0 || b.length <= a.length) return false;
+      return /^[\s.,;:!?¿¡-]/.test(b.slice(a.length));
+    }
+
+    function committedText() {
+      const parts = [];
+      for (let i = 0; i < finals.length; i += 1) {
+        if (finals[i]) parts.push(finals[i]);
+      }
+      return parts.join(" ");
+    }
+
+    function liveSlotCount() {
+      let count = 0;
+      for (let i = 0; i < finals.length; i += 1) {
+        if (finals[i]) count += 1;
+      }
+      if (provisional) count += 1;
+      return count;
     }
 
     function compose() {
       const parts = [];
       if (base) parts.push(base);
-      for (let i = 0; i < slots.length; i += 1) {
-        if (slots[i] && slots[i].text) parts.push(slots[i].text);
-      }
+      const committed = committedText();
+      if (committed) parts.push(committed);
+      if (provisional) parts.push(provisional);
       return parts.join(" ").slice(0, maxChars);
+    }
+
+    function resetLive() {
+      finals = [];
+      provisional = "";
+    }
+
+    function ingest(words, isFinal) {
+      const next = normalizeSpeechText(words);
+      if (!next) return;
+      const committed = committedText();
+      const last = finals.length ? finals[finals.length - 1] : "";
+
+      if (
+        isGrowingHypothesis(committed, next) ||
+        (committed && committed.toLowerCase() === next.toLowerCase() && finals.length > 1)
+      ) {
+        if (isFinal) {
+          finals = [next];
+          provisional = "";
+        } else {
+          finals = [];
+          provisional = next;
+        }
+        return;
+      }
+
+      if (isGrowingHypothesis(last, next)) {
+        if (isFinal) {
+          finals[finals.length - 1] = next;
+          provisional = "";
+        } else {
+          finals.pop();
+          provisional = next;
+        }
+        return;
+      }
+
+      if (
+        isGrowingHypothesis(provisional, next) ||
+        (provisional && provisional.toLowerCase() === next.toLowerCase())
+      ) {
+        if (isFinal) {
+          finals.push(next);
+          provisional = "";
+        } else {
+          provisional = next;
+        }
+        return;
+      }
+
+      if (!isFinal) {
+        provisional = next;
+        return;
+      }
+
+      provisional = "";
+      finals.push(next);
     }
 
     function start(baseText) {
       generation += 1;
       listening = true;
-      base = String(baseText == null ? "" : baseText).trim().slice(0, maxChars);
-      slots = [];
+      base = normalizeSpeechText(baseText).slice(0, maxChars);
+      resetLive();
       return generation;
     }
 
@@ -768,7 +864,7 @@
     function invalidate() {
       listening = false;
       generation += 1;
-      slots = [];
+      resetLive();
       return generation;
     }
 
@@ -780,26 +876,17 @@
       const listLength = Number(results.length) || 0;
       let startIndex = Number(event && event.resultIndex);
       if (!Number.isFinite(startIndex) || startIndex < 0) startIndex = 0;
-      let keepCount = startIndex;
-      if (keepCount > slots.length) keepCount = slots.length;
-      const next = slots.slice(0, keepCount);
+      if (startIndex === 0) resetLive();
       for (let i = startIndex; i < listLength; i += 1) {
         const words = speechResultTranscript(results[i]);
         if (!words) continue;
-        const isFinal = !!(results[i] && results[i].isFinal);
-        const prev = next.length ? next[next.length - 1] : null;
-        if (prev && isGrowingHypothesis(prev.text, words)) {
-          next[next.length - 1] = { text: words, isFinal: isFinal };
-        } else {
-          next.push({ text: words, isFinal: isFinal });
-        }
+        ingest(words, !!(results[i] && results[i].isFinal));
       }
-      slots = next;
       return {
         ignored: false,
         text: compose(),
         generation: generation,
-        slotCount: slots.length,
+        slotCount: liveSlotCount(),
       };
     }
 
@@ -820,7 +907,7 @@
         return base;
       },
       slotCount: function () {
-        return slots.length;
+        return liveSlotCount();
       },
     };
   }
@@ -859,6 +946,7 @@
     MAX_DICTATION_CHARS: MAX_DICTATION_CHARS,
     speechResultTranscript: speechResultTranscript,
     makeSpeechRecognitionEvent: makeSpeechRecognitionEvent,
+    prefersInterimSpeechResults: prefersInterimSpeechResults,
     createVoiceDictationCapture: createVoiceDictationCapture,
   };
 

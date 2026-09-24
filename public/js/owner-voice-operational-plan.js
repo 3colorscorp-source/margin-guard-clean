@@ -646,7 +646,11 @@
       state.listeningMode = appendExisting ? "continue" : "new";
       recognition.lang = str(language && language.value) || "es-US";
       recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.interimResults =
+        global.MgVoiceOperationalPlan &&
+        typeof global.MgVoiceOperationalPlan.prefersInterimSpeechResults === "function"
+          ? global.MgVoiceOperationalPlan.prefersInterimSpeechResults()
+          : true;
       recognition.onstart = function () {
         if (activeMic) {
           elClassList(activeMic).add("is-listening");

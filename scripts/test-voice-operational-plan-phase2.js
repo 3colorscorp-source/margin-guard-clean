@@ -420,7 +420,7 @@ async function main() {
   ok("UI separates dictation and client document language", /voicePlanClientLanguage/.test(html) && /Client document/.test(html));
   ok("new dictation clears prior transcript", /if \(!appendExisting\) transcript\.value = ''/.test(html));
   ok("continue dictation preserves prior transcript", /voicePlanMicContinue/.test(html) && /startVoicePlanRecognition\(true\)/.test(html));
-  ok("UI uses browser speech recognition", /webkitSpeechRecognition/.test(html) && /interimResults = true/.test(html));
+  ok("UI uses browser speech recognition", /webkitSpeechRecognition/.test(html) && /prefersInterimSpeechResults/.test(html));
   ok("UI has typed fallback", /type the instructions/i.test(html));
   ok("UI calls authenticated interpreter", /voice-operational-plan-command/.test(html) && /credentials: 'include'/.test(html));
   ok("interpreted document only updates preview draft", /voicePlanPreviewSession\.draft = proposed/.test(html));
@@ -607,6 +607,49 @@ async function main() {
   eq("seller phone. base is not the visible transcript", dirtyCap.currentBase(), "");
   folded = dirtyCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), dirtyGen);
   eq("seller phone. later event still ignores any external textarea", folded.text, "agrega día 1");
+
+  const exactCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const exactGen = exactCap.start("");
+  exactCap.applyEvent(srEvent(0, [phrase("agrega", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para proteger", false)]), exactGen);
+  folded = exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para proteger el piso", true)]), exactGen);
+  eq("seller exact-0. capture final is one phrase", folded.text, "agrega día 1 para proteger el piso");
+  eq("seller exact-0. capture kept one live slot", exactCap.slotCount(), 1);
+
+  const observedPhrases = [
+    "agrega",
+    "agrega día",
+    "agrega día 1 para",
+    "agrega día 1 para proteger",
+    "agrega día 1 para proteger el piso",
+  ];
+  const observedCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const observedGen = observedCap.start("");
+  observedPhrases.forEach((text, index) => {
+    const items = observedPhrases.slice(0, index + 1).map((item) => phrase(item, true));
+    folded = observedCap.applyEvent(srEvent(index, items), observedGen);
+    eq("seller phone-observed. capture after event " + index, folded.text, text);
+  });
+  eq("seller phone-observed. capture final is one phrase", folded.text, "agrega día 1 para proteger el piso");
+  eq("seller phone-observed. capture kept one live slot", observedCap.slotCount(), 1);
+
+  const wordsCap = clientVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const wordsGen = wordsCap.start("");
+  wordsCap.applyEvent(srEvent(0, [phrase("agrega", true)]), wordsGen);
+  wordsCap.applyEvent(srEvent(1, [phrase("agrega", true), phrase("día", true)]), wordsGen);
+  folded = wordsCap.applyEvent(
+    srEvent(2, [
+      phrase("agrega", true),
+      phrase("día", true),
+      phrase("agrega día 1 para proteger el piso", true),
+    ]),
+    wordsGen
+  );
+  eq("seller phone-words. capture collapses restated full phrase", folded.text, "agrega día 1 para proteger el piso");
+  eq("desktop keeps live interims", clientVoice.prefersInterimSpeechResults("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"), true);
+  eq("android uses finals only", clientVoice.prefersInterimSpeechResults("Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120.0.0.0 Mobile"), false);
 
   const genContinue = capture.start("Agrega día 1");
   ok("seller 9. a new session generation is distinct", genContinue !== genNew);

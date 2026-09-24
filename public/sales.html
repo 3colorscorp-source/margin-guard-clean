@@ -6810,7 +6810,10 @@
         lockVoicePlanTranscriptForCapture(true);
         recognition.lang = String((language && language.value) || 'es-US');
         recognition.continuous = true;
-        recognition.interimResults = true;
+        const voiceApi = getVoicePlanApi();
+        recognition.interimResults = voiceApi && typeof voiceApi.prefersInterimSpeechResults === 'function'
+          ? voiceApi.prefersInterimSpeechResults()
+          : true;
         recognition.onstart = function () {
           if (activeMic) {
             activeMic.classList.add('is-listening');
