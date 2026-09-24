@@ -172,6 +172,10 @@ function main() {
   pass("setup-node action pinned SHA", yml.indexOf("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020") >= 0);
   pass("required suite still runs", yml.indexOf("node scripts/test-mg-seller-shield-v1.js") >= 0);
   pass("full suite still runs", yml.indexOf("node scripts/test-mg-seller-shield-v1.js --full") >= 0);
+  pass(
+    "desktop Chromium runtime is not a CI required job",
+    yml.indexOf("test-seller-owner-preview-desktop-runtime.js") < 0 && /timeout-minutes:\s*10/.test(yml)
+  );
   pass("does not set ALLOW_SELLER_TOUCH in workflow", !/ALLOW_SELLER_TOUCH:\s*["']?1/.test(yml));
   pass("does not use pull_request_target", yml.indexOf("pull_request_target") < 0);
   pass("does not run Owner guard", yml.indexOf("guard-owner-scope.js") < 0);
@@ -349,7 +353,7 @@ function main() {
   );
   pass(
     "displayed money writer updates visible duplicate price nodes",
-    /function setSellerDisplayedMoneyText\([\s\S]*isSellerDisplayedMoneyNode[\s\S]*textContent = text/.test(salesHtml)
+    /function setSellerDisplayedMoneyText\([\s\S]*isSellerDisplayedMoneyNode[\s\S]*writeSellerNodeText/.test(salesHtml)
   );
 
   pass(
@@ -465,11 +469,22 @@ function main() {
       )
   );
   pass(
-    "late writers cannot keep a currency that disagrees with tenant",
-    /function coerceSellerMoneyTextToTenantCurrency\([\s\S]*readSellerTenantCurrency\(\)[\s\S]*if \(!shown \|\| shown === tenant\) return raw;[\s\S]*return money\(parseSellerMoneyTextToNumber\(trimmed\), tenant\);/.test(
+    "late MXN writer is normalized to visual $ with the same amount",
+    /function normalizeSellerWorkspaceMoneyText\([\s\S]*formatSellerWorkspaceMoney\(parseSellerMoneyTextToNumber\(raw\)\)/.test(
       salesHtml
-    ) &&
-      /new MutationObserver\(/.test(salesHtml)
+    ) && /if \(list\[i\]\.textContent === text\) continue/.test(salesHtml)
+  );
+  pass(
+    "authoritative price writer does not install a permanent MutationObserver",
+    !/function installSellerAuthoritativePriceWriterGuard/.test(salesHtml) &&
+      !/__mgSellerAuthoritativePriceObserver/.test(salesHtml) &&
+      !/function observeSellerAuthoritativePriceNode/.test(salesHtml)
+  );
+  pass(
+    "identical primary price text does not write the DOM again",
+    /function writeSellerAuthoritativePriceText\([\s\S]*if \(list\[i\]\.textContent === text\) continue;/.test(
+      salesHtml
+    )
   );
   pass(
     "owner preview renderSales currency guard no longer skips owner",
@@ -495,10 +510,8 @@ function main() {
   );
   pass(
     "authoritative writer does not hardcode USD",
-    /function coerceSellerMoneyTextToTenantCurrency\([\s\S]*money\(parseSellerMoneyTextToNumber\(trimmed\), tenant\)/.test(
-      salesHtml
-    ) &&
-      !/function coerceSellerMoneyTextToTenantCurrency\([\s\S]*return ['"]USD['"]/.test(salesHtml)
+    /function formatSellerWorkspaceMoney\(amount\) \{[\s\S]*toLocaleString\('en-US'/.test(salesHtml) &&
+      !/function formatSellerWorkspaceMoney[\s\S]{0,400}currency:\s*['"]USD['"]/.test(salesHtml)
   );
   pass(
     "primary price writers do not depend on hidden getElementById",
