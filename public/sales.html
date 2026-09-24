@@ -7047,7 +7047,7 @@
         if (!state.quoteId) {
           applyConfirmedVoicePlanToState(voice, applied);
           closeVoicePlanPreviewModal();
-          refreshSellerFromStandalone();
+          refreshSellerFromStandalonePreservingRenderedCurrency();
           return;
         }
         setVoicePlanConfirmBusy(true);
@@ -7070,7 +7070,7 @@
             applyConfirmedVoicePlanToState(voice, applied);
             setVoicePlanConfirmBusy(false);
             closeVoicePlanPreviewModal();
-            refreshSellerFromStandalone();
+            refreshSellerFromStandalonePreservingRenderedCurrency();
             return;
           }
           setVoicePlanPreviewStatus(voicePlanPersistErrorMessage(persisted.data), true);
@@ -7205,7 +7205,7 @@
               api.createEmptyDay(nextDay, api.getOperationalPlanUnitMode(settings), api.getHoursPerDay(settings))
             );
             saveSalesState(state);
-            refreshSellerFromStandalone();
+            refreshSellerFromStandalonePreservingRenderedCurrency();
             openSalesOpDayEditor(state.operational_plan.length - 1);
           }, true);
         }
@@ -7252,7 +7252,7 @@
             if (action === 'remove-day' && dayIndex >= 0) {
               state.operational_plan.splice(dayIndex, 1);
               saveSalesState(state);
-              refreshSellerFromStandalone();
+              refreshSellerFromStandalonePreservingRenderedCurrency();
               return;
             }
             if ((action === 'edit-day' || (!action && row)) && dayIndex >= 0) {
@@ -7285,7 +7285,7 @@
               e.preventDefault();
               persistSalesOpDayEditorFromDom();
               closeSalesOpDayEditor();
-              refreshSellerFromStandalone();
+              refreshSellerFromStandalonePreservingRenderedCurrency();
             }, true);
           }
           modalBody.addEventListener('click', function (event) {
@@ -7318,7 +7318,7 @@
               state.operational_plan.splice(salesOpEditingDayIndex, 1);
               saveSalesState(state);
               closeSalesOpDayEditor();
-              refreshSellerFromStandalone();
+              refreshSellerFromStandalonePreservingRenderedCurrency();
             }
           });
         }
@@ -7465,6 +7465,28 @@
       }
       window.refreshSellerFromStandalone = refreshSellerFromStandalone;
 
+      function readSellerCurrencyFromDisplayText(text) {
+        const raw = String(text == null ? '' : text).trim();
+        if (!raw || raw === '—') return '';
+        if (/MX\$|MXN|pesos?\s*mex/i.test(raw)) return 'MXN';
+        if (/\bUSD\b|US\$/i.test(raw)) return 'USD';
+        if (/\$/.test(raw) && !/MX/i.test(raw)) return 'USD';
+        return normalizeSellerCurrencyCode(raw);
+      }
+
+      function refreshSellerFromStandalonePreservingRenderedCurrency() {
+        const hadHold = Object.prototype.hasOwnProperty.call(window, '__mgSellerOpPlanCurrencyHold');
+        const previousHold = window.__mgSellerOpPlanCurrencyHold;
+        try {
+          const visible = readSellerCurrencyFromVisiblePanel();
+          if (visible) window.__mgSellerOpPlanCurrencyHold = visible;
+          refreshSellerFromStandalone();
+        } finally {
+          if (hadHold) window.__mgSellerOpPlanCurrencyHold = previousHold;
+          else delete window.__mgSellerOpPlanCurrencyHold;
+        }
+      }
+
       /** Same behavior as #btnClearSalesWorkers (Limpiar labor): DEFAULT_WORKERS clone + persist + refresh. */
       function clearSalesWorkersToDefault() {
         const state = loadSalesState();
@@ -7573,10 +7595,21 @@
       }
 
       function readSellerCurrencyFromVisiblePanel() {
+        const ids = ['salesPrimaryPrice', 'salesPriceDisplay'];
+        for (let i = 0; i < ids.length; i += 1) {
+          const node = document.getElementById(ids[i]);
+          const code = readSellerCurrencyFromDisplayText(node ? node.textContent : '');
+          if (code) return code;
+        }
         return '';
       }
 
       function resolveSellerCurrency(settings, state) {
+        const holdCode = normalizeSellerCurrencyCode(window.__mgSellerOpPlanCurrencyHold);
+        if (holdCode) {
+          rememberSellerValidCurrency(holdCode);
+          return holdCode;
+        }
         const storageCode = readSellerCurrencyFromSettingsStorage();
         const settingsCode = normalizeSellerCurrencyCode(settings && settings.currency);
         const stateCode = normalizeSellerCurrencyCode(
