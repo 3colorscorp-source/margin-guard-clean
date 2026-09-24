@@ -248,15 +248,20 @@ function main() {
   );
   pass(
     "seller captures visible currency before the operational-plan refresh",
-    /const visible = readSellerCurrencyFromVisiblePanel\(\);\s*if \(visible\) window\.__mgSellerOpPlanCurrencyHold = visible;/.test(
+    /function refreshSellerFromStandalonePreservingRenderedCurrency\([\s\S]*captureSellerQuoteCurrencyLock\(\);\s*refreshSellerFromStandalone\(\);/.test(
       salesHtml
     )
   );
   pass(
-    "seller restores the previous currency hold in finally",
-    /function refreshSellerFromStandalonePreservingRenderedCurrency\([\s\S]*finally \{[\s\S]*delete window\.__mgSellerOpPlanCurrencyHold;/.test(
-      salesHtml
-    )
+    "seller quote currency lock is not cleared after the refresh",
+    (function () {
+      const start = salesHtml.indexOf("function refreshSellerFromStandalonePreservingRenderedCurrency");
+      const slice = start >= 0 ? salesHtml.slice(start, start + 420) : "";
+      return (
+        /captureSellerQuoteCurrencyLock\(\);\s*refreshSellerFromStandalone\(\);/.test(slice) &&
+        !/delete window\.__mgSellerQuoteCurrencyLock/.test(slice)
+      );
+    })()
   );
   pass(
     "add day preserves the currently rendered currency",
@@ -297,8 +302,54 @@ function main() {
     /function readSellerCurrencyFromDisplayText\([\s\S]*MXN/.test(salesHtml)
   );
   pass(
-    "resolver prefers the operational-plan currency hold",
-    /function resolveSellerCurrency\([\s\S]*holdCode[\s\S]*if \(holdCode\) \{[\s\S]*return holdCode;/.test(salesHtml)
+    "resolver prefers the quote currency lock",
+    /function resolveSellerCurrency\([\s\S]*lockCode[\s\S]*if \(lockCode\) \{[\s\S]*return lockCode;/.test(salesHtml)
+  );
+  pass(
+    "seller uses a persistent quote currency lock",
+    /__mgSellerQuoteCurrencyLock/.test(salesHtml) && !/__mgSellerOpPlanCurrencyHold/.test(salesHtml)
+  );
+  pass(
+    "edit day open captures the visible quote currency",
+    /function openSalesOpDayEditor\([\s\S]*captureSellerQuoteCurrencyLock\(\);/.test(salesHtml)
+  );
+  pass(
+    "visible reader searches duplicate Recommended Price nodes",
+    /function collectSellerMoneyNodesById\([\s\S]*querySelectorAll\('\[id="' \+ id \+ '"\]'\)/.test(salesHtml)
+  );
+  pass(
+    "visible reader prefers the displayed money node",
+    /function readSellerCurrencyFromVisiblePanel\([\s\S]*isSellerDisplayedMoneyNode/.test(salesHtml)
+  );
+  pass(
+    "duplicate Price Estimate nodes are included",
+    /function readSellerCurrencyFromVisiblePanel\([\s\S]*salesPriceDisplay[\s\S]*isSellerDisplayedMoneyNode/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "new quote reset is the only lock clear",
+    /function resetSalesQuoteStateForNewQuote\([\s\S]*delete window\.__mgSellerQuoteCurrencyLock;/.test(salesHtml) &&
+      (salesHtml.match(/delete window\.__mgSellerQuoteCurrencyLock;/g) || []).length === 1
+  );
+  pass(
+    "delayed renders keep the quote currency lock",
+    (function () {
+      const start = salesHtml.indexOf("function refreshSellerFromStandalonePreservingRenderedCurrency");
+      const slice = start >= 0 ? salesHtml.slice(start, start + 420) : "";
+      return (
+        /function resolveSellerCurrency\([\s\S]*window\.__mgSellerQuoteCurrencyLock/.test(salesHtml) &&
+        !/finally/.test(slice)
+      );
+    })()
+  );
+  pass(
+    "legitimate MXN lock is returned without forcing USD",
+    /if \(lockCode\) \{[\s\S]*rememberSellerValidCurrency\(lockCode\);[\s\S]*return lockCode;/.test(salesHtml)
+  );
+  pass(
+    "displayed money writer updates visible duplicate price nodes",
+    /function setSellerDisplayedMoneyText\([\s\S]*isSellerDisplayedMoneyNode[\s\S]*textContent = text/.test(salesHtml)
   );
 
   console.log("\n" + n + " passed");
