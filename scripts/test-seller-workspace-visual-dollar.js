@@ -175,6 +175,26 @@ function main() {
     })
   );
 
+  const appJs = read("public/js/app.js");
+  const renderSalesSrc = appJs.slice(
+    appJs.indexOf("function renderSales()"),
+    appJs.indexOf("window.renderSales = renderSales")
+  );
+  pass(
+    "app.js renderSales Live Score uses formatSellerWorkspaceMoney",
+    /setText\("salesPrimaryPrice", formatSellerWorkspaceMoney\(metrics\.recommended\)\)/.test(renderSalesSrc)
+  );
+  pass("app.js renderSales does not call formatMoney", !/formatMoney\(/.test(renderSalesSrc));
+  pass(
+    "app.js labor rates use formatSellerWorkspaceMoney not settings.currency",
+    /formatSellerWorkspaceMoney\(workerRateFromSettings\(worker, settings\)\)/.test(appJs) &&
+      !/money\(workerRateFromSettings\(worker, settings\), settings\.currency\)/.test(appJs)
+  );
+  pass(
+    "app.js setText skips identical textContent",
+    /function setText\(targetId, value\) \{[\s\S]*if \(node\.textContent === next\) return;/.test(appJs)
+  );
+
   console.log("\n" + n + " passed");
 }
 
