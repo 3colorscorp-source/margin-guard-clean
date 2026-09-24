@@ -64,9 +64,14 @@
       "minPassed": 24
     },
     {
+      "id": "seller-owner-currency-render-order",
+      "path": "scripts/test-seller-owner-currency-render-order.js",
+      "minPassed": 18
+    },
+    {
       "id": "seller-shield-v2-wiring",
       "path": "scripts/test-seller-shield-v2.js",
-      "minPassed": 89
+      "minPassed": 99
     }
   ],
   "optional": [

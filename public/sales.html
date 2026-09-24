@@ -2710,6 +2710,12 @@
             if (isDirectSellerDomLayoutComplete()) {
               window.__mgSellerRealLayoutLastError = null;
               window.__mgSellerRootLastError = null;
+              try {
+                paintSellerAuthoritativePrimaryPricesNow();
+              } catch (_paintErr) { /* ignore */ }
+              try {
+                enforceSellerRightPanelCurrencyConsistency();
+              } catch (_currencyEnforceErr) { /* ignore */ }
               return true;
             }
           }
@@ -2763,8 +2769,14 @@
               enforceSellerRightPanelCurrencyConsistency();
             } catch (_currencyEnforceErr) { /* ignore */ }
           }
+          try {
+            paintSellerAuthoritativePrimaryPricesNow();
+          } catch (_paintErr) { /* ignore */ }
           if (ownerPreview) {
             refreshSellerApprovedOperationalLayout();
+            try {
+              paintSellerAuthoritativePrimaryPricesNow();
+            } catch (_ownerPaintErr) { /* ignore */ }
           } else if (isRealSellerStrictDeviceRoute()) {
             dismissRealSellerEmergencyViewportArtifacts();
             refreshSellerApprovedOperationalLayout();
@@ -7466,6 +7478,7 @@
             scheduleSellerPricingRefreshWhenSettingsReady();
           }
           enforceSellerRightPanelCurrencyConsistency(loadSalesState(), loadSettings());
+          paintSellerAuthoritativePrimaryPricesNow();
         } finally {
           if (
             window.MGSalesDevicePortal &&
@@ -7485,7 +7498,7 @@
         const raw = String(text == null ? '' : text).trim();
         if (!raw || raw === '—') return '';
         if (/MX\$|MXN|pesos?\s*mex/i.test(raw)) return 'MXN';
-        if (/\bUSD\b|US\$/i.test(raw)) return 'USD';
+        if (/USD|US\$/i.test(raw)) return 'USD';
         if (/\$/.test(raw) && !/MX/i.test(raw)) return 'USD';
         return normalizeSellerCurrencyCode(raw);
       }
@@ -7592,6 +7605,7 @@
         window.__mgSellerTenantCurrency = code;
         rememberSellerValidCurrency(code);
         window.__mgSellerQuoteCurrencyLock = code;
+        paintSellerAuthoritativePrimaryPricesNow();
         return code;
       }
 
@@ -7648,7 +7662,101 @@
         return true;
       }
 
+      function sellerAuthoritativePrimaryPriceIds() {
+        return ['salesPrimaryPrice', 'salesPriceDisplay'];
+      }
+
+      function isSellerAuthoritativePrimaryPriceId(id) {
+        return id === 'salesPrimaryPrice' || id === 'salesPriceDisplay';
+      }
+
+      function coerceSellerMoneyTextToTenantCurrency(text) {
+        const tenant = readSellerTenantCurrency();
+        const raw = String(text == null ? '' : text);
+        const trimmed = raw.trim();
+        if (!tenant || !trimmed || trimmed === '—') return raw;
+        const shown = readSellerCurrencyFromDisplayText(trimmed);
+        if (!shown || shown === tenant) return raw;
+        return money(parseSellerMoneyTextToNumber(trimmed), tenant);
+      }
+
+      function writeSellerAuthoritativePriceText(id, value) {
+        const text = isSellerAuthoritativePrimaryPriceId(id)
+          ? coerceSellerMoneyTextToTenantCurrency(value)
+          : value == null ? '' : String(value);
+        const prev = window.__mgSellerAuthoritativePriceWriting;
+        window.__mgSellerAuthoritativePriceWriting = true;
+        try {
+          const nodes = collectSellerMoneyNodesById(id);
+          const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
+          for (let i = 0; i < list.length; i += 1) {
+            list[i].textContent = text;
+            observeSellerAuthoritativePriceNode(list[i]);
+          }
+        } finally {
+          window.__mgSellerAuthoritativePriceWriting = prev;
+        }
+      }
+
+      function observeSellerAuthoritativePriceNode(node) {
+        if (!node || !window.__mgSellerAuthoritativePriceObserver) return;
+        if (node.getAttribute && node.getAttribute('data-mg-authoritative-price') === '1') return;
+        if (node.setAttribute) node.setAttribute('data-mg-authoritative-price', '1');
+        window.__mgSellerAuthoritativePriceObserver.observe(node, {
+          characterData: true,
+          childList: true,
+          subtree: true
+        });
+      }
+
+      function installSellerAuthoritativePriceWriterGuard() {
+        if (!window.__mgSellerAuthoritativePriceObserver && typeof MutationObserver === 'function') {
+          window.__mgSellerAuthoritativePriceObserver = new MutationObserver(function (mutations) {
+            if (window.__mgSellerAuthoritativePriceWriting) return;
+            if (!readSellerTenantCurrency()) return;
+            for (let i = 0; i < mutations.length; i += 1) {
+              const target = mutations[i] && mutations[i].target;
+              const node = target && target.nodeType === 3 ? target.parentElement : target;
+              if (!node || !isSellerAuthoritativePrimaryPriceId(node.id)) continue;
+              const raw = String(node.textContent || '');
+              const next = coerceSellerMoneyTextToTenantCurrency(raw);
+              if (next === raw) continue;
+              writeSellerAuthoritativePriceText(node.id, next);
+            }
+          });
+        }
+        sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
+          collectSellerMoneyNodesById(id).forEach(observeSellerAuthoritativePriceNode);
+        });
+      }
+
+      function paintSellerAuthoritativePrimaryPricesNow() {
+        const tenant = readSellerTenantCurrency();
+        if (!tenant) return false;
+        installSellerAuthoritativePriceWriterGuard();
+        sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
+          const nodes = collectSellerMoneyNodesById(id);
+          const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
+          let source = '';
+          for (let i = 0; i < list.length; i += 1) {
+            const raw = String(list[i].textContent || '');
+            if (raw.trim()) {
+              source = raw;
+              break;
+            }
+          }
+          if (!source) return;
+          writeSellerAuthoritativePriceText(id, source);
+        });
+        return true;
+      }
+      window.paintSellerAuthoritativePrimaryPricesNow = paintSellerAuthoritativePrimaryPricesNow;
+
       function setSellerDisplayedMoneyText(id, value) {
+        if (isSellerAuthoritativePrimaryPriceId(id)) {
+          writeSellerAuthoritativePriceText(id, value);
+          return;
+        }
         const text = value == null ? '' : String(value);
         const nodes = collectSellerMoneyNodesById(id);
         if (!nodes.length) {
@@ -8175,6 +8283,10 @@
       }
 
       function setText(targetId, value) {
+        if (isSellerAuthoritativePrimaryPriceId(targetId)) {
+          writeSellerAuthoritativePriceText(targetId, value);
+          return;
+        }
         const node = document.getElementById(targetId);
         if (!node) return;
         node.textContent = value == null ? '' : String(value);
@@ -8893,8 +9005,7 @@
           setText('salesStageMin', sellerMoney(0, settings, state));
           setText('salesStageNegotiation', sellerMoney(0, settings, state));
           setText('salesStageRecommended', sellerMoney(0, settings, state));
-          const blockedPriceDisplay = document.getElementById('salesPriceDisplay');
-          if (blockedPriceDisplay) blockedPriceDisplay.textContent = '—';
+          writeSellerAuthoritativePriceText('salesPriceDisplay', '—');
           setText('salesRule', blockedMsg);
           const ruleEl = document.getElementById('salesRule');
           if (ruleEl) {
@@ -9024,8 +9135,7 @@
           setText('salesStageMin', sellerMoney(0, settings, state));
           setText('salesStageNegotiation', sellerMoney(0, settings, state));
           setText('salesStageRecommended', sellerMoney(0, settings, state));
-          const priceDisplay = document.getElementById('salesPriceDisplay');
-          if (priceDisplay) priceDisplay.textContent = '—';
+          writeSellerAuthoritativePriceText('salesPriceDisplay', '—');
           const depositEl = document.getElementById('deposit');
           if (depositEl) depositEl.value = sellerMoney(0, settings, state);
           setText('salesTraffic', 'Draft');
@@ -9059,10 +9169,12 @@
           if (
             document.documentElement.dataset.salesPortal === 'seller' ||
             (typeof isSellerForcedPortalRoute === 'function' && isSellerForcedPortalRoute()) ||
-            (typeof isSellerPricingControlledByServer === 'function' && isSellerPricingControlledByServer())
+            (typeof isSellerPricingControlledByServer === 'function' && isSellerPricingControlledByServer()) ||
+            (typeof isOwnerSalesPreviewSurface === 'function' && isOwnerSalesPreviewSurface())
           ) {
             try {
               enforceSellerRightPanelCurrencyConsistency();
+              paintSellerAuthoritativePrimaryPricesNow();
             } catch (_patchErr) { /* ignore */ }
           }
           return result;
@@ -9125,6 +9237,7 @@
         function run() {
           if (!isOwnerSellerPreviewLayoutActive()) return;
           forceOwnerSellerPreviewLayout('owner-preview-schedule');
+          paintSellerAuthoritativePrimaryPricesNow();
         }
         run();
         [0, 100, 300, 800, 1500, 3000, 6000, 12000].forEach(function (delayMs) {

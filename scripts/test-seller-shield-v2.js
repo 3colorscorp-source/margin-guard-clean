@@ -449,6 +449,63 @@ function main() {
       salesHtml
     )
   );
+  pass(
+    "tenant currency immediately paints the two primary prices",
+    /function rememberSellerTenantCurrency\([\s\S]*window\.__mgSellerTenantCurrency = code;[\s\S]*paintSellerAuthoritativePrimaryPricesNow\(\);[\s\S]*return code;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "authoritative primary price writer is centralized",
+    /function writeSellerAuthoritativePriceText\([\s\S]*collectSellerMoneyNodesById\(id\)[\s\S]*function setSellerDisplayedMoneyText\([\s\S]*isSellerAuthoritativePrimaryPriceId\(id\)[\s\S]*writeSellerAuthoritativePriceText/.test(
+      salesHtml
+    ) &&
+      /function setText\(targetId, value\) \{[\s\S]*isSellerAuthoritativePrimaryPriceId\(targetId\)[\s\S]*writeSellerAuthoritativePriceText/.test(
+        salesHtml
+      )
+  );
+  pass(
+    "late writers cannot keep a currency that disagrees with tenant",
+    /function coerceSellerMoneyTextToTenantCurrency\([\s\S]*readSellerTenantCurrency\(\)[\s\S]*if \(!shown \|\| shown === tenant\) return raw;[\s\S]*return money\(parseSellerMoneyTextToNumber\(trimmed\), tenant\);/.test(
+      salesHtml
+    ) &&
+      /new MutationObserver\(/.test(salesHtml)
+  );
+  pass(
+    "owner preview renderSales currency guard no longer skips owner",
+    /function patchSellerRenderSalesCurrencyGuard\([\s\S]*isOwnerSalesPreviewSurface\(\)[\s\S]*paintSellerAuthoritativePrimaryPricesNow\(\)/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "layout complete path paints tenant currency without waiting for resize",
+    /if \(isDirectSellerDomLayoutComplete\(\)\) \{[\s\S]*paintSellerAuthoritativePrimaryPricesNow\(\);[\s\S]*enforceSellerRightPanelCurrencyConsistency\(\);[\s\S]*return true;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "owner preview delayed layout still paints tenant currency",
+    /function scheduleOwnerSellerPreviewLayoutEnforcement\([\s\S]*forceOwnerSellerPreviewLayout\('owner-preview-schedule'\);[\s\S]*paintSellerAuthoritativePrimaryPricesNow\(\);/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "currency correction does not register a resize listener",
+    !/addEventListener\(\s*['"]resize['"]/.test(salesHtml)
+  );
+  pass(
+    "authoritative writer does not hardcode USD",
+    /function coerceSellerMoneyTextToTenantCurrency\([\s\S]*money\(parseSellerMoneyTextToNumber\(trimmed\), tenant\)/.test(
+      salesHtml
+    ) &&
+      !/function coerceSellerMoneyTextToTenantCurrency\([\s\S]*return ['"]USD['"]/.test(salesHtml)
+  );
+  pass(
+    "primary price writers do not depend on hidden getElementById",
+    /function writeSellerAuthoritativePriceText\([\s\S]*collectSellerMoneyNodesById\(id\)[\s\S]*nodes\.length \? nodes : \[document\.getElementById\(id\)\]/.test(
+      salesHtml
+    )
+  );
 
   const portalJs = read("public/js/sales-device-portal.js");
   pass(
@@ -458,6 +515,12 @@ function main() {
   pass(
     "owner auth awaits owner preview currency hydration",
     /await applyOwnerMode\(ownerData\);/.test(portalJs)
+  );
+  pass(
+    "owner mode paints authoritative prices immediately after hydrate",
+    /async function applyOwnerMode\([\s\S]*paintSellerAuthoritativePrimaryPricesNow\(\)[\s\S]*refreshSellerFromStandalone\(\)/.test(
+      portalJs
+    )
   );
 
   const settingsFn = read("netlify/functions/get-seller-business-settings.js");
