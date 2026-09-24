@@ -7684,71 +7684,40 @@
         const text = isSellerAuthoritativePrimaryPriceId(id)
           ? coerceSellerMoneyTextToTenantCurrency(value)
           : value == null ? '' : String(value);
-        const prev = window.__mgSellerAuthoritativePriceWriting;
-        window.__mgSellerAuthoritativePriceWriting = true;
-        try {
-          const nodes = collectSellerMoneyNodesById(id);
-          const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
-          for (let i = 0; i < list.length; i += 1) {
-            list[i].textContent = text;
-            observeSellerAuthoritativePriceNode(list[i]);
-          }
-        } finally {
-          window.__mgSellerAuthoritativePriceWriting = prev;
+        const nodes = collectSellerMoneyNodesById(id);
+        const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
+        for (let i = 0; i < list.length; i += 1) {
+          if (list[i].textContent === text) continue;
+          window.__mgSellerAuthoritativePriceWriteCount =
+            (Number(window.__mgSellerAuthoritativePriceWriteCount) || 0) + 1;
+          list[i].textContent = text;
         }
-      }
-
-      function observeSellerAuthoritativePriceNode(node) {
-        if (!node || !window.__mgSellerAuthoritativePriceObserver) return;
-        if (node.getAttribute && node.getAttribute('data-mg-authoritative-price') === '1') return;
-        if (node.setAttribute) node.setAttribute('data-mg-authoritative-price', '1');
-        window.__mgSellerAuthoritativePriceObserver.observe(node, {
-          characterData: true,
-          childList: true,
-          subtree: true
-        });
-      }
-
-      function installSellerAuthoritativePriceWriterGuard() {
-        if (!window.__mgSellerAuthoritativePriceObserver && typeof MutationObserver === 'function') {
-          window.__mgSellerAuthoritativePriceObserver = new MutationObserver(function (mutations) {
-            if (window.__mgSellerAuthoritativePriceWriting) return;
-            if (!readSellerTenantCurrency()) return;
-            for (let i = 0; i < mutations.length; i += 1) {
-              const target = mutations[i] && mutations[i].target;
-              const node = target && target.nodeType === 3 ? target.parentElement : target;
-              if (!node || !isSellerAuthoritativePrimaryPriceId(node.id)) continue;
-              const raw = String(node.textContent || '');
-              const next = coerceSellerMoneyTextToTenantCurrency(raw);
-              if (next === raw) continue;
-              writeSellerAuthoritativePriceText(node.id, next);
-            }
-          });
-        }
-        sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
-          collectSellerMoneyNodesById(id).forEach(observeSellerAuthoritativePriceNode);
-        });
       }
 
       function paintSellerAuthoritativePrimaryPricesNow() {
+        if (window.__mgSellerAuthoritativePaintActive) return false;
         const tenant = readSellerTenantCurrency();
         if (!tenant) return false;
-        installSellerAuthoritativePriceWriterGuard();
-        sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
-          const nodes = collectSellerMoneyNodesById(id);
-          const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
-          let source = '';
-          for (let i = 0; i < list.length; i += 1) {
-            const raw = String(list[i].textContent || '');
-            if (raw.trim()) {
-              source = raw;
-              break;
+        window.__mgSellerAuthoritativePaintActive = true;
+        try {
+          sellerAuthoritativePrimaryPriceIds().forEach(function (id) {
+            const nodes = collectSellerMoneyNodesById(id);
+            const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
+            let source = '';
+            for (let i = 0; i < list.length; i += 1) {
+              const raw = String(list[i].textContent || '');
+              if (raw.trim()) {
+                source = raw;
+                break;
+              }
             }
-          }
-          if (!source) return;
-          writeSellerAuthoritativePriceText(id, source);
-        });
-        return true;
+            if (!source) return;
+            writeSellerAuthoritativePriceText(id, source);
+          });
+          return true;
+        } finally {
+          window.__mgSellerAuthoritativePaintActive = false;
+        }
       }
       window.paintSellerAuthoritativePrimaryPricesNow = paintSellerAuthoritativePrimaryPricesNow;
 

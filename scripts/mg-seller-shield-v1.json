@@ -69,9 +69,14 @@
       "minPassed": 18
     },
     {
+      "id": "seller-owner-price-observer-freeze",
+      "path": "scripts/test-seller-owner-price-observer-freeze.js",
+      "minPassed": 18
+    },
+    {
       "id": "seller-shield-v2-wiring",
       "path": "scripts/test-seller-shield-v2.js",
-      "minPassed": 99
+      "minPassed": 101
     }
   ],
   "optional": [

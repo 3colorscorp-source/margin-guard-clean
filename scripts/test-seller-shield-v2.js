@@ -469,7 +469,19 @@ function main() {
     /function coerceSellerMoneyTextToTenantCurrency\([\s\S]*readSellerTenantCurrency\(\)[\s\S]*if \(!shown \|\| shown === tenant\) return raw;[\s\S]*return money\(parseSellerMoneyTextToNumber\(trimmed\), tenant\);/.test(
       salesHtml
     ) &&
-      /new MutationObserver\(/.test(salesHtml)
+      /if \(list\[i\]\.textContent === text\) continue/.test(salesHtml)
+  );
+  pass(
+    "authoritative price writer does not install a permanent MutationObserver",
+    !/function installSellerAuthoritativePriceWriterGuard/.test(salesHtml) &&
+      !/__mgSellerAuthoritativePriceObserver/.test(salesHtml) &&
+      !/function observeSellerAuthoritativePriceNode/.test(salesHtml)
+  );
+  pass(
+    "identical primary price text does not write the DOM again",
+    /function writeSellerAuthoritativePriceText\([\s\S]*if \(list\[i\]\.textContent === text\) continue;/.test(
+      salesHtml
+    )
   );
   pass(
     "owner preview renderSales currency guard no longer skips owner",
