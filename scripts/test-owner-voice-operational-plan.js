@@ -11,6 +11,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
+const sharedVoice = require("../public/js/voice-operational-plan.js");
 const voice = require("../public/js/owner-voice-operational-plan.js");
 
 function read(rel) {
@@ -35,6 +36,7 @@ function FakeEl(id, tag) {
   this.value = "";
   this.textContent = "";
   this.disabled = false;
+  this.readOnly = false;
   this.hidden = false;
   this.className = "";
   this.dataset = {};
@@ -77,6 +79,9 @@ FakeEl.prototype.addEventListener = function (type, fn) {
 FakeEl.prototype.focus = function () {
   this.focused = true;
 };
+FakeEl.prototype.blur = function () {
+  this.focused = false;
+};
 FakeEl.prototype.dispatchEvent = function (event) {
   const type = event && event.type;
   (this.listeners[type] || []).forEach((fn) => fn(event));
@@ -100,6 +105,11 @@ FakeRecognition.prototype.start = function () {
 FakeRecognition.prototype.stop = function () {
   this.stopped = true;
   this.started = false;
+};
+FakeRecognition.prototype.emitResult = function (event) {
+  if (typeof this.onresult === "function") this.onresult(event);
+};
+FakeRecognition.prototype.emitEnd = function () {
   if (typeof this.onend === "function") this.onend();
 };
 
@@ -558,6 +568,375 @@ async function main() {
   ok("29. no publish/send/pdf in owner voice script", !/publish-public-quote|openSendModal|jspdf|quote-send|btnSendQuote/.test(js));
   ok("29. seller html still free of owner voice ids", !/ownerVoicePlan|btnOwnerReviewConfirmOperationalPlan/.test(salesHtml));
   ok("29. seller voice library still unchanged", /function deriveLegacyOperationalPlan/.test(sellerVoiceJs));
+
+  function srEvent(resultIndex, items) {
+    return sharedVoice.makeSpeechRecognitionEvent(resultIndex, items);
+  }
+  function phrase(text, isFinal) {
+    return { transcript: text, isFinal: !!isFinal };
+  }
+  function ownerTranscript(doc) {
+    return doc.els.ownerVoicePlanTranscript.value;
+  }
+
+  ok("dictation helper is shared", typeof sharedVoice.createVoiceDictationCapture === "function");
+  ok("owner does not append SpeechRecognition finals", !/recognitionFinal\s*\+=/.test(js));
+  ok("owner folds from resultIndex via capture", /dictation\.applyEvent/.test(js));
+  ok("owner onresult assigns reconstructed text", /transcript\.value = folded\.text/.test(js) && !/transcript\.value \+=/.test(js));
+  ok("owner sets interimResults from shared helper", /prefersInterimSpeechResults/.test(js));
+  eq("desktop keeps live interims", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"), true);
+  eq("android uses finals only", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120.0.0.0 Mobile"), false);
+  eq("iphone uses finals only", sharedVoice.prefersInterimSpeechResults("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"), false);
+
+  FakeRecognition.instances = [];
+  const docDup = makeDoc();
+  const sessionDup = voice.createOwnerVoiceSession({
+    document: docDup,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: async () => {
+      throw new Error("dictation tests must not fetch");
+    },
+  });
+  sessionDup.openModal();
+  ok("30. dictation capture is attached", !!sessionDup.state.dictationCapture);
+
+  eq("4. new dictation start for duplicate-result suite", sessionDup.startDictation(false), "new");
+  const recDup = FakeRecognition.instances[0];
+  recDup.emitResult(srEvent(0, [phrase("Agrega", false)]));
+  eq("30. interim first draft", ownerTranscript(docDup), "Agrega");
+  recDup.emitResult(srEvent(0, [phrase("Agrega día", false)]));
+  eq("30. interim replacement is not stacked", ownerTranscript(docDup), "Agrega día");
+  recDup.emitResult(srEvent(0, [phrase("Agrega día 1", false)]));
+  eq("30. later interim still one copy", ownerTranscript(docDup), "Agrega día 1");
+  recDup.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("30. final after interims is one copy", ownerTranscript(docDup), "Agrega día 1");
+  recDup.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  recDup.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("3. later events repeating the same final do not duplicate", ownerTranscript(docDup), "Agrega día 1");
+  eq("4. new dictation phrase appears once", ownerTranscript(docDup), "Agrega día 1");
+
+  recDup.emitResult(
+    srEvent(1, [phrase("Agrega día 1", true), phrase("Agrega día 2", false)])
+  );
+  eq("2. advancing resultIndex keeps prior final", ownerTranscript(docDup), "Agrega día 1 Agrega día 2");
+  recDup.emitResult(
+    srEvent(1, [phrase("Agrega día 1", true), phrase("Agrega día 2", true)])
+  );
+  eq("2. cumulative list with advancing resultIndex stays unique", ownerTranscript(docDup), "Agrega día 1 Agrega día 2");
+  recDup.emitResult(
+    srEvent(0, [phrase("Agrega día 1", true), phrase("Agrega día 2", true)])
+  );
+  eq("3. replaying the full cumulative list does not duplicate", ownerTranscript(docDup), "Agrega día 1 Agrega día 2");
+
+  recDup.emitResult(
+    srEvent(2, [
+      phrase("Agrega día 1", true),
+      phrase("Agrega día 2", true),
+      phrase("Agrega día 1", true),
+    ])
+  );
+  eq(
+    "6. legitimate repeated phrase in a later final index is kept twice",
+    ownerTranscript(docDup),
+    "Agrega día 1 Agrega día 2 Agrega día 1"
+  );
+
+  const beforeStop = ownerTranscript(docDup);
+  eq("6. second click stops dictation without extra copy", sessionDup.startDictation(false), "stop");
+  eq("7. stop keeps transcript", ownerTranscript(docDup), beforeStop);
+  eq("7. stop does not duplicate", ownerTranscript(docDup), beforeStop);
+  ok("9. stop ended the only active recognition", recDup.stopped === true && FakeRecognition.instances.length === 1);
+  recDup.emitEnd();
+  ok("7. onend closes the dictation session", sessionDup.state.listening === false);
+
+  FakeRecognition.instances = [];
+  docDup.els.ownerVoicePlanTranscript.value = "Agrega día 1";
+  eq("5. continue after stop", sessionDup.startDictation(true), "continue");
+  eq("5. continue keeps prior transcript", ownerTranscript(docDup), "Agrega día 1");
+  const recContinue = FakeRecognition.instances[0];
+  recDup.emitResult(srEvent(0, [phrase("Agrega día 1 Agrega día 1 Agrega día 1", true)]));
+  eq("8. stale results from the stopped session are ignored", ownerTranscript(docDup), "Agrega día 1");
+  recContinue.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("5. continue adds only the new final once", ownerTranscript(docDup), "Agrega día 1 Agrega día 1");
+  recContinue.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("5. continue does not re-append the same Chrome final", ownerTranscript(docDup), "Agrega día 1 Agrega día 1");
+  ok("9. only the new recognition is active", recContinue.started === true && recDup.stopped === true);
+
+  recContinue.emitResult(srEvent(0, [phrase("x".repeat(7000), true)]));
+  eq("10. dictation clamps to 6000", ownerTranscript(docDup).length, 6000);
+
+  sessionDup.closeModal();
+  recContinue.emitResult(srEvent(0, [phrase("late event after cancel", true)]));
+  eq("11. cancel invalidates late recognition events", ownerTranscript(docDup).length, 6000);
+  ok("11. cancel stopped recognition", recContinue.stopped === true);
+
+  const capture = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const genA = capture.start("");
+  capture.applyEvent(srEvent(0, [phrase("Hola", true)]), genA);
+  const afterFirst = capture.applyEvent(srEvent(0, [phrase("Hola", true)]), genA);
+  eq("30. capture API does not duplicate a replayed final", afterFirst.text, "Hola");
+  const twoSame = capture.applyEvent(
+    srEvent(1, [phrase("Hola", true), phrase("Hola", true)]),
+    genA
+  );
+  eq("6. capture API keeps two equal finals at distinct indexes", twoSame.text, "Hola Hola");
+  capture.requestStop();
+  const afterRequestStop = capture.applyEvent(srEvent(0, [phrase("Hola", true)]), genA);
+  eq("A. capture requestStop still accepts the last final", afterRequestStop.text, "Hola");
+  eq("A. capture requestStop keeps the same generation", capture.currentGeneration(), genA);
+  capture.end();
+  const stale = capture.applyEvent(srEvent(0, [phrase("Hola Hola Hola", true)]), genA);
+  ok("11. capture API ignores events after onend", stale.ignored === true);
+
+  const genB = capture.start("Keep me");
+  const continued = capture.applyEvent(srEvent(0, [phrase("Add day 1", true)]), genB);
+  eq("5. capture continue prefixes prior text once", continued.text, "Keep me Add day 1");
+  ok("12. typed fallback remains available without Speech API", voice.canInterpretTranscript("Day 1 protect floors") === true);
+
+  FakeRecognition.instances = [];
+  const docRace = makeDoc();
+  const sessionRace = voice.createOwnerVoiceSession({
+    document: docRace,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: async () => {
+      throw new Error("stop-race tests must not fetch");
+    },
+  });
+  sessionRace.openModal();
+
+  eq("A. owner new dictation starts", sessionRace.startDictation(false), "new");
+  const recA = FakeRecognition.instances[0];
+  recA.emitResult(srEvent(0, [phrase("Agrega día", false)]));
+  eq("A. owner interim before Stop", ownerTranscript(docRace), "Agrega día");
+  const genStop = sessionRace.state.dictationGeneration;
+  eq("A. owner Stop clicks recognition.stop", sessionRace.startDictation(false), "stop");
+  eq("A. owner Stop keeps generation until onend", sessionRace.state.dictationCapture.currentGeneration(), genStop);
+  recA.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("A. owner last final after Stop is kept once", ownerTranscript(docRace), "Agrega día 1");
+  recA.emitEnd();
+  eq("A. owner onend keeps that final once", ownerTranscript(docRace), "Agrega día 1");
+  ok("A. owner session is closed after onend", sessionRace.state.listening === false && sessionRace.state.recognition === null);
+
+  FakeRecognition.instances = [];
+  eq("B. owner dictation starts for Cancel", sessionRace.startDictation(false), "new");
+  const recB = FakeRecognition.instances[0];
+  recB.emitResult(srEvent(0, [phrase("Agrega día", false)]));
+  const cancelSnapshot = ownerTranscript(docRace);
+  const hiddenBeforeCancel = docRace.els.ownerVoicePlanPreviewModal.getAttribute("aria-hidden");
+  sessionRace.closeModal();
+  recB.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  recB.emitEnd();
+  eq("B. owner Cancel ignores late final", ownerTranscript(docRace), cancelSnapshot);
+  eq("B. owner Cancel closed the modal", docRace.els.ownerVoicePlanPreviewModal.getAttribute("aria-hidden"), "true");
+  ok("B. owner Cancel did not reopen", hiddenBeforeCancel !== "false" || docRace.els.ownerVoicePlanPreviewModal.getAttribute("aria-hidden") === "true");
+
+  sessionRace.openModal();
+  FakeRecognition.instances = [];
+  eq("C. owner dictation starts for late after onend", sessionRace.startDictation(false), "new");
+  const recC = FakeRecognition.instances[0];
+  recC.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  eq("C. owner Stop before onend", sessionRace.startDictation(false), "stop");
+  recC.emitEnd();
+  const afterEnd = ownerTranscript(docRace);
+  recC.emitResult(srEvent(0, [phrase("Agrega día 1 Agrega día 1", true)]));
+  eq("C. owner ignores results after onend", ownerTranscript(docRace), afterEnd);
+
+  FakeRecognition.instances = [];
+  eq("D. owner starts a new session", sessionRace.startDictation(false), "new");
+  const recD = FakeRecognition.instances[0];
+  recC.emitResult(srEvent(0, [phrase("resultado viejo", true)]));
+  eq("D. owner ignores the previous instance after a new session", ownerTranscript(docRace), "");
+  recD.emitResult(srEvent(0, [phrase("Agrega día 2", true)]));
+  eq("D. owner new session accepts only its own result", ownerTranscript(docRace), "Agrega día 2");
+  recD.emitEnd();
+
+  FakeRecognition.instances = [];
+  docRace.els.ownerVoicePlanTranscript.value = "Base previa";
+  eq("E. owner Continue starts", sessionRace.startDictation(true), "continue");
+  const recE = FakeRecognition.instances[0];
+  recE.emitResult(srEvent(0, [phrase("Agrega día", false)]));
+  eq("E. owner Continue interim includes base", ownerTranscript(docRace), "Base previa Agrega día");
+  eq("E. owner Continue Stop", sessionRace.startDictation(true), "stop");
+  recE.emitResult(srEvent(0, [phrase("Agrega día 1", true)]));
+  recE.emitEnd();
+  eq("E. owner Continue Stop keeps base plus one final", ownerTranscript(docRace), "Base previa Agrega día 1");
+
+  FakeRecognition.instances = [];
+  const docGrow = makeDoc();
+  const sessionGrow = voice.createOwnerVoiceSession({
+    document: docGrow,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: async () => {
+      throw new Error("growing-hypothesis tests must not fetch");
+    },
+  });
+  sessionGrow.openModal();
+  eq("phone. owner starts growing-hypothesis capture", sessionGrow.startDictation(false), "new");
+  const recGrow = FakeRecognition.instances[0];
+  recGrow.emitResult(srEvent(0, [phrase("agrega día", false)]));
+  eq("phone. owner interim 1 is only the current hypothesis", ownerTranscript(docGrow), "agrega día");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1", false)]));
+  eq("phone. owner interim 2 replaces index 0", ownerTranscript(docGrow), "agrega día 1");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para", false)]));
+  eq("phone. owner interim 3 replaces index 0", ownerTranscript(docGrow), "agrega día 1 para");
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq(
+    "phone. owner final is only the last hypothesis",
+    ownerTranscript(docGrow),
+    "agrega día 1 para preparar el piso"
+  );
+  ok("phone. owner final does not keep earlier hypotheses", ownerTranscript(docGrow).indexOf("agrega día 1 para preparar el piso") === 0 && ownerTranscript(docGrow).split("agrega día").length === 2);
+  ok("phone. owner locked the textarea during capture", docGrow.els.ownerVoicePlanTranscript.readOnly === true);
+  const captureBase = sessionGrow.state.dictationCapture.currentBase();
+  docGrow.els.ownerVoicePlanTranscript.value = "textarea should not become the base " + ownerTranscript(docGrow);
+  recGrow.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq("phone. owner onresult ignores textarea as source of truth", ownerTranscript(docGrow), "agrega día 1 para preparar el piso");
+  eq("phone. owner base stayed empty for New dictation", captureBase, "");
+  recGrow.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-final. owner starts all-final growing capture", sessionGrow.startDictation(false), "new");
+  const recFinals = FakeRecognition.instances[0];
+  recFinals.emitResult(srEvent(0, [phrase("agrega día", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1 para", true)]));
+  recFinals.emitResult(srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]));
+  eq(
+    "phone-final. owner replaces the same index when each hypothesis is final",
+    ownerTranscript(docGrow),
+    "agrega día 1 para preparar el piso"
+  );
+  recFinals.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("exact-0. owner starts index-0 capture", sessionGrow.startDictation(false), "new");
+  const recExact = FakeRecognition.instances[0];
+  recExact.emitResult(srEvent(0, [phrase("agrega", false)]));
+  eq("exact-0. owner provisional 1", ownerTranscript(docGrow), "agrega");
+  recExact.emitResult(srEvent(0, [phrase("agrega día", false)]));
+  eq("exact-0. owner provisional 2", ownerTranscript(docGrow), "agrega día");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para", false)]));
+  eq("exact-0. owner provisional 3", ownerTranscript(docGrow), "agrega día 1 para");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para proteger", false)]));
+  eq("exact-0. owner provisional 4", ownerTranscript(docGrow), "agrega día 1 para proteger");
+  recExact.emitResult(srEvent(0, [phrase("agrega día 1 para proteger el piso", true)]));
+  eq("exact-0. owner final is one phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recExact.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-observed. owner starts incrementing-index capture", sessionGrow.startDictation(false), "new");
+  const recObserved = FakeRecognition.instances[0];
+  const observedPhrases = [
+    "agrega",
+    "agrega día",
+    "agrega día 1 para",
+    "agrega día 1 para proteger",
+    "agrega día 1 para proteger el piso",
+  ];
+  observedPhrases.forEach((text, index) => {
+    const items = observedPhrases.slice(0, index + 1).map((item) => phrase(item, true));
+    recObserved.emitResult(srEvent(index, items));
+    eq("phone-observed. owner visible text after event " + index, ownerTranscript(docGrow), text);
+  });
+  eq("phone-observed. owner final is one phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recObserved.emitEnd();
+
+  FakeRecognition.instances = [];
+  eq("phone-words. owner starts word-then-restatement capture", sessionGrow.startDictation(false), "new");
+  const recWords = FakeRecognition.instances[0];
+  recWords.emitResult(srEvent(0, [phrase("agrega", true)]));
+  recWords.emitResult(srEvent(1, [phrase("agrega", true), phrase("día", true)]));
+  recWords.emitResult(
+    srEvent(2, [
+      phrase("agrega", true),
+      phrase("día", true),
+      phrase("agrega día 1 para proteger el piso", true),
+    ])
+  );
+  eq("phone-words. owner collapses restated full phrase", ownerTranscript(docGrow), "agrega día 1 para proteger el piso");
+  recWords.emitEnd();
+
+  const growCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growGen = growCap.start("");
+  growCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1", false)]), growGen);
+  growCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), growGen);
+  const growFinal = growCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growGen
+  );
+  eq("phone. capture index-0 growing interims then final", growFinal.text, "agrega día 1 para preparar el piso");
+  eq("phone. capture kept one slot", growCap.slotCount(), 1);
+
+  const growFinalsCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const growFinalsGen = growFinalsCap.start("");
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), growFinalsGen);
+  growFinalsCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", true)]), growFinalsGen);
+  const allFinal = growFinalsCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para preparar el piso", true)]),
+    growFinalsGen
+  );
+  eq("phone-final. capture replaces each final at index 0", allFinal.text, "agrega día 1 para preparar el piso");
+
+  const snapCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const snapGen = snapCap.start("");
+  const snap = snapCap.applyEvent(
+    srEvent(0, [
+      phrase("agrega día", true),
+      phrase("agrega día 1", true),
+      phrase("agrega día 1 para", true),
+      phrase("agrega día 1 para preparar el piso", true),
+    ]),
+    snapGen
+  );
+  eq("phone-list. capture collapses a growing snapshot at resultIndex 0", snap.text, "agrega día 1 para preparar el piso");
+  eq("phone-list. capture collapsed to one slot", snapCap.slotCount(), 1);
+
+  const dirtyCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const dirtyGen = dirtyCap.start("Keep me");
+  dirtyCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), dirtyGen);
+  const afterDirty = dirtyCap.applyEvent(srEvent(0, [phrase("agrega día 1", true)]), dirtyGen);
+  eq("phone. capture base is not the visible textarea", afterDirty.text, "Keep me agrega día 1");
+  eq("phone. capture base stayed the start value", dirtyCap.currentBase(), "Keep me");
+
+  const exactCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const exactGen = exactCap.start("");
+  exactCap.applyEvent(srEvent(0, [phrase("agrega", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para", false)]), exactGen);
+  exactCap.applyEvent(srEvent(0, [phrase("agrega día 1 para proteger", false)]), exactGen);
+  const exactFinal = exactCap.applyEvent(
+    srEvent(0, [phrase("agrega día 1 para proteger el piso", true)]),
+    exactGen
+  );
+  eq("exact-0. capture final is one phrase", exactFinal.text, "agrega día 1 para proteger el piso");
+  eq("exact-0. capture kept one live slot", exactCap.slotCount(), 1);
+
+  const observedCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const observedGen = observedCap.start("");
+  let observedFolded = null;
+  observedPhrases.forEach((text, index) => {
+    const items = observedPhrases.slice(0, index + 1).map((item) => phrase(item, true));
+    observedFolded = observedCap.applyEvent(srEvent(index, items), observedGen);
+    eq("phone-observed. capture after event " + index, observedFolded.text, text);
+  });
+  eq("phone-observed. capture final is one phrase", observedFolded.text, "agrega día 1 para proteger el piso");
+  eq("phone-observed. capture kept one live slot", observedCap.slotCount(), 1);
+
+  const wordsCap = sharedVoice.createVoiceDictationCapture({ maxChars: 6000 });
+  const wordsGen = wordsCap.start("");
+  wordsCap.applyEvent(srEvent(0, [phrase("agrega", true)]), wordsGen);
+  wordsCap.applyEvent(srEvent(1, [phrase("agrega", true), phrase("día", true)]), wordsGen);
+  const wordsFinal = wordsCap.applyEvent(
+    srEvent(2, [
+      phrase("agrega", true),
+      phrase("día", true),
+      phrase("agrega día 1 para proteger el piso", true),
+    ]),
+    wordsGen
+  );
+  eq("phone-words. capture collapses restated full phrase", wordsFinal.text, "agrega día 1 para proteger el piso");
 
   ok("syntax of owner voice script", spawnSync(process.execPath, ["--check", path.join(ROOT, "public/js/owner-voice-operational-plan.js")], { encoding: "utf8" }).status === 0);
 

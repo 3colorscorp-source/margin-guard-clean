@@ -401,6 +401,14 @@
       return doc && typeof doc.getElementById === "function" ? doc.getElementById(id) : null;
     }
 
+    function makeDictationCapture() {
+      var shared = global.MgVoiceOperationalPlan;
+      if (shared && typeof shared.createVoiceDictationCapture === "function") {
+        return shared.createVoiceDictationCapture({ maxChars: MAX_TRANSCRIPT_CHARS });
+      }
+      return null;
+    }
+
     var state = {
       modalOpen: false,
       listening: false,
@@ -412,9 +420,24 @@
       abortController: null,
       recognitionBase: "",
       recognitionFinal: "",
+      dictationCapture: makeDictationCapture(),
+      dictationGeneration: 0,
       lastFocus: null,
       pendingApply: null
     };
+
+    function getDictationCapture() {
+      if (state.dictationCapture) return state.dictationCapture;
+      state.dictationCapture = makeDictationCapture();
+      return state.dictationCapture;
+    }
+
+    function lockTranscriptForCapture(on) {
+      var transcript = $(ids.transcript);
+      if (!transcript) return;
+      transcript.readOnly = !!on;
+      if (on && typeof transcript.blur === "function") transcript.blur();
+    }
 
     function hoursPerDay() {
       if (typeof ownerApply.hoursPerDay === "function") return ownerApply.hoursPerDay();
@@ -556,6 +579,14 @@
       } catch (_err) {}
     }
 
+    function invalidateDictationSession() {
+      if (state.dictationCapture) state.dictationCapture.cancel();
+      state.listening = false;
+      state.listeningMode = null;
+      state.recognition = null;
+      lockTranscriptForCapture(false);
+    }
+
     function abortInterpret() {
       state.interpretSeq += 1;
       state.aiBusy = false;
@@ -568,11 +599,15 @@
     }
 
     function finishListeningUi() {
+      if (state.dictationCapture && state.listening) {
+        state.dictationCapture.end();
+      }
       state.listening = false;
       state.listeningMode = null;
       state.recognition = null;
       state.recognitionBase = "";
       state.recognitionFinal = "";
+      lockTranscriptForCapture(false);
       resetMicLabels();
       syncButtons();
     }
@@ -584,6 +619,7 @@
       var continueMic = $(ids.micContinue);
       var activeMic = appendExisting ? continueMic : mic;
       if (state.listening) {
+        if (state.dictationCapture) state.dictationCapture.requestStop();
         stopRecognition();
         return "stop";
       }
@@ -598,13 +634,23 @@
       }
       state.recognitionBase = transcriptAfterDictationStart(transcript.value, true);
       state.recognitionFinal = "";
+      var capture = getDictationCapture();
+      if (capture) {
+        state.dictationCapture = capture;
+        state.dictationGeneration = capture.start(state.recognitionBase);
+      }
+      lockTranscriptForCapture(true);
       var recognition = new RecognitionCtor();
       state.recognition = recognition;
       state.listening = true;
       state.listeningMode = appendExisting ? "continue" : "new";
       recognition.lang = str(language && language.value) || "es-US";
       recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.interimResults =
+        global.MgVoiceOperationalPlan &&
+        typeof global.MgVoiceOperationalPlan.prefersInterimSpeechResults === "function"
+          ? global.MgVoiceOperationalPlan.prefersInterimSpeechResults()
+          : true;
       recognition.onstart = function () {
         if (activeMic) {
           elClassList(activeMic).add("is-listening");
@@ -615,18 +661,12 @@
         setStatus(LISTENING_MESSAGE, true, false);
       };
       recognition.onresult = function (event) {
-        var interim = "";
-        var i;
-        for (i = event.resultIndex; i < event.results.length; i += 1) {
-          var words = str(event.results[i][0] && event.results[i][0].transcript).trim();
-          if (!words) continue;
-          if (event.results[i].isFinal) {
-            state.recognitionFinal += (state.recognitionFinal ? " " : "") + words;
-          } else {
-            interim += (interim ? " " : "") + words;
-          }
-        }
-        transcript.value = joinTranscriptParts(state.recognitionBase, state.recognitionFinal, interim);
+        if (state.recognition !== recognition || !state.listening) return;
+        var dictation = getDictationCapture();
+        if (!dictation) return;
+        var folded = dictation.applyEvent(event, state.dictationGeneration);
+        if (!folded || folded.ignored) return;
+        transcript.value = folded.text;
         if (state.pendingApply) invalidatePendingPreview(READY_STATUS);
       };
       recognition.onerror = function (event) {
@@ -635,6 +675,7 @@
         setStatus(permissionErrorMessage(code), false, true);
       };
       recognition.onend = function () {
+        if (state.recognition !== recognition) return;
         finishListeningUi();
         if (!state.aiBusy && state.modalOpen) setStatus(STOPPED_MESSAGE, false, false);
       };
@@ -649,7 +690,13 @@
     }
 
     function clearCapture() {
-      stopRecognition();
+      var rec = state.recognition;
+      invalidateDictationSession();
+      if (rec) {
+        try {
+          rec.stop();
+        } catch (_err) {}
+      }
       abortInterpret();
       var transcript = $(ids.transcript);
       if (transcript) transcript.value = "";
@@ -657,7 +704,13 @@
     }
 
     function closeModal() {
-      stopRecognition();
+      var rec = state.recognition;
+      invalidateDictationSession();
+      if (rec) {
+        try {
+          rec.stop();
+        } catch (_err) {}
+      }
       abortInterpret();
       finishListeningUi();
       state.modalOpen = false;

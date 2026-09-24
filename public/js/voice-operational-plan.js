@@ -696,6 +696,222 @@
     return { applied: applied, changed: true };
   }
 
+  const MAX_DICTATION_CHARS = 6000;
+
+  function speechResultTranscript(result) {
+    const alt =
+      result && result[0]
+        ? result[0]
+        : result && typeof result.item === "function"
+          ? result.item(0)
+          : null;
+    return String(alt && alt.transcript != null ? alt.transcript : "").trim();
+  }
+
+  function makeSpeechRecognitionEvent(resultIndex, items) {
+    const list = Array.isArray(items) ? items : [];
+    const results = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i] || {};
+      const result = [
+        {
+          transcript: String(item.transcript == null ? "" : item.transcript),
+          confidence: 1,
+        },
+      ];
+      result.isFinal = !!item.isFinal;
+      results.push(result);
+    }
+    return {
+      resultIndex: Number(resultIndex) || 0,
+      results: results,
+    };
+  }
+
+  function normalizeSpeechText(value) {
+    return String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+  }
+
+  function prefersInterimSpeechResults(userAgent) {
+    let ua = userAgent;
+    if (ua == null) {
+      ua =
+        typeof navigator !== "undefined" && navigator && navigator.userAgent
+          ? navigator.userAgent
+          : "";
+    }
+    // Chrome/Edge on Android and iOS WebKit often mark growing hypotheses as
+    // isFinal and increment resultIndex. Live interims are not a reliable
+    // "replace previous provisional" signal there, so mobile uses finals only.
+    // New, Continue, Stop, Cancel, and manual typing are unchanged: base is
+    // captured once at start, Stop still accepts the last final before onend,
+    // and the textarea stays editable when capture is not listening.
+    return !/Android|iPhone|iPad|iPod|Mobile|webOS|IEMobile|BlackBerry/i.test(String(ua));
+  }
+
+  function createVoiceDictationCapture(options) {
+    const maxChars = Math.max(1, Number(options && options.maxChars) || MAX_DICTATION_CHARS);
+    let generation = 0;
+    let listening = false;
+    let base = "";
+    let finals = [];
+    let provisional = "";
+
+    function isGrowingHypothesis(prev, next) {
+      const a = normalizeSpeechText(prev).toLowerCase();
+      const b = normalizeSpeechText(next).toLowerCase();
+      if (!a || !b || a === b) return false;
+      if (b.indexOf(a) !== 0 || b.length <= a.length) return false;
+      return /^[\s.,;:!?¿¡-]/.test(b.slice(a.length));
+    }
+
+    function committedText() {
+      const parts = [];
+      for (let i = 0; i < finals.length; i += 1) {
+        if (finals[i]) parts.push(finals[i]);
+      }
+      return parts.join(" ");
+    }
+
+    function liveSlotCount() {
+      let count = 0;
+      for (let i = 0; i < finals.length; i += 1) {
+        if (finals[i]) count += 1;
+      }
+      if (provisional) count += 1;
+      return count;
+    }
+
+    function compose() {
+      const parts = [];
+      if (base) parts.push(base);
+      const committed = committedText();
+      if (committed) parts.push(committed);
+      if (provisional) parts.push(provisional);
+      return parts.join(" ").slice(0, maxChars);
+    }
+
+    function resetLive() {
+      finals = [];
+      provisional = "";
+    }
+
+    function ingest(words, isFinal) {
+      const next = normalizeSpeechText(words);
+      if (!next) return;
+      const committed = committedText();
+      const last = finals.length ? finals[finals.length - 1] : "";
+
+      if (
+        isGrowingHypothesis(committed, next) ||
+        (committed && committed.toLowerCase() === next.toLowerCase() && finals.length > 1)
+      ) {
+        if (isFinal) {
+          finals = [next];
+          provisional = "";
+        } else {
+          finals = [];
+          provisional = next;
+        }
+        return;
+      }
+
+      if (isGrowingHypothesis(last, next)) {
+        if (isFinal) {
+          finals[finals.length - 1] = next;
+          provisional = "";
+        } else {
+          finals.pop();
+          provisional = next;
+        }
+        return;
+      }
+
+      if (
+        isGrowingHypothesis(provisional, next) ||
+        (provisional && provisional.toLowerCase() === next.toLowerCase())
+      ) {
+        if (isFinal) {
+          finals.push(next);
+          provisional = "";
+        } else {
+          provisional = next;
+        }
+        return;
+      }
+
+      if (!isFinal) {
+        provisional = next;
+        return;
+      }
+
+      provisional = "";
+      finals.push(next);
+    }
+
+    function start(baseText) {
+      generation += 1;
+      listening = true;
+      base = normalizeSpeechText(baseText).slice(0, maxChars);
+      resetLive();
+      return generation;
+    }
+
+    function requestStop() {
+      return generation;
+    }
+
+    function invalidate() {
+      listening = false;
+      generation += 1;
+      resetLive();
+      return generation;
+    }
+
+    function applyEvent(event, expectedGeneration) {
+      if (expectedGeneration !== generation || !listening) {
+        return { ignored: true, text: null, generation: generation };
+      }
+      const results = event && event.results ? event.results : [];
+      const listLength = Number(results.length) || 0;
+      let startIndex = Number(event && event.resultIndex);
+      if (!Number.isFinite(startIndex) || startIndex < 0) startIndex = 0;
+      if (startIndex === 0) resetLive();
+      for (let i = startIndex; i < listLength; i += 1) {
+        const words = speechResultTranscript(results[i]);
+        if (!words) continue;
+        ingest(words, !!(results[i] && results[i].isFinal));
+      }
+      return {
+        ignored: false,
+        text: compose(),
+        generation: generation,
+        slotCount: liveSlotCount(),
+      };
+    }
+
+    return {
+      start: start,
+      requestStop: requestStop,
+      stop: invalidate,
+      end: invalidate,
+      cancel: invalidate,
+      applyEvent: applyEvent,
+      isListening: function () {
+        return listening;
+      },
+      currentGeneration: function () {
+        return generation;
+      },
+      currentBase: function () {
+        return base;
+      },
+      slotCount: function () {
+        return liveSlotCount();
+      },
+    };
+  }
+
   const api = {
     SCHEMA_VERSION: SCHEMA_VERSION,
     DOCUMENT_LIMITS: DOCUMENT_LIMITS,
@@ -727,6 +943,11 @@
     createPreviewSession: createPreviewSession,
     cancelPreview: cancelPreview,
     confirmPreview: confirmPreview,
+    MAX_DICTATION_CHARS: MAX_DICTATION_CHARS,
+    speechResultTranscript: speechResultTranscript,
+    makeSpeechRecognitionEvent: makeSpeechRecognitionEvent,
+    prefersInterimSpeechResults: prefersInterimSpeechResults,
+    createVoiceDictationCapture: createVoiceDictationCapture,
   };
 
   global.MgVoiceOperationalPlan = api;
