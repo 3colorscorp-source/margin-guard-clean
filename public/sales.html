@@ -5346,6 +5346,21 @@
         );
       }
 
+      function isOwnerSalesPreviewSurface() {
+        if (isSellerPortalUrlActive()) return false;
+        if (isSellerDeviceSessionActive()) return false;
+        if (document.documentElement.dataset.authMode === 'device') return false;
+        if (isOwnerNavSalesPreview()) return true;
+        if (document.documentElement.dataset.authMode === 'owner') return true;
+        if (window.MG_SALES_PORTAL_MODE === 'owner') return true;
+        if (document.documentElement.dataset.ownerSellerPreview === 'true') return true;
+        try {
+          return isOwnerSellerPreviewLayoutActive();
+        } catch (_ownerPreviewErr) {
+          return false;
+        }
+      }
+
       function isSellerPricingControlledByServer() {
         if (document.documentElement.dataset.authMode === 'owner') return false;
         if (isSellerForcedPortalRoute()) return true;
@@ -7571,6 +7586,19 @@
         window.__mgSellerLastValidRecommendedCurrency = code;
       }
 
+      function rememberSellerTenantCurrency(currency) {
+        const code = normalizeSellerCurrencyCode(currency);
+        if (!code) return '';
+        window.__mgSellerTenantCurrency = code;
+        rememberSellerValidCurrency(code);
+        window.__mgSellerQuoteCurrencyLock = code;
+        return code;
+      }
+
+      function readSellerTenantCurrency() {
+        return normalizeSellerCurrencyCode(window.__mgSellerTenantCurrency);
+      }
+
       function readSellerValidCurrency() {
         const remembered = normalizeSellerCurrencyCode(window.__mgSellerLastValidCurrency);
         if (remembered) return remembered;
@@ -7584,6 +7612,8 @@
       }
 
       function sellerStorageCurrencyExplicitlyMXN() {
+        const tenantCode = readSellerTenantCurrency();
+        if (tenantCode) return tenantCode === 'MXN';
         return readSellerCurrencyFromSettingsStorage() === 'MXN';
       }
 
@@ -7639,6 +7669,11 @@
       }
 
       function captureSellerQuoteCurrencyLock() {
+        const tenantCode = readSellerTenantCurrency();
+        if (tenantCode) {
+          window.__mgSellerQuoteCurrencyLock = tenantCode;
+          return tenantCode;
+        }
         const visible = readSellerCurrencyFromVisiblePanel();
         if (visible) window.__mgSellerQuoteCurrencyLock = visible;
         return normalizeSellerCurrencyCode(window.__mgSellerQuoteCurrencyLock);
@@ -7658,6 +7693,11 @@
       }
 
       function resolveSellerCurrency(settings, state) {
+        const tenantCode = readSellerTenantCurrency();
+        if (tenantCode) {
+          rememberSellerValidCurrency(tenantCode);
+          return tenantCode;
+        }
         const lockCode = normalizeSellerCurrencyCode(window.__mgSellerQuoteCurrencyLock);
         if (lockCode) {
           rememberSellerValidCurrency(lockCode);
@@ -7844,7 +7884,8 @@
         if (
           document.documentElement.dataset.salesPortal !== 'seller' &&
           !isSellerForcedPortalRoute() &&
-          !isSellerPricingControlledByServer()
+          !isSellerPricingControlledByServer() &&
+          !isOwnerSalesPreviewSurface()
         ) {
           return false;
         }
@@ -8010,6 +8051,8 @@
           sellerCurrency: sellerCurrency,
           settingsCurrencyFromStorage: readSellerCurrencyFromSettingsStorage() || '',
           sellerLastValidCurrency: readSellerValidCurrency(),
+          sellerTenantCurrency: readSellerTenantCurrency() || '',
+          sellerQuoteCurrencyLock: normalizeSellerCurrencyCode(window.__mgSellerQuoteCurrencyLock) || '',
           sellerPrimaryPriceText: priceText,
           sellerPrimaryPriceUsesUSD: usesUSD,
           sellerPrimaryPriceUsesMXN: usesMXN,
@@ -8024,17 +8067,20 @@
       }
 
       async function hydrateSellerBusinessSettingsFromServer() {
+        var ownerPreview = isOwnerSalesPreviewSurface();
         var serverControlled =
           isSellerForcedPortalRoute() ||
           isSellerDeviceSessionActive() ||
           isDirectSalesSellerDevicePath();
 
-        if (!serverControlled) {
+        if (!serverControlled && !ownerPreview) {
           return { ok: true, skipped: true };
         }
 
-        window.__mgSellerBusinessSettingsReady = false;
-        window.__mgSellerBusinessSettingsError = '';
+        if (serverControlled) {
+          window.__mgSellerBusinessSettingsReady = false;
+          window.__mgSellerBusinessSettingsError = '';
+        }
 
         try {
           const response = await fetch('/.netlify/functions/get-seller-business-settings', {
@@ -8052,11 +8098,36 @@
             const errMsg =
               (data && (data.error || data.message)) ||
               SELLER_SETTINGS_BLOCKED_MSG;
+            if (ownerPreview && !serverControlled) {
+              return {
+                ok: false,
+                error: String(errMsg).trim(),
+                code: (data && data.code) || 'seller_settings_missing',
+                currencyOnly: true
+              };
+            }
             window.__mgSellerBusinessSettingsError = String(errMsg).trim();
             return {
               ok: false,
               error: window.__mgSellerBusinessSettingsError,
               code: (data && data.code) || 'seller_settings_missing'
+            };
+          }
+
+          rememberSellerTenantCurrency(data.settings && data.settings.currency);
+
+          if (ownerPreview && !serverControlled) {
+            try {
+              const cached = readJson(SETTINGS_KEY, {});
+              const next = cached && typeof cached === 'object' ? Object.assign({}, cached) : {};
+              next.currency = data.settings.currency;
+              localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+            } catch (_ownerCurrencyMergeErr) { /* keep tenant lock even if storage merge fails */ }
+            window.__mgSellerBusinessSettingsSource = String(data.source || 'tenant_snapshot');
+            return {
+              ok: true,
+              source: window.__mgSellerBusinessSettingsSource,
+              currencyOnly: true
             };
           }
 
@@ -8081,6 +8152,9 @@
 
           return { ok: true, source: window.__mgSellerBusinessSettingsSource };
         } catch (_networkErr) {
+          if (ownerPreview && !serverControlled) {
+            return { ok: false, error: SELLER_SETTINGS_BLOCKED_MSG, code: 'seller_settings_load_failed', currencyOnly: true };
+          }
           window.__mgSellerBusinessSettingsError = SELLER_SETTINGS_BLOCKED_MSG;
           return { ok: false, error: SELLER_SETTINGS_BLOCKED_MSG, code: 'seller_settings_load_failed' };
         }

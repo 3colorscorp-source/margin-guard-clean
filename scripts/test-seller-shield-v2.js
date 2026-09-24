@@ -352,6 +352,121 @@ function main() {
     /function setSellerDisplayedMoneyText\([\s\S]*isSellerDisplayedMoneyNode[\s\S]*textContent = text/.test(salesHtml)
   );
 
+  pass(
+    "owner preview surface helper exists",
+    /function isOwnerSalesPreviewSurface\(/.test(salesHtml) &&
+      /function isOwnerSalesPreviewSurface\([\s\S]*isOwnerNavSalesPreview\(\)/.test(salesHtml)
+  );
+  pass(
+    "owner preview hydrates tenant currency from seller business settings",
+    /function hydrateSellerBusinessSettingsFromServer\([\s\S]*isOwnerSalesPreviewSurface\(\)[\s\S]*get-seller-business-settings/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "owner preview does not skip tenant currency hydration",
+    /var ownerPreview = isOwnerSalesPreviewSurface\(\);\s*var serverControlled =[\s\S]*if \(!serverControlled && !ownerPreview\) \{/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "tenant currency is remembered from server settings",
+    /function rememberSellerTenantCurrency\([\s\S]*window\.__mgSellerTenantCurrency = code;/.test(salesHtml)
+  );
+  pass(
+    "resolver prefers tenant currency over lock and storage",
+    /function resolveSellerCurrency\([\s\S]*const tenantCode = readSellerTenantCurrency\(\);[\s\S]*if \(tenantCode\) \{[\s\S]*return tenantCode;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "owner USD tenant wins over stale MXN storage",
+    /function resolveSellerCurrency\([\s\S]*readSellerTenantCurrency\(\)[\s\S]*if \(tenantCode\) \{[\s\S]*return tenantCode;[\s\S]*readSellerCurrencyFromSettingsStorage\(/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "legitimate tenant MXN is returned without forcing USD",
+    /function rememberSellerTenantCurrency\([\s\S]*window\.__mgSellerTenantCurrency = code;[\s\S]*return code;/.test(
+      salesHtml
+    ) &&
+      /function resolveSellerCurrency\([\s\S]*if \(tenantCode\) \{[\s\S]*return tenantCode;/.test(salesHtml)
+  );
+  pass(
+    "edit day capture cannot override tenant currency with visible MXN",
+    /function captureSellerQuoteCurrencyLock\([\s\S]*const tenantCode = readSellerTenantCurrency\(\);[\s\S]*if \(tenantCode\) \{[\s\S]*window\.__mgSellerQuoteCurrencyLock = tenantCode;[\s\S]*return tenantCode;/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "owner preview delayed Live Score still enforces tenant currency",
+    /function enforceSellerRightPanelCurrencyConsistency\([\s\S]*isOwnerSalesPreviewSurface\(\)/.test(salesHtml)
+  );
+  pass(
+    "add edit remove and voice-confirm still capture before refresh",
+    /saveSalesState\(state\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);\s*openSalesOpDayEditor/.test(
+      salesHtml
+    ) &&
+      /persistSalesOpDayEditorFromDom\(\);\s*closeSalesOpDayEditor\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(
+        salesHtml
+      ) &&
+      /closeSalesOpDayEditor\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(salesHtml) &&
+      /closeVoicePlanPreviewModal\(\);\s*refreshSellerFromStandalonePreservingRenderedCurrency\(\);/.test(salesHtml)
+  );
+  pass(
+    "owner preview simulated delayed renders keep tenant currency lock",
+    (function () {
+      const start = salesHtml.indexOf("function refreshSellerFromStandalonePreservingRenderedCurrency");
+      const slice = start >= 0 ? salesHtml.slice(start, start + 420) : "";
+      return (
+        /captureSellerQuoteCurrencyLock\(\);\s*refreshSellerFromStandalone\(\);/.test(slice) &&
+        !/finally/.test(slice) &&
+        /function resolveSellerCurrency\([\s\S]*readSellerTenantCurrency\(\)/.test(salesHtml)
+      );
+    })()
+  );
+  pass(
+    "duplicate hidden price nodes still prefer the visible node",
+    /function readSellerCurrencyFromVisiblePanel\([\s\S]*collectSellerMoneyNodesById[\s\S]*isSellerDisplayedMoneyNode/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "new quote clears quote lock but keeps tenant currency",
+    /function resetSalesQuoteStateForNewQuote\([\s\S]*delete window\.__mgSellerQuoteCurrencyLock;/.test(salesHtml) &&
+      (salesHtml.match(/delete window\.__mgSellerQuoteCurrencyLock;/g) || []).length === 1 &&
+      !/delete window\.__mgSellerTenantCurrency/.test(salesHtml)
+  );
+  pass(
+    "seller device still fully hydrates business settings",
+    /function hydrateSellerBusinessSettingsFromServer\([\s\S]*isSellerDeviceSessionActive\(\)[\s\S]*localStorage\.setItem\(SETTINGS_KEY, JSON\.stringify\(data\.settings\)\)/.test(
+      salesHtml
+    )
+  );
+  pass(
+    "owner preview merges tenant currency without replacing seller rates",
+    /ownerPreview && !serverControlled[\s\S]*next\.currency = data\.settings\.currency;[\s\S]*currencyOnly: true/.test(
+      salesHtml
+    )
+  );
+
+  const portalJs = read("public/js/sales-device-portal.js");
+  pass(
+    "owner mode hydrates seller business settings",
+    /async function applyOwnerMode\([\s\S]*hydrateSellerBusinessSettingsFromServer\(\)/.test(portalJs)
+  );
+  pass(
+    "owner auth awaits owner preview currency hydration",
+    /await applyOwnerMode\(ownerData\);/.test(portalJs)
+  );
+
+  const settingsFn = read("netlify/functions/get-seller-business-settings.js");
+  pass(
+    "get-seller-business-settings admits owner or seller",
+    /resolveOwnerOrSellerContext\(event\)/.test(settingsFn) &&
+      !/requireSellerDevice\(event\)/.test(settingsFn)
+  );
+
   console.log("\n" + n + " passed");
 }
 

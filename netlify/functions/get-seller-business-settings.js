@@ -1,9 +1,9 @@
 /**
  * GET seller-safe Business Settings from latest tenant snapshot.
- * Device-authenticated seller portal only.
+ * Owner mg_session or seller device session (same tenant snapshot, read-only).
  */
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { requireSellerDevice } = require("./_lib/tenant-device-guard");
+const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 
 function json(statusCode, payload) {
   return {
@@ -86,13 +86,13 @@ exports.handler = async (event) => {
       return json(405, { ok: false, error: "Method not allowed" });
     }
 
-    const ctx = await requireSellerDevice(event);
+    const ctx = await resolveOwnerOrSellerContext(event);
     const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, {
         ok: false,
         code: "tenant_not_found",
-        error: "Tenant not found for this seller device.",
+        error: "Tenant not found for this session.",
       });
     }
 
