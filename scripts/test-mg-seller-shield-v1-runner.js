@@ -206,7 +206,7 @@ eq("parsePassedCount 004c summary", shield.parsePassedCount("40 passed, 0 failed
 eq("stripAnsi ignores colors", shield.parsePassedCount("\u001b[32m5 passed\u001b[0m\n", "").passed, 5);
 
 const defaultManifest = shield.loadManifest();
-eq("default required count", defaultManifest.required.length, 12);
+eq("default required count", defaultManifest.required.length, 13);
 eq("default optional count", defaultManifest.optional.length, 1);
 eq("004b is optional not required", defaultManifest.optional[0].path, shield.OPTIONAL_004B);
 ok(
