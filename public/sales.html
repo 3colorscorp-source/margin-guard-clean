@@ -6355,6 +6355,7 @@
         const settings = loadSettings();
         const api = getOperationalPlanApi();
         if (!modal || !body || !api || !state.operational_plan || !state.operational_plan[dayIndex]) return;
+        captureSellerQuoteCurrencyLock();
         salesOpEditingDayIndex = dayIndex;
         const mode = api.getOperationalPlanUnitMode(settings);
         const hpd = api.getHoursPerDay(settings);
@@ -7475,16 +7476,8 @@
       }
 
       function refreshSellerFromStandalonePreservingRenderedCurrency() {
-        const hadHold = Object.prototype.hasOwnProperty.call(window, '__mgSellerOpPlanCurrencyHold');
-        const previousHold = window.__mgSellerOpPlanCurrencyHold;
-        try {
-          const visible = readSellerCurrencyFromVisiblePanel();
-          if (visible) window.__mgSellerOpPlanCurrencyHold = visible;
-          refreshSellerFromStandalone();
-        } finally {
-          if (hadHold) window.__mgSellerOpPlanCurrencyHold = previousHold;
-          else delete window.__mgSellerOpPlanCurrencyHold;
-        }
+        captureSellerQuoteCurrencyLock();
+        refreshSellerFromStandalone();
       }
 
       /** Same behavior as #btnClearSalesWorkers (Limpiar labor): DEFAULT_WORKERS clone + persist + refresh. */
@@ -7594,21 +7587,81 @@
         return readSellerCurrencyFromSettingsStorage() === 'MXN';
       }
 
+      function collectSellerMoneyNodesById(id) {
+        return Array.prototype.slice.call(document.querySelectorAll('[id="' + id + '"]'));
+      }
+
+      function isSellerDisplayedMoneyNode(node) {
+        if (!node) return false;
+        let el = node;
+        while (el && el.nodeType === 1) {
+          if (el.hidden || (el.getAttribute && el.getAttribute('aria-hidden') === 'true')) return false;
+          if (el.classList && (el.classList.contains('hidden') || el.classList.contains('is-hidden'))) return false;
+          if (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden')) return false;
+          el = el.parentElement;
+        }
+        if (typeof node.getBoundingClientRect === 'function') {
+          const rect = node.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return false;
+        }
+        if (typeof window.getComputedStyle === 'function') {
+          try {
+            const computed = window.getComputedStyle(node);
+            if (
+              computed &&
+              (computed.display === 'none' || computed.visibility === 'hidden' || computed.opacity === '0')
+            ) {
+              return false;
+            }
+          } catch (_styleErr) {}
+        }
+        return true;
+      }
+
+      function setSellerDisplayedMoneyText(id, value) {
+        const text = value == null ? '' : String(value);
+        const nodes = collectSellerMoneyNodesById(id);
+        if (!nodes.length) {
+          const single = document.getElementById(id);
+          if (single) single.textContent = text;
+          return;
+        }
+        let wroteVisible = false;
+        for (let i = 0; i < nodes.length; i += 1) {
+          if (isSellerDisplayedMoneyNode(nodes[i])) {
+            nodes[i].textContent = text;
+            wroteVisible = true;
+          }
+        }
+        if (!wroteVisible) {
+          for (let i = 0; i < nodes.length; i += 1) nodes[i].textContent = text;
+        }
+      }
+
+      function captureSellerQuoteCurrencyLock() {
+        const visible = readSellerCurrencyFromVisiblePanel();
+        if (visible) window.__mgSellerQuoteCurrencyLock = visible;
+        return normalizeSellerCurrencyCode(window.__mgSellerQuoteCurrencyLock);
+      }
+
       function readSellerCurrencyFromVisiblePanel() {
         const ids = ['salesPrimaryPrice', 'salesPriceDisplay'];
         for (let i = 0; i < ids.length; i += 1) {
-          const node = document.getElementById(ids[i]);
-          const code = readSellerCurrencyFromDisplayText(node ? node.textContent : '');
-          if (code) return code;
+          const nodes = collectSellerMoneyNodesById(ids[i]);
+          for (let n = 0; n < nodes.length; n += 1) {
+            if (!isSellerDisplayedMoneyNode(nodes[n])) continue;
+            const code = readSellerCurrencyFromDisplayText(nodes[n].textContent);
+            if (code) return code;
+          }
         }
         return '';
       }
 
       function resolveSellerCurrency(settings, state) {
-        const holdCode = normalizeSellerCurrencyCode(window.__mgSellerOpPlanCurrencyHold);
-        if (holdCode) {
-          rememberSellerValidCurrency(holdCode);
-          return holdCode;
+        const lockCode = normalizeSellerCurrencyCode(window.__mgSellerQuoteCurrencyLock);
+        if (lockCode) {
+          rememberSellerValidCurrency(lockCode);
+          return lockCode;
         }
         const storageCode = readSellerCurrencyFromSettingsStorage();
         const settingsCode = normalizeSellerCurrencyCode(settings && settings.currency);
@@ -7700,11 +7753,9 @@
         const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
         const belowRecommendation = isSellerPriceBelowRecommendation(metrics);
 
-        setText('salesPrimaryPrice', sellerMoney(metrics.recommended, settings, state));
-        const priceDisplay = document.getElementById('salesPriceDisplay');
-        if (priceDisplay) {
-          priceDisplay.textContent = isReady ? sellerMoney(offered, settings, state) : '—';
-        }
+        setSellerDisplayedMoneyText('salesPrimaryPrice', sellerMoney(metrics.recommended, settings, state));
+        const priceReadyText = isReady ? sellerMoney(offered, settings, state) : '—';
+        setSellerDisplayedMoneyText('salesPriceDisplay', priceReadyText);
         setText(
           'salesPrimaryMeta',
           `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${sellerMoney(offered, settings, state)}`
@@ -9355,6 +9406,7 @@
       }
 
       function resetSalesQuoteStateForNewQuote(opts) {
+        delete window.__mgSellerQuoteCurrencyLock;
         const resetOpts = opts && typeof opts === 'object' ? opts : {};
         const prev = loadSalesState();
         const preserved = {};

@@ -66,7 +66,7 @@
     {
       "id": "seller-shield-v2-wiring",
       "path": "scripts/test-seller-shield-v2.js",
-      "minPassed": 62
+      "minPassed": 71
     }
   ],
   "optional": [
