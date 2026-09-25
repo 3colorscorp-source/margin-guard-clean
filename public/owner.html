@@ -817,6 +817,14 @@
     body[data-role="owner"] #ownerOpDayModalSubtitle {
       display: none !important;
     }
+    body[data-role="owner"] .owner-operational #ownerOperationalMetrics:not(:has(strong)),
+    body[data-role="owner"] .owner-operational .sales-op-empty,
+    body[data-role="owner"] .owner-operational #ownerOperationalTimelineHost:not(:has(.sales-op-timeline-row)) {
+      display: none !important;
+    }
+    body[data-role="owner"] .owner-operational .sales-op-timeline-head {
+      display: none !important;
+    }
     body[data-role="owner"] .sales-quote-section .field input,
     body[data-role="owner"] .sales-quote-section .field textarea,
     body[data-role="owner"] .owner-operational .sales-op-toolbar .field input,
@@ -1047,7 +1055,6 @@
                   </div>
                   <div class="owner-op-dash__action-bar" role="toolbar" aria-label="Operational plan and labor actions">
                     <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
-                    <button type="button" class="btn" id="btnOwnerGenerateScopeDraft">Generate Scope Draft</button>
                     <button type="button" class="btn" id="btnOwnerReviewConfirmOperationalPlan">Review &amp; confirm plan</button>
                     <div class="owner-op-dash__action-bar-labor">
                       <button class="btn primary" type="button" id="btnAddWorker">+ Agregar trabajador</button>
@@ -1956,6 +1963,7 @@
   }
 
   function installOwnerScopeDraftUi() {
+    document.querySelectorAll("#btnOwnerGenerateScopeDraft").forEach(function (el) { el.remove(); });
     const generateBtn = document.getElementById("btnOwnerGenerateScopeDraft");
     const applyBtn = document.getElementById("btnOwnerApplyScopeDraft");
     const clearBtn = document.getElementById("btnOwnerClearScopeDraft");
