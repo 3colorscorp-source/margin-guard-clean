@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Existing quote → New Quote → Add/Edit Day. Real sales.html, app.js, sales-device-portal.js.
+ * New Quote → 1 Pro day → 2 Pro days. Real sales.html, app.js, sales-device-portal.js.
  * Local Chrome gate only. Not a Seller Shield CI required job.
- * Hard timeout 120s. Fails immediately if Chrome stays on about:blank.
+ * Hard timeout 180s. Fails immediately if Chrome stays on about:blank.
  * Exit 2 if no automatable browser is found.
  *
  *   node scripts/test-seller-new-quote-day-visual-dollar.js
@@ -17,10 +17,13 @@ const os = require("os");
 const { spawn } = require("child_process");
 
 const DEFAULT_ROOT = path.resolve(__dirname, "..");
-const HARD_TIMEOUT_MS = 120000;
+const HARD_TIMEOUT_MS = 180000;
 const BLANK_FAIL_MS = 5000;
 const WAIT_AFTER_SAVE_MS = 60000;
 const A639BE7 = "a639be7214121f7ba70e81b4131ddec6af58bde6";
+const DAY1_TEXT = "$812.94";
+const DAY2_TEXT = "$1,625.88";
+const DAY2_TEXT_ALT = "$1,625.89";
 
 function parseArgs(argv) {
   const out = { root: DEFAULT_ROOT, expectRegression: false };
@@ -119,11 +122,18 @@ const INIT = String.raw`
     }
     if (/calc-secure-pricing/.test(url)) {
       s.securePricingCalls += 1;
-      return json({ ok:true, recommended:1497.74, currency:"MXN" }, 200);
+      var days = 0;
+      try {
+        var body = init && init.body ? JSON.parse(init.body) : {};
+        var workers = Array.isArray(body.workers) ? body.workers : [];
+        days = workers.reduce(function(sum, w){ return sum + Number(w && w.days || 0); }, 0);
+      } catch(_p) {}
+      var rec = days >= 1.5 ? 1625.88 : (days >= 0.5 ? 812.94 : 0);
+      return json({ ok:true, recommended:rec, recommended_price:rec, minimum_price:rec, total:rec, currency:"MXN" }, 200);
     }
     if (/get-seller-business-settings/.test(url)) {
       return json({ ok:true, source:"tenant_snapshot", settings:{
-        currency:"MXN", baseInstaller:142.2175, baseHelper:45, hoursPerDay:8, pricingMode:"hour",
+        currency:"MXN", baseInstaller:101.6175, baseHelper:45, hoursPerDay:8, pricingMode:"hour",
         wcPct:0, ficaPct:0, futaPct:0, casuiPct:0, overheadMonthly:0, stdHours:160,
         profitPct:0, minimumMarginPct:0, reservePct:0, salesCommissionPct:0, workdaysEnabled:true
       }});
@@ -131,14 +141,11 @@ const INIT = String.raw`
     if (/auth-status/.test(url)) return json({ active:true, email:"rt@example.test", is_admin:true });
     return json({ ok:true, active:true, mocked:true, settings:{ currency:"MXN" } });
   };
-  var settings = { currency:"MXN", baseInstaller:142.2175, baseHelper:45, hoursPerDay:8, pricingMode:"hour",
+  var settings = { currency:"MXN", baseInstaller:101.6175, baseHelper:45, hoursPerDay:8, pricingMode:"hour",
     wcPct:0, ficaPct:0, futaPct:0, casuiPct:0, overheadMonthly:0, stdHours:160, profitPct:0, minimumMarginPct:0, reservePct:0, salesCommissionPct:0, workdaysEnabled:true };
-  var sales = { clientName:"Existing Quote Client", estimateStatus:"pricing_ready", price:1497.74, offeredPrice:1497.74, pricingStage:2,
-    workers:[{name:"Installer 1", type:"installer", days:1, rate:""},{name:"Helper 1", type:"helper", days:1, rate:""}],
-    operational_plan:[{ day_number:1, phase:"Day 1", workers:[
-      { role:"Installer", worker_type:"pro", estimated_hours:8 },
-      { role:"Assistant", worker_type:"helper", estimated_hours:8 }
-    ]}], labor_auto_sync_from_plan:true };
+  var sales = { clientName:"Existing Quote Client", estimateStatus:"draft", price:"", offeredPrice:0, pricingStage:2,
+    workers:[{name:"Worker 1", type:"installer", days:0, rate:""}],
+    operational_plan:[], labor_auto_sync_from_plan:true };
   try { localStorage.setItem("mg_settings_v2", JSON.stringify(settings)); localStorage.setItem("mg_sales_v2", JSON.stringify(sales)); } catch(_e) {}
   var desc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
   if (desc && desc.set && desc.get) {
@@ -147,11 +154,15 @@ const INIT = String.raw`
       enumerable: desc.enumerable,
       get: function(){ return desc.get.call(this); },
       set: function(value){
-        var id = this && this.id;
-        if (id === "salesPrimaryPrice" || id === "salesPriceDisplay") {
+        var watched = this && (
+          this.id === "salesPrimaryPrice" ||
+          this.id === "salesPriceDisplay" ||
+          (this.classList && this.classList.contains("owner-quote-price"))
+        );
+        if (watched) {
           var next = value == null ? "" : String(value);
           s.writes = s.writes || [];
-          s.writes.push(next);
+          s.writes.push({ id: this.id || "", className: String(this.className || ""), text: next });
           if (/MX\$|MXN|US\$|\bUSD\b/i.test(next)) s.bannedWrites.push(next);
         }
         return desc.set.call(this, value);
@@ -230,52 +241,104 @@ function banned(text) {
 function isZero(text) {
   return /\$0\.00/.test(String(text || "")) && !banned(text);
 }
-function isVisual(text) {
-  return /\$1,497\.74/.test(String(text || "")) && !banned(text);
+function isDay1(text) {
+  return /\$812\.94/.test(String(text || "")) && !banned(text);
+}
+function isDay2(text) {
+  return /\$1,625\.8[89]/.test(String(text || "")) && !banned(text);
 }
 function isMx(text) {
-  return /MX\$/.test(String(text || "")) || /MXN1497|MXN1,497/.test(String(text || ""));
+  const raw = String(text || "");
+  return /MX\$/.test(raw) || /MXN\d|MXN1,/.test(raw);
+}
+
+function configureProOnlyDayExpr() {
+  return `(function(){
+    var rows = document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker");
+    if (rows.length >= 2) {
+      var last = rows[rows.length - 1];
+      var removeBtn = last && last.querySelector("[data-action='remove-worker']");
+      if (removeBtn) removeBtn.click();
+    }
+    rows = document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker");
+    if (!rows.length) {
+      var addCrew = document.querySelector("#salesOpDayModalBody [data-action='add-worker']");
+      if (addCrew) addCrew.click();
+      rows = document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker");
+    }
+    var label = document.querySelector("#salesOpDayModalBody .sales-op-unit-label");
+    var hour = !!(label && /h/i.test(String(label.textContent||"")));
+    var val = hour ? "8" : "1";
+    for (var i = 0; i < rows.length; i++) {
+      var type = rows[i].querySelector("[data-field='worker_type']");
+      var units = rows[i].querySelector("[data-field='estimated_units']");
+      if (type) {
+        type.value = "pro";
+        type.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (units) {
+        units.value = val;
+        units.dispatchEvent(new Event("input", { bubbles: true }));
+        units.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    return {
+      count: document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker").length,
+      types: Array.prototype.map.call(
+        document.querySelectorAll("#salesOpDayModalBody [data-field='worker_type']"),
+        function(el){ return el.value; }
+      ),
+      val: val,
+      hour: hour
+    };
+  })()`;
 }
 
 async function snap(cdp) {
   return evalPage(
     cdp,
     `(function(){
-      var nodes = document.querySelectorAll('[id="salesPrimaryPrice"]');
-      var all = [];
-      var visible = "";
-      for (var i = 0; i < nodes.length; i++) {
-        var t = String(nodes[i].textContent || "").trim();
-        all.push(t);
-        var st = window.getComputedStyle(nodes[i]);
-        var r = nodes[i].getBoundingClientRect();
-        if (st.display === "none" || st.visibility === "hidden") continue;
-        if (r.width <= 0 && r.height <= 0) continue;
-        visible = t;
+      function collect(sel) {
+        var nodes = document.querySelectorAll(sel);
+        var all = [];
+        var visible = "";
+        for (var i = 0; i < nodes.length; i++) {
+          var t = String(nodes[i].textContent || "").trim();
+          all.push(t);
+          var st = window.getComputedStyle(nodes[i]);
+          var r = nodes[i].getBoundingClientRect();
+          if (st.display === "none" || st.visibility === "hidden") continue;
+          if (r.width <= 0 && r.height <= 0) continue;
+          if (!visible) visible = t;
+        }
+        return { all: all, visible: visible || all[0] || "" };
       }
-      var n = document.getElementById("salesPrimaryPrice");
-      var d = document.getElementById("salesPriceDisplay");
-      var meta = document.getElementById("salesPrimaryMeta");
-      var kpi = document.getElementById("salesKpis");
+      var primary = collect('[id="salesPrimaryPrice"]');
+      var display = collect('[id="salesPriceDisplay"]');
+      var meta = collect('[id="salesPrimaryMeta"]');
+      var kpi = collect('[id="salesKpis"]');
       var modal = document.getElementById("salesOpDayModal");
       var bodyText = String((document.body && document.body.innerText) || "");
-      var metaText = meta ? String(meta.textContent || "").trim() : "";
-      var kpiText = kpi ? String(kpi.textContent || "").replace(/\s+/g, " ").trim() : "";
-      var joined = [visible, d && d.textContent, metaText, kpiText].join(" | ");
+      var metaText = String(meta.visible || "").replace(/\\s+/g, " ").trim();
+      var kpiText = String(kpi.visible || "").replace(/\\s+/g, " ").trim();
+      var joined = [primary.visible, display.visible, metaText, kpiText].join(" | ");
       var rt = window.__mgDayRt || {};
       return {
         href: String(location.href || ""),
         readyState: String(document.readyState || ""),
         blank: location.href === "about:blank",
         emptyBody: bodyText.trim().length < 20,
-        primary: visible || (n ? String(n.textContent||"").trim() : ""),
-        allPrimary: all,
-        display: d ? String(d.textContent||"").trim() : "",
+        primary: primary.visible,
+        allPrimary: primary.all,
+        display: display.visible,
+        allDisplay: display.all,
         meta: metaText,
         kpi: kpiText,
-        twoDays: /2\.00 worker-days/.test(metaText),
-        sixteenHours: /16\.00 labor-hours/.test(metaText),
-        bannedVisible: /MX\$|MXN|US\$|\bUSD\b/i.test(joined),
+        oneDay: /1\\.00 worker-days/.test(metaText),
+        eightHours: /8\\.00 labor-hours/.test(metaText),
+        twoDays: /2\\.00 worker-days/.test(metaText),
+        sixteenHours: /16\\.00 labor-hours/.test(metaText),
+        bannedVisible: /MX\\$|MXN|US\\$|\\bUSD\\b/i.test(joined),
         modalOpen: !!(modal && modal.getAttribute("aria-hidden") === "false"),
         ready: !!(document.body && document.body.classList.contains("auth-ready")),
         tenant: window.__mgSellerTenantCurrency || "",
@@ -405,57 +468,62 @@ async function run(root, expectRegression) {
     if (!conf || !conf.ok) throw new Error("New Quote confirm missing");
     s = await waitPred(cdp, 10000, (x) => x && isZero(x.primary));
     report.newQuote = s && s.primary;
-    if (!s || !isZero(s.primary)) throw new Error("New Quote did not show $0.00: " + ((s && s.primary) || ""));
+    report.newQuoteDisplay = s && s.display;
+    if (!s || !isZero(s.primary)) {
+      throw new Error("New Quote did not show $0.00: primary=" + ((s && s.primary) || "") + " display=" + ((s && s.display) || ""));
+    }
+
     const add = await click(cdp, "#btnAddOperationalDay");
     if (!add || !add.ok) throw new Error("Add Day missing");
     s = await waitPred(cdp, 8000, (x) => x && x.modalOpen);
     report.addDay = s && s.primary;
     if (!s || !s.modalOpen) throw new Error("Add Day modal did not open");
+    report.crewDay1 = await evalPage(cdp, configureProOnlyDayExpr());
+    await sleep(250);
     const firstSave = await click(cdp, "#salesOpDayModalSave");
     if (!firstSave || !firstSave.ok) throw new Error("Save Day missing after Add");
-    await sleep(400);
-    const edit = await click(cdp, '#salesOperationalTimelineHost button[data-action="edit-day"]');
-    if (!edit || !edit.ok) throw new Error("Edit Day missing");
+    s = await waitPred(cdp, 10000, (x) => x && isDay1(x.primary) && isDay1(x.display) && x.oneDay && x.eightHours);
+    report.day1 = s && s.primary;
+    report.day1Display = s && s.display;
+    report.day1Meta = s && s.meta;
+    if (!s || !isDay1(s.primary) || !isDay1(s.display) || !s.oneDay || !s.eightHours) {
+      throw new Error(
+        "Day 1 Pro did not show $812.94 / 1.00 worker-days / 8.00 labor-hours: primary=" +
+          ((s && s.primary) || "") +
+          " display=" +
+          ((s && s.display) || "") +
+          " meta=" +
+          ((s && s.meta) || "")
+      );
+    }
+
+    const add2 = await click(cdp, "#btnAddOperationalDay");
+    if (!add2 || !add2.ok) throw new Error("Add Day 2 missing");
     s = await waitPred(cdp, 8000, (x) => x && x.modalOpen);
-    if (!s || !s.modalOpen) throw new Error("Edit Day modal did not open");
-    const crew = await evalPage(
-      cdp,
-      `(function(){
-        var rows = document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker");
-        var label = document.querySelector("#salesOpDayModalBody .sales-op-unit-label");
-        var hour = !!(label && /h/i.test(String(label.textContent||"")));
-        var val = hour ? "8" : "1";
-        if (rows.length < 2) {
-          var addCrew = document.querySelector("#salesOpDayModalBody [data-action='add-worker']");
-          if (addCrew) addCrew.click();
-        }
-        rows = document.querySelectorAll("#salesOpDayModalBody .sales-operational-worker");
-        for (var i = 0; i < rows.length; i++) {
-          var type = rows[i].querySelector("[data-field='worker_type']");
-          var units = rows[i].querySelector("[data-field='estimated_units']");
-          if (type) type.value = i === 0 ? "pro" : "helper";
-          if (units) {
-            units.value = val;
-            units.dispatchEvent(new Event("input", { bubbles: true }));
-            units.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }
-        return { count: rows.length, val: val, hour: hour };
-      })()`
-    );
-    report.crew = crew;
-    const save = await click(cdp, "#salesOpDayModalSave");
-    if (!save || !save.ok) throw new Error("Save Day missing after Edit");
-    s = await waitPred(cdp, 8000, (x) => x && x.twoDays && x.sixteenHours);
+    if (!s || !s.modalOpen) throw new Error("Add Day 2 modal did not open");
+    report.crewDay2 = await evalPage(cdp, configureProOnlyDayExpr());
+    await sleep(250);
+    const save2 = await click(cdp, "#salesOpDayModalSave");
+    if (!save2 || !save2.ok) throw new Error("Save Day missing after Add Day 2");
+    s = await waitPred(cdp, 10000, (x) => x && isDay2(x.primary) && isDay2(x.display) && x.twoDays && x.sixteenHours);
     report.saveDay = s && s.primary;
+    report.saveDayDisplay = s && s.display;
     report.meta = s && s.meta;
     report.twoDays = s && s.twoDays;
     report.sixteenHours = s && s.sixteenHours;
     report.allPrimary = s && s.allPrimary;
+    report.allDisplay = s && s.allDisplay;
     report.bannedWrites = s && s.bannedWrites;
     report.bannedVisible = s && s.bannedVisible;
-    if (!s || !s.twoDays || !s.sixteenHours) {
-      throw new Error("expected 2.00 worker-days / 16.00 labor-hours, meta=" + ((s && s.meta) || ""));
+    if (!s || !s.twoDays || !s.sixteenHours || !isDay2(s.primary) || !isDay2(s.display)) {
+      throw new Error(
+        "expected 2 worker-days / $1,625.88 or $1,625.89 on Recommended and Price Estimate, got primary=" +
+          ((s && s.primary) || "") +
+          " display=" +
+          ((s && s.display) || "") +
+          " meta=" +
+          ((s && s.meta) || "")
+      );
     }
     const saveCalls = (s && s.calls) || 0;
     const waitStart = Date.now();
@@ -465,10 +533,11 @@ async function run(root, expectRegression) {
       s = await snap(cdp);
       if (s.blank) throw new Error("BLANK_CHROME during 60s wait href=" + s.href);
       if (!expectRegression && (s.bannedVisible || banned(s.primary) || banned(s.display) || banned(s.kpi))) {
-        throw new Error("banned visible label: " + s.primary + " / " + s.kpi);
+        throw new Error("banned visible label: " + s.primary + " / " + s.display + " / " + s.kpi);
       }
     }
     report.after60s = s && s.primary;
+    report.after60sDisplay = s && s.display;
     report.calls = s && s.calls;
     report.tenant = s && s.tenant;
     report.bannedWrites = s && s.bannedWrites;
@@ -488,8 +557,9 @@ async function run(root, expectRegression) {
     report.interactive = { clickOk: clickOk === true, scrollOk: scrollOk === true, timerOk: timerOk === true };
 
     if (expectRegression) {
-      const texts = [report.addDay, report.saveDay, report.after60s]
+      const texts = [report.addDay, report.day1, report.saveDay, report.after60s, report.saveDayDisplay, report.after60sDisplay]
         .concat(report.allPrimary || [])
+        .concat(report.allDisplay || [])
         .concat(report.bannedWrites || []);
       const reproduced =
         isZero(report.newQuote) && texts.some(function (t) { return isMx(t) || banned(t); });
@@ -497,7 +567,7 @@ async function run(root, expectRegression) {
       report.ok = reproduced && report.interactive.clickOk && report.interactive.scrollOk && report.interactive.timerOk;
       if (!reproduced) {
         report.fail =
-          "a639be7 did not reproduce $0.00 → MX$/MXN after Add/Edit Day: visible=" +
+          "a639be7 did not reproduce $0.00 → MX$/MXN after 1→2 worker-days: visible=" +
           report.after60s +
           " writes=" +
           JSON.stringify(report.bannedWrites);
@@ -506,8 +576,12 @@ async function run(root, expectRegression) {
     }
     const visualOk =
       isZero(report.newQuote) &&
-      isVisual(report.saveDay) &&
-      isVisual(report.after60s) &&
+      isDay1(report.day1) &&
+      isDay1(report.day1Display) &&
+      isDay2(report.saveDay) &&
+      isDay2(report.saveDayDisplay) &&
+      isDay2(report.after60s) &&
+      isDay2(report.after60sDisplay) &&
       !report.bannedVisible &&
       !(report.bannedWrites || []).length;
     const cycle = Number(report.calls || 0) > 12 || Number(report.calls || 0) - saveCalls > 8;
@@ -515,11 +589,15 @@ async function run(root, expectRegression) {
     report.ok = report.outcome === "HEALTHY";
     if (!report.ok) {
       report.fail =
-        "expected $0.00 → $1,497.74 with 2 worker-days/16h and no banned labels, got " +
+        "expected $0.00 → $812.94 → $1,625.88/$1,625.89 with 2 worker-days/16h and no banned labels, got " +
         JSON.stringify({
           newQuote: report.newQuote,
+          day1: report.day1,
+          day1Display: report.day1Display,
           save: report.saveDay,
+          saveDisplay: report.saveDayDisplay,
           after: report.after60s,
+          afterDisplay: report.after60sDisplay,
           meta: report.meta,
           calls: report.calls,
           bannedWrites: report.bannedWrites,
@@ -571,12 +649,20 @@ async function main() {
     duration_ms: report.durationMs,
     existing: report.existing,
     newQuote: report.newQuote,
+    newQuoteDisplay: report.newQuoteDisplay,
     addDay: report.addDay,
+    day1: report.day1,
+    day1Display: report.day1Display,
+    day1Meta: report.day1Meta,
     saveDay: report.saveDay,
+    saveDayDisplay: report.saveDayDisplay,
     after60s: report.after60s,
+    after60sDisplay: report.after60sDisplay,
     meta: report.meta,
     twoDays: report.twoDays,
     sixteenHours: report.sixteenHours,
+    crewDay1: report.crewDay1,
+    crewDay2: report.crewDay2,
     interactive: report.interactive,
     calls: report.calls,
     tenant: report.tenant,
