@@ -12,19 +12,29 @@
     html[data-sales-portal="seller"] .seller-owner-upper, html[data-owner-seller-preview="true"] .seller-owner-upper{
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      margin-bottom: 14px;
-    }
-    html[data-sales-portal="seller"] .seller-owner-upper .account-pill, html[data-owner-seller-preview="true"] .seller-owner-upper .account-pill{
-      align-self: flex-start;
-      padding: 8px 14px;
-      background: rgba(255, 255, 255, 0.045);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
-    }
-    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero,
-    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero, html[data-owner-seller-preview="true"] .seller-owner-upper .sales-layout-hero{
+      gap: 0;
       margin-bottom: 0;
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper:has(#salesDeviceLogoutHost:not([hidden])),
+    html[data-owner-seller-preview="true"] .seller-owner-upper:has(#salesDeviceLogoutHost:not([hidden])){
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    html[data-sales-portal="seller"] .account-pill,
+    html[data-owner-seller-preview="true"] .account-pill,
+    html[data-sales-portal="seller"] .sales-layout-hero,
+    html[data-owner-seller-preview="true"] .sales-layout-hero,
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero,
+    html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero,
+    html[data-owner-seller-preview="true"] .seller-owner-upper .sales-layout-hero{
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
     }
     html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-inner, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero-inner{
       gap: 12px;
@@ -940,12 +950,13 @@
       overflow: hidden !important;
       pointer-events: none !important;
     }
+    html[data-owner-seller-preview="true"] .sales-owner-nav-actions,
     html[data-owner-seller-preview="true"] .sales-owner-nav-actions[data-owner-nav] {
-      display: flex !important;
-      visibility: visible !important;
-      height: auto !important;
-      overflow: visible !important;
-      pointer-events: auto !important;
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
     }
 
     /* C34-F — Send Quote modal: wider desktop layout, mobile unchanged */
