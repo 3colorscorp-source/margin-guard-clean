@@ -259,11 +259,15 @@ async function main() {
   const sellerPhase1 = read("scripts/test-voice-operational-plan-phase1.js");
   const sellerPhase2 = read("scripts/test-voice-operational-plan-phase2.js");
 
-  const genIdx = html.indexOf('id="btnOwnerGenerateScopeDraft"');
+  const addDayIdx = html.indexOf('id="btnOwnerAddOperationalDay"');
   const reviewIdx = html.indexOf('id="btnOwnerReviewConfirmOperationalPlan"');
   const laborIdx = html.indexOf('class="owner-op-dash__action-bar-labor"');
   ok("1. review button exists", reviewIdx > 0);
-  ok("1. review button after Generate Scope Draft", genIdx > 0 && reviewIdx > genIdx);
+  ok(
+    "1. Generate Scope Draft is not an Owner button",
+    !/<button[^>]*id="btnOwnerGenerateScopeDraft"/.test(html) && !/>Generate Scope Draft</.test(html)
+  );
+  ok("1. review button after Add day", addDayIdx > 0 && reviewIdx > addDayIdx);
   ok("1. review button before labor actions", laborIdx > reviewIdx);
 
   ok("2. modal exists", /id="ownerVoicePlanPreviewModal"/.test(html));
