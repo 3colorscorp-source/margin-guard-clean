@@ -452,23 +452,42 @@
       padding-top: 8px;
     }
     .owner-operational .owner-op-dash__calendar-card .sales-op-cal-weekdays {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 4px;
-      margin: 0 0 6px;
-      font-size: 10px;
-      color: rgba(232, 238, 252, 0.55);
+      display: none !important;
     }
     .owner-operational .owner-op-dash__calendar-card .sales-op-calendar-grid {
-      gap: 4px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 6px;
       flex: 1 1 auto;
+      align-content: start;
     }
     .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell {
-      min-height: 40px;
-      padding: 4px;
+      min-width: 0;
+      min-height: 0;
+      max-height: 88px;
+      padding: 6px 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      box-sizing: border-box;
     }
     .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell--empty {
-      min-height: 28px;
+      min-height: 0;
+      max-height: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell__daynum,
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell__date,
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell__task,
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell__crew {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: block;
+      -webkit-line-clamp: unset;
     }
     .owner-operational .owner-op-dash__dates-card {
       margin: 0;
@@ -760,6 +779,147 @@
         width: 100%;
         margin-left: 0;
       }
+    }
+
+    body[data-role="owner"] .owner-upper {
+      gap: 0;
+      margin-bottom: 0;
+    }
+    body[data-role="owner"] .owner-upper .account-pill,
+    body[data-role="owner"] .owner-upper .owner-hero {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+    }
+    body[data-role="owner"] .owner-workspace-main .card-inner > .section-head {
+      margin-bottom: 10px;
+    }
+    body[data-role="owner"] .owner-workspace-main .card-inner > .section-head .sub,
+    body[data-role="owner"] .owner-labor__lead,
+    body[data-role="owner"] .owner-labor-guide__kicker,
+    body[data-role="owner"] .owner-labor-guide__text,
+    body[data-role="owner"] .sales-op-timeline-sub,
+    body[data-role="owner"] #ownerOperationalOverrideDaysHint,
+    body[data-role="owner"] #ownerOperationalOverrideHoursHint,
+    body[data-role="owner"] .owner-op-scope-work__lead,
+    body[data-role="owner"] .owner-field-project-name__tip,
+    body[data-role="owner"] .owner-field-client-gc__tip,
+    body[data-role="owner"] .owner-field-client-email__tip,
+    body[data-role="owner"] .owner-field-client-phone__tip,
+    body[data-role="owner"] .owner-field-location__tip,
+    body[data-role="owner"] .owner-field-biz-pdf__tip,
+    body[data-role="owner"] .owner-field-quote-notes__tip,
+    body[data-role="owner"] .owner-quote-snapshot__lead,
+    body[data-role="owner"] #ownerOpDayModalSubtitle {
+      display: none !important;
+    }
+    body[data-role="owner"] .sales-quote-section .field input,
+    body[data-role="owner"] .sales-quote-section .field textarea,
+    body[data-role="owner"] .owner-operational .sales-op-toolbar .field input,
+    body[data-role="owner"] .owner-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled),
+    body[data-role="owner"] #ownerOpDayModal input:not([readonly]):not(:disabled),
+    body[data-role="owner"] #ownerOpDayModal select:not(:disabled),
+    body[data-role="owner"] #ownerOpDayModal textarea:not([readonly]) {
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      color: #e8eefc;
+      caret-color: #e8eefc;
+      color-scheme: dark;
+      box-shadow: none;
+    }
+    body[data-role="owner"] .owner-input-project-name,
+    body[data-role="owner"] .owner-input-client-gc,
+    body[data-role="owner"] .owner-input-client-email,
+    body[data-role="owner"] .owner-input-client-phone,
+    body[data-role="owner"] .owner-input-location,
+    body[data-role="owner"] .owner-input-biz-pdf,
+    body[data-role="owner"] .owner-input-start-date,
+    body[data-role="owner"] .owner-op-scope-work__editor,
+    body[data-role="owner"] .owner-input-quote-notes {
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      color: #e8eefc;
+      caret-color: #e8eefc;
+      color-scheme: dark;
+      box-shadow: none;
+    }
+    body[data-role="owner"] .sales-quote-section .field input:focus,
+    body[data-role="owner"] .sales-quote-section .field textarea:focus,
+    body[data-role="owner"] .owner-operational .sales-op-toolbar .field input:focus,
+    body[data-role="owner"] .owner-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus,
+    body[data-role="owner"] #ownerOpDayModal input:focus,
+    body[data-role="owner"] #ownerOpDayModal select:focus,
+    body[data-role="owner"] #ownerOpDayModal textarea:focus,
+    body[data-role="owner"] .owner-input-project-name:focus,
+    body[data-role="owner"] .owner-input-client-gc:focus,
+    body[data-role="owner"] .owner-input-client-email:focus,
+    body[data-role="owner"] .owner-input-client-phone:focus,
+    body[data-role="owner"] .owner-input-location:focus,
+    body[data-role="owner"] .owner-input-biz-pdf:focus,
+    body[data-role="owner"] .owner-input-start-date:focus,
+    body[data-role="owner"] .owner-op-scope-work__editor:focus,
+    body[data-role="owner"] .owner-input-quote-notes:focus {
+      border-color: rgba(125, 211, 252, 0.62);
+      background: #202c44;
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.16);
+      outline: none;
+    }
+    body[data-role="owner"] .owner-input-project-name::placeholder,
+    body[data-role="owner"] .owner-input-client-gc::placeholder,
+    body[data-role="owner"] .owner-input-client-email::placeholder,
+    body[data-role="owner"] .owner-input-client-phone::placeholder,
+    body[data-role="owner"] .owner-input-location::placeholder,
+    body[data-role="owner"] .owner-input-biz-pdf::placeholder,
+    body[data-role="owner"] .owner-input-quote-notes::placeholder,
+    body[data-role="owner"] .owner-op-scope-work__editor::placeholder,
+    body[data-role="owner"] .sales-quote-section .field input::placeholder {
+      color: rgba(232, 238, 252, 0.42);
+    }
+    body[data-role="owner"] .owner-input-project-name:placeholder-shown,
+    body[data-role="owner"] .owner-input-client-gc:placeholder-shown,
+    body[data-role="owner"] .owner-input-client-email:placeholder-shown,
+    body[data-role="owner"] .owner-input-client-phone:placeholder-shown,
+    body[data-role="owner"] .owner-input-location:placeholder-shown,
+    body[data-role="owner"] .owner-input-biz-pdf:placeholder-shown,
+    body[data-role="owner"] .owner-input-quote-notes:placeholder-shown,
+    body[data-role="owner"] .owner-field-project-name:has(.owner-input-project-name:not(:placeholder-shown)) .owner-input-project-name,
+    body[data-role="owner"] .owner-field-client-gc:has(.owner-input-client-gc:not(:placeholder-shown)) .owner-input-client-gc,
+    body[data-role="owner"] .owner-field-client-email:has(.owner-input-client-email:not(:placeholder-shown)) .owner-input-client-email,
+    body[data-role="owner"] .owner-field-client-phone:has(.owner-input-client-phone:not(:placeholder-shown)) .owner-input-client-phone,
+    body[data-role="owner"] .owner-field-location:has(.owner-input-location:not(:placeholder-shown)) .owner-input-location,
+    body[data-role="owner"] .owner-field-biz-pdf:has(.owner-input-biz-pdf:not(:placeholder-shown)) .owner-input-biz-pdf,
+    body[data-role="owner"] .owner-field-quote-notes:has(.owner-input-quote-notes:not(:placeholder-shown)) .owner-input-quote-notes {
+      border-color: rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      box-shadow: none;
+    }
+    body[data-role="owner"] .owner-input-project-name:hover,
+    body[data-role="owner"] .owner-input-client-gc:hover,
+    body[data-role="owner"] .owner-input-client-email:hover,
+    body[data-role="owner"] .owner-input-client-phone:hover,
+    body[data-role="owner"] .owner-input-location:hover,
+    body[data-role="owner"] .owner-input-biz-pdf:hover,
+    body[data-role="owner"] .owner-input-quote-notes:hover {
+      border-color: rgba(226, 232, 240, 0.5);
+    }
+    body[data-role="owner"] table.owner-labor-table td input:not([readonly]),
+    body[data-role="owner"] table.owner-labor-table td select {
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      color: #e8eefc;
+      caret-color: #e8eefc;
+      color-scheme: dark;
+    }
+    body[data-role="owner"] table.owner-labor-table td input:not([readonly]):focus,
+    body[data-role="owner"] table.owner-labor-table td select:focus {
+      border-color: rgba(125, 211, 252, 0.62);
+      background: #202c44;
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.16);
+      outline: none;
     }
   </style>
 </head>
