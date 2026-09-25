@@ -59,6 +59,7 @@ async function main() {
       !/billed (automatically )?by Stripe/i.test(terms)
   );
   assert("6. QuickBooks/Square manual billing", /QuickBooks/.test(terms) && /Square/.test(terms) && /manually/.test(terms));
+  assert("6b. terms state non-refundable annual fee after activation", /<h2>20\. Refunds<\/h2>/.test(terms) && /non-refundable/.test(terms));
   assert("7. Financial Connections is read-only balances", /read-only balance monitoring/.test(terms) && /balances only/.test(terms));
   assert(
     "8. no money-movement capability claim",

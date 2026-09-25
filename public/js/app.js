@@ -221,9 +221,14 @@ Thank you.`
     scheduleTenantSnapshotSync();
   }
 
-  function money(value, currency) {
+  function money(value, _currency) {
     const n = Number(value || 0);
-    return `${currency || "$"}${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
+    const amount = Number.isFinite(n) ? n : 0;
+    const formatted = Math.abs(amount).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return (amount < 0 ? "-$" : "$") + formatted;
   }
 
   function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
@@ -7065,35 +7070,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const { runwayMonths, savingsPct, savingsTarget, operatingMonthly } = derived;
     const parts = [];
     if (operatingMonthly > 0 && runwayMonths >= 3) {
-      parts.push(`<p><strong>Caja:</strong> Con el gasto mensual que guardaste, el negocio muestra un runway aproximado de ${runwayMonths.toFixed(1)} meses; se siente estable por ahora.</p>`);
+      parts.push(`<p><strong>Cash:</strong> With the monthly spend you saved, the business shows about ${runwayMonths.toFixed(1)} months of runway; it looks stable for now.</p>`);
     } else if (operatingMonthly > 0) {
-      parts.push(`<p><strong>Caja:</strong> El runway aproximado es ${runwayMonths.toFixed(1)} meses; conviene vigilar cobranza y gasto.</p>`);
+      parts.push(`<p><strong>Cash:</strong> Approximate runway is ${runwayMonths.toFixed(1)} months; watch collections and spend.</p>`);
     } else {
-      parts.push("<p><strong>Caja:</strong> Sin gasto operativo mensual en el monitor no podemos medir runway; completalo para ver si la caja se siente estable o apretada.</p>");
+      parts.push("<p><strong>Cash:</strong> Without monthly operating spend in the monitor we cannot measure runway; add it to see whether cash looks stable or tight.</p>");
     }
     if (savingsTarget > 0) {
       if (savingsPct >= 50) {
-        parts.push(`<p><strong>Ahorros:</strong> Vas al ${savingsPct.toFixed(0)}% de tu meta de reserva de 12 meses; el colchon se ve saludable.</p>`);
+        parts.push(`<p><strong>Savings:</strong> You are at ${savingsPct.toFixed(0)}% of your 12-month reserve target; the cushion looks healthy.</p>`);
       } else {
-        parts.push(`<p><strong>Ahorros:</strong> Llevas ${savingsPct.toFixed(0)}% de tu meta de 12 meses; el colchon todavia se siente debil.</p>`);
+        parts.push(`<p><strong>Savings:</strong> You are at ${savingsPct.toFixed(0)}% of your 12-month target; the cushion still looks thin.</p>`);
       }
     } else {
-      parts.push("<p><strong>Ahorros:</strong> Activa la meta de 12 meses guardando tu gasto mensual en el monitor.</p>");
+      parts.push("<p><strong>Savings:</strong> Turn on the 12-month target by saving your monthly spend in the monitor.</p>");
     }
     const top = rows.length
       ? rows.slice().sort((left, right) => right.priorityScore - left.priorityScore)[0]
       : null;
     if (top && top.priorityScore > 0) {
-      parts.push(`<p><strong>Prioridad hoy:</strong> ${escapeHtml(top.title)} — ${escapeHtml(String(top.nextAction || "revisa el hub"))}.</p>`);
+      parts.push(`<p><strong>Priority today:</strong> ${escapeHtml(top.title)} — ${escapeHtml(String(top.nextAction || "review the hub"))}.</p>`);
     } else {
-      parts.push("<p><strong>Prioridad hoy:</strong> No hay un proyecto dominante en la cartera; abre el hub si quieres revisar detalle.</p>");
+      parts.push("<p><strong>Priority today:</strong> No dominant project in the book; open the hub if you want the detail.</p>");
     }
     const broken = rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid").length;
     const overdue = rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
     if (broken + overdue > 0) {
-      parts.push(`<p><strong>Riesgo operativo:</strong> Hay ${broken} promesa(s) rota(s) y ${overdue} factura(s) vencida(s) con saldo en la cartera.</p>`);
+      parts.push(`<p><strong>Operating risk:</strong> There are ${broken} broken promise(s) and ${overdue} overdue invoice(s) with a balance.</p>`);
     } else {
-      parts.push("<p><strong>Riesgo operativo:</strong> No se ven promesas rotas ni facturas vencidas con saldo en la cartera actual.</p>");
+      parts.push("<p><strong>Operating risk:</strong> No broken promises or overdue invoices with a balance in the current book.</p>");
     }
     return parts.join("");
   }
@@ -7116,9 +7121,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           </article>`;
       };
       $("oalMoneyMovesGrid").innerHTML = [
-        card("collections", "Collections to push today", autoRemCount, "Candidatos donde conviene preparar recordatorios de cobranza hoy.", "No hay cola automatica sugerida para hoy.", "collections-auto"),
-        card("invoices", "Invoices ready to send", readyInvoicesCount, "Estimates listos para mover a invoice.", "No hay estimates listos para facturar aun.", "ready-estimates"),
-        card("deals", "High-pressure deals to close", highPressureCount, "Filas con prioridad 80+ entre cobranza y cierre.", "No hay acuerdos en banda de maxima presion.", "high-pressure")
+        card("collections", "Collections to push today", autoRemCount, "Candidates where a collections reminder should go out today.", "No automatic collections queue for today.", "collections-auto"),
+        card("invoices", "Invoices ready to send", readyInvoicesCount, "Estimates ready to move to invoice.", "No estimates ready to invoice yet.", "ready-estimates"),
+        card("deals", "High-pressure deals to close", highPressureCount, "Rows at priority 80+ across collections and close.", "No deals in the highest-pressure band.", "high-pressure")
       ].join("");
     }
     if ($("oalOwnerActionQueue")) {
@@ -7450,7 +7455,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   </div>
                 </li>
               `).join("")
-            : `<li><span class="msg-idx">0</span><div><strong>Sin tareas urgentes</strong><span class="hub-inline-meta">La cartera no esta pidiendo accion inmediata hoy.</span></div></li>`;
+            : `<li><span class="msg-idx">0</span><div><strong>No urgent tasks</strong><span class="hub-inline-meta">The book is not asking for immediate action today.</span></div></li>`;
         }
         if ($("dashboardClientScorecard")) {
           $("dashboardClientScorecard").innerHTML = clientScores.length
@@ -7464,7 +7469,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   </div>
                 </li>
               `).join("")
-            : `<li><span class="msg-idx">0</span><div><strong>Client mix healthy</strong><span class="hub-inline-meta">No hay concentracion de riesgo relevante por cliente.</span></div></li>`;
+            : `<li><span class="msg-idx">0</span><div><strong>Client mix healthy</strong><span class="hub-inline-meta">No meaningful customer concentration risk.</span></div></li>`;
           $("dashboardClientScorecard").querySelectorAll("[data-dashboard-customer]").forEach((item) => {
             item.onclick = () => {
               const currentView = loadHubViewState();
@@ -7578,7 +7583,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   </div>
                 </li>
               `).join("")
-            : `<li><span class="msg-idx">0</span><div><strong>Todo bajo control</strong><span class="hub-inline-meta">No hay alertas urgentes en la cartera actual.</span></div></li>`;
+            : `<li><span class="msg-idx">0</span><div><strong>All clear</strong><span class="hub-inline-meta">No urgent alerts in the current book.</span></div></li>`;
         }
       }
 
@@ -19717,15 +19722,14 @@ window.renderSupervisor = renderSupervisor;
     return buckets;
   }
 
-  function saFormatSummaryMoney(value, currency) {
+  function saFormatSummaryMoney(value, _currency) {
     const n = Number(value || 0);
-    const amount = (Number.isFinite(n) ? n : 0).toLocaleString("en-US", {
+    const amount = Number.isFinite(n) ? n : 0;
+    const formatted = Math.abs(amount).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
-    const raw = String(currency == null ? "USD" : currency).trim() || "USD";
-    const code = raw === "$" ? "USD" : raw.replace(/\s+/g, "");
-    return `${code} ${amount}`;
+    return (amount < 0 ? "-$" : "$") + formatted;
   }
 
   let saPerfTipTimer = 0;

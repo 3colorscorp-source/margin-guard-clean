@@ -18,6 +18,7 @@
   let cachedSellerRows = [];
   let cachedPrimaryCurrency = DEFAULT_CURRENCY;
   let cachedCommissionPct = DEFAULT_COMMISSION_PCT;
+  let cachedSummaryMeta = { truncated: false, projectJoinOk: true };
   let showTestSellers = false;
 
   function $(id) {
@@ -83,18 +84,13 @@
     return cur || DEFAULT_CURRENCY;
   }
 
-  function formatMoney(amount, currency) {
+  function formatMoney(amount, _currency) {
     const n = finiteMoney(amount);
-    const cur = String(currency || readPrimaryCurrency()).trim() || DEFAULT_CURRENCY;
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: cur,
-        maximumFractionDigits: 2,
-      }).format(n);
-    } catch (_err) {
-      return `${cur} ${n.toFixed(2)}`;
-    }
+    const formatted = Math.abs(n).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return (n < 0 ? "-$" : "$") + formatted;
   }
 
   function bucketForQuote(quote) {
@@ -252,6 +248,34 @@
     };
   }
 
+  function computeSummaryFromRows(rows, meta) {
+    const list = Array.isArray(rows) ? rows : [];
+    let sellerAttributed = 0;
+    let ownerLegacy = 0;
+    let linked = 0;
+    let totalQuoted = 0;
+    let approvalRequests = 0;
+    for (const row of list) {
+      const quotes = Number(row.quotes || 0);
+      if (row.label === "Owner / legacy") ownerLegacy += quotes;
+      else sellerAttributed += quotes;
+      linked += Number(row.linked || 0);
+      totalQuoted += finiteMoney(row.totalQuoted);
+      approvalRequests += Number(row.approvalRequests || 0);
+    }
+    return {
+      sellerAttributed,
+      ownerLegacy,
+      linked,
+      totalQuoted,
+      approvalRequests,
+      truncated: Boolean(meta && meta.truncated),
+      projectJoinOk: !(meta && meta.projectJoinOk === false),
+      hasOwnerLegacy: ownerLegacy > 0,
+      hasSellerUnattributed: list.some((row) => row.label === "Seller (unattributed)"),
+    };
+  }
+
   function sortBucketRows(buckets) {
     const rows = Array.from(buckets.values());
     rows.sort((a, b) => {
@@ -300,7 +324,7 @@
     if (hiddenCount > 0) {
       el.hidden = false;
       el.textContent =
-        "Test sellers hidden from table view. Summary totals still include all seller data.";
+        "Test sellers hidden from the table and from these summary totals.";
     } else {
       el.hidden = true;
       el.textContent = "";
@@ -309,6 +333,7 @@
 
   function renderSellerTableView() {
     const visibleRows = filterSellerRowsForDisplay(cachedSellerRows);
+    renderSummaryCards(computeSummaryFromRows(visibleRows, cachedSummaryMeta), cachedPrimaryCurrency);
     renderSellerTable(visibleRows, cachedPrimaryCurrency, cachedCommissionPct);
     updateSellerTestNote(cachedSellerRows);
   }
@@ -567,7 +592,10 @@
       cachedSellerRows = rows;
       cachedPrimaryCurrency = primaryCurrency;
       cachedCommissionPct = commissionPct;
-      renderSummaryCards(summary, primaryCurrency);
+      cachedSummaryMeta = {
+        truncated: quoteResult.truncated,
+        projectJoinOk: projectResult.ok,
+      };
       renderSellerTableView();
       renderPartialNote(summary);
       setSectionState("ready");
