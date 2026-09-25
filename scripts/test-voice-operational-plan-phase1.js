@@ -1364,7 +1364,7 @@ async function main() {
   ok(
     "flow headline uses direct price-position result instead of margin advisory",
     /salesFlowHeadline[\s\S]{0,180}belowRecommendation \? ["']Below recommendation["']/.test(appSrc) &&
-      /salesFlowHeadline[\s\S]{0,180}belowRecommendation \? 'Bajo recomendado'/.test(salesSrc)
+      /salesFlowHeadline[\s\S]{0,180}belowRecommendation \? 'Below recommendation'/.test(salesSrc)
   );
   ok(
     "seller layout completeness requires Review & confirm plan",
