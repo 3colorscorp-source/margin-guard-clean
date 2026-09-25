@@ -4,6 +4,7 @@
   const API = "/.netlify/functions";
   const PROTECTED_ROLES = new Set(["owner", "admin"]);
   const MANAGED_ROLES = new Set(["seller", "supervisor"]);
+  const TEST_MEMBER_MARKER = "@marginguard.test";
 
   const state = {
     memberships: [],
@@ -34,6 +35,16 @@
     const display = String(row?.display_name || "").trim();
     const full = String(row?.full_name || "").trim();
     return display || full || row?.email || "—";
+  }
+
+  function isTestMembership(row) {
+    const email = String(row?.email || "").toLowerCase();
+    const name = memberDisplayName(row).toLowerCase();
+    return email.includes(TEST_MEMBER_MARKER) || /\btest seller\b/.test(name);
+  }
+
+  function workingMemberships() {
+    return (state.memberships || []).filter((row) => !isTestMembership(row));
   }
 
   function formatDate(value) {
@@ -196,6 +207,7 @@
     const portal = norm(portalType);
     return state.memberships.filter(
       (m) =>
+        !isTestMembership(m) &&
         MANAGED_ROLES.has(norm(m.role)) &&
         norm(m.status) === "active" &&
         (!portal || norm(m.role) === portal)
@@ -255,7 +267,7 @@
     const wrap = $("tdMembersTableWrap");
     if (!body) return;
 
-    const rows = state.memberships;
+    const rows = workingMemberships();
     if (!rows.length) {
       body.innerHTML = "";
       if (empty) empty.hidden = false;
@@ -393,7 +405,7 @@
     const wrap = $("tdDevicesTableWrap");
     if (!body) return;
 
-    const rows = state.devices;
+    const rows = (state.devices || []).filter((row) => !isTestMembership(row.assigned_membership));
     if (!rows.length) {
       body.innerHTML = "";
       if (empty) empty.hidden = false;
