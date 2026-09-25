@@ -965,7 +965,7 @@
               <div class="form">
               <div class="field owner-field-project-name">
                 <label for="projectName" class="owner-field-project-name__label">Nombre del proyecto</label>
-                <input class="owner-input-project-name" id="projectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
+                <input class="owner-input-project-name" id="projectName" maxlength="60" placeholder="" />
                 <div class="hint owner-field-project-name__foot">
                   <span class="owner-field-project-name__tip">Aparece en el PDF y en el seguimiento del trabajo.</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="projectNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
@@ -973,7 +973,7 @@
               </div>
               <div class="field owner-field-client-gc">
                 <label for="clientName" class="owner-field-client-gc__label">Cliente / GC</label>
-                <input class="owner-input-client-gc" id="clientName" maxlength="60" placeholder="Ej: Angus / GC / Homeowner" />
+                <input class="owner-input-client-gc" id="clientName" maxlength="60" placeholder="" />
                 <div class="hint owner-field-client-gc__foot">
                   <span class="owner-field-client-gc__tip">Quien firma o coordina en obra (homeowner, GC o contacto principal).</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="clientNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
@@ -981,7 +981,7 @@
               </div>
               <div class="field owner-field-client-email">
                 <label for="clientEmail" class="owner-field-client-email__label">Email del cliente</label>
-                <input class="owner-input-client-email" id="clientEmail" type="email" maxlength="80" placeholder="cliente@correo.com" autocomplete="email" />
+                <input class="owner-input-client-email" id="clientEmail" type="email" maxlength="80" placeholder="" autocomplete="email" />
                 <div class="hint owner-field-client-email__foot">
                   <span class="owner-field-client-email__tip">Se usa como destino sugerido al abrir Enviar cotización.</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="clientEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
@@ -989,7 +989,7 @@
               </div>
               <div class="field owner-field-client-phone">
                 <label for="clientPhone" class="owner-field-client-phone__label">Teléfono</label>
-                <input class="owner-input-client-phone" id="clientPhone" type="tel" maxlength="40" placeholder="Ej: +1 415 555 0100" autocomplete="tel" />
+                <input class="owner-input-client-phone" id="clientPhone" type="tel" maxlength="40" placeholder="" autocomplete="tel" />
                 <div class="hint owner-field-client-phone__foot">
                   <span class="owner-field-client-phone__tip">Contacto directo del cliente o GC.</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="clientPhoneCount">0</span><span class="owner-char-pill__max">/40</span></span>
@@ -997,7 +997,7 @@
               </div>
               <div class="field owner-field-location">
                 <label for="location" class="owner-field-location__label">Ubicación</label>
-                <input class="owner-input-location" id="location" maxlength="50" placeholder="Ej: San Francisco, CA" />
+                <input class="owner-input-location" id="location" maxlength="50" placeholder="" />
                 <div class="hint owner-field-location__foot">
                   <span class="owner-field-location__tip">Ciudad, zona o dirección del job site (útil en PDF y comunicación).</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="locationCount">0</span><span class="owner-char-pill__max">/50</span></span>
@@ -1005,7 +1005,7 @@
               </div>
               <div class="field owner-field-biz-pdf">
                 <label for="bizNameOwner" class="owner-field-biz-pdf__label">Nombre del negocio (en PDF)</label>
-                <input class="owner-input-biz-pdf" id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
+                <input class="owner-input-biz-pdf" id="bizNameOwner" maxlength="60" placeholder="" />
                 <div class="hint owner-field-biz-pdf__foot">
                   <span class="owner-field-biz-pdf__tip"><span class="owner-field-biz-pdf__tip-kick">PDF</span><span class="owner-field-biz-pdf__tip-sep"> — </span>Este texto es el que muestra Margin Guard como tu marca en encabezados y bloques de identidad de los PDF que ve el cliente (cotización, etc.). Pon aquí el nombre comercial o legal con el que quieres presentarte.</span>
                   <span class="owner-char-pill" title="Caracteres usados"><span id="bizNameOwnerCount">0</span><span class="owner-char-pill__max">/60</span></span>
@@ -1033,12 +1033,12 @@
                     <div class="sales-op-toolbar form sales-operational__toolbar">
                       <div class="field" id="ownerOperationalOverrideDaysWrap">
                         <label id="ownerOperationalOverrideDaysLabel">Estimated project days (override)</label>
-                        <input id="ownerOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
+                        <input id="ownerOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="" />
                         <div class="hint" id="ownerOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
                       </div>
                       <div class="field" id="ownerOperationalOverrideHoursWrap" style="display:none;">
                         <label id="ownerOperationalOverrideHoursLabel">Estimated project hours (override)</label>
-                        <input id="ownerOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
+                        <input id="ownerOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="" />
                         <div class="hint" id="ownerOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
                       </div>
                     </div>
@@ -1075,7 +1075,7 @@
                         id="quoteNotes"
                         rows="6"
                         maxlength="2000"
-                        placeholder="Scope of work included with this quote for the client."
+                        placeholder=""
                         aria-describedby="ownerScopeWorkLead"
                       ></textarea>
                       <div class="hint owner-field-quote-notes__foot owner-op-scope-work__foot">
@@ -1263,7 +1263,7 @@
           <div class="form owner-send-modal__grid owner-send-modal__grid--dest">
             <div class="field owner-send-modal__field owner-send-modal__field--email">
               <label for="toEmail" class="owner-send-modal__field-label">Email del cliente <span class="owner-send-modal__label-pill">Principal</span></label>
-              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toEmail" type="email" maxlength="80" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Destino del envío: aquí llega la cotización al cliente.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="toEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
@@ -1271,7 +1271,7 @@
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--name">
               <label for="toName" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Nombre del cliente (opcional)</label>
-              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toName" maxlength="60" placeholder="Nombre" />
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toName" maxlength="60" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Opcional; úsalo para personalizar el saludo en el correo.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="toNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
@@ -1286,7 +1286,7 @@
           <div class="form owner-send-modal__grid owner-send-modal__grid--meta">
             <div class="field owner-send-modal__field owner-send-modal__field--initials">
               <label for="salesInitials" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Iniciales (vendedor)</label>
-              <input class="owner-send-modal__input owner-send-modal__input--dest owner-send-modal__input--initials" id="salesInitials" maxlength="6" placeholder="LM" />
+              <input class="owner-send-modal__input owner-send-modal__input--dest owner-send-modal__input--initials" id="salesInitials" maxlength="6" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Compacto; se usan en la pieza de envío cuando aplica.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="salesInitialsCount">0</span><span class="owner-char-pill__max">/6</span></span>
@@ -1294,14 +1294,14 @@
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--deposit">
               <label for="deposit" class="owner-send-modal__field-label">Depósito requerido (fijo) <span class="owner-send-modal__label-pill owner-send-modal__label-pill--money">Monto</span></label>
-              <input class="owner-send-modal__input owner-send-modal__input--dest" id="deposit" type="number" step="0.01" placeholder="1000" />
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="deposit" type="number" step="0.01" placeholder="" />
               <div class="hint owner-send-modal__field-foot owner-send-modal__field-foot--solo">
                 <span class="owner-send-modal__field-tip">Cifra fija del depósito asociado a este envío (revisa antes de enviar).</span>
               </div>
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--subject">
               <label for="subject" class="owner-send-modal__field-label">Asunto del correo <span class="owner-send-modal__label-pill">Línea principal</span></label>
-              <input class="owner-send-modal__input owner-send-modal__input--dest" id="subject" maxlength="90" placeholder="Ej: Estimate / Cotización – proyecto" />
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="subject" maxlength="90" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Primera línea que ve el cliente en su bandeja; debe resumir el trato.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="subjectCount">0</span><span class="owner-char-pill__max">/90</span></span>
@@ -1316,7 +1316,7 @@
           <div class="owner-send-modal__content-stack">
             <div class="field owner-send-modal__field owner-send-modal__field--scope">
               <label for="scope" class="owner-send-modal__field-label">Scope / Notas <span class="owner-send-modal__label-pill owner-send-modal__label-pill--soft">Contexto</span></label>
-              <textarea class="owner-send-modal__textarea" id="scope" rows="5" maxlength="1200" placeholder="Descripción del trabajo, alcance, exclusiones, etc."></textarea>
+              <textarea class="owner-send-modal__textarea" id="scope" rows="5" maxlength="1200" placeholder=""></textarea>
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Define alcance y límites; va en el cuerpo del envío según tu plantilla.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="scopeCount">0</span><span class="owner-char-pill__max">/1200</span></span>
@@ -1324,7 +1324,7 @@
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--message">
               <label for="message" class="owner-send-modal__field-label">Mensaje al cliente <span class="owner-send-modal__label-pill">Cuerpo principal</span></label>
-              <textarea class="owner-send-modal__textarea" id="message" rows="6" maxlength="1200" placeholder="Saludo, propuesta comercial y siguiente paso para el cliente."></textarea>
+              <textarea class="owner-send-modal__textarea" id="message" rows="6" maxlength="1200" placeholder=""></textarea>
               <div class="hint owner-send-modal__field-foot">
                 <span class="owner-send-modal__field-tip">Texto principal del correo; revisa tono y datos antes de enviar.</span>
                 <span class="owner-char-pill" title="Caracteres usados"><span id="messageCount">0</span><span class="owner-char-pill__max">/1200</span></span>
