@@ -189,8 +189,8 @@ ok(
     /Number\.isFinite\(reservePctRaw\)/.test(salesSrc)
 );
 ok(
-  "owner sales page cache-busts the post-send operational plan reset",
-  /\/js\/app\.js\?v=post-send-operational-plan-reset-2/.test(salesSrc)
+  "owner sales page cache-busts the Seller visual-dollar writer",
+  /\/js\/app\.js\?v=seller-visual-dollar-source-v1/.test(salesSrc)
 );
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
