@@ -424,12 +424,14 @@
           : "—";
         const status = norm(row.status);
         const canManage = status !== "revoked";
+        const deleteBtn = `<button type="button" class="btn danger" data-td-device-action="delete" data-td-device-id="${escapeHtml(row.id)}">Delete</button>`;
         const actions = canManage
           ? `<div class="td-row-actions">
               <button type="button" class="btn ghost" data-td-device-action="reset" data-td-device-id="${escapeHtml(row.id)}">Reset Pairing</button>
               <button type="button" class="btn danger" data-td-device-action="revoke" data-td-device-id="${escapeHtml(row.id)}">Revoke</button>
+              ${deleteBtn}
             </div>`
-          : `<span class="td-protected">Revoked</span>`;
+          : `<div class="td-row-actions">${deleteBtn}</div>`;
 
         return `
           <tr>
@@ -451,6 +453,7 @@
         if (!id) return;
         if (action === "reset") void handleResetPairing(id);
         if (action === "revoke") void handleRevokeDevice(id);
+        if (action === "delete") void handleDeleteDevice(id);
       });
     });
   }
@@ -540,6 +543,28 @@
     }
 
     showNotice("Device revoked.", "ok");
+    await loadDevices();
+  }
+
+  async function handleDeleteDevice(deviceId) {
+    const row = state.devices.find((d) => d.id === deviceId);
+    const label = row?.display_name || "this device";
+    const ok = window.confirm(
+      `Delete ${label} permanently? This removes it from Team & Devices and disconnects any sessions. This cannot be undone.`
+    );
+    if (!ok) return;
+
+    const { response, data } = await apiRequest("/delete-tenant-device", {
+      method: "POST",
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+
+    if (!response.ok || data.ok !== true) {
+      showNotice(apiErrorMessage(data, "Could not delete device."), "err");
+      return;
+    }
+
+    showNotice("Device deleted.", "ok");
     await loadDevices();
   }
 
