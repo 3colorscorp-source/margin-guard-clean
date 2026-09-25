@@ -120,6 +120,11 @@
       color: rgba(232, 238, 252, 0.72);
       line-height: 1.45;
     }
+    body.team-devices-page .account-pill,
+    body.team-devices-page .td-hero,
+    body.team-devices-page .td-section__head .sub {
+      display: none !important;
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="team-devices-page" data-mg-app-nav data-mg-page-title="Team &amp; Devices">
@@ -163,7 +168,7 @@
             Status
             <select id="tdFilterStatus">
               <option value="">All</option>
-              <option value="active">Active</option>
+              <option value="active" selected>Active</option>
               <option value="suspended">Suspended</option>
               <option value="removed">Removed</option>
               <option value="invited">Invited</option>
