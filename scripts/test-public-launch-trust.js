@@ -1,6 +1,7 @@
 /**
  * Public-launch trust: visual money, English customer/dashboard chrome, refunds.
  * Isolated source assertions. No live Netlify/Supabase.
+ * Invoice Hub scope: Dashboard money() lives in public/js/app.js shared scan.
  * Run: node scripts/test-public-launch-trust.js
  */
 "use strict";
