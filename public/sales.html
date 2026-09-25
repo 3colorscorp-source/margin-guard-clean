@@ -165,8 +165,39 @@
       font-weight: 700;
     }
     html[data-sales-portal="seller"] #salesProjectInfoSection .field input, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field input,
-    html[data-sales-portal="seller"] #salesProjectInfoSection .field textarea, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field textarea{
+    html[data-sales-portal="seller"] #salesProjectInfoSection .field textarea, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field textarea,
+    html[data-sales-portal="seller"] #salesContactSearch, html[data-owner-seller-preview="true"] #salesContactSearch,
+    html[data-sales-portal="seller"] .seller-operational .sales-op-toolbar .field input, html[data-owner-seller-preview="true"] .seller-operational .sales-op-toolbar .field input,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field input:not([readonly]):not(:disabled), html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__dates-card .field input:not([readonly]):not(:disabled),
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled), html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled),
+    html[data-sales-portal="seller"] #salesOpDayModal .field input:not([readonly]):not(:disabled), html[data-owner-seller-preview="true"] #salesOpDayModal .field input:not([readonly]):not(:disabled),
+    html[data-sales-portal="seller"] #salesOpDayModal .field select:not(:disabled), html[data-owner-seller-preview="true"] #salesOpDayModal .field select:not(:disabled),
+    html[data-sales-portal="seller"] #salesOpDayModal .field textarea:not([readonly]), html[data-owner-seller-preview="true"] #salesOpDayModal .field textarea:not([readonly]){
       font-size: 13px;
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      color: #e8eefc;
+      caret-color: #e8eefc;
+      color-scheme: dark;
+    }
+    html[data-sales-portal="seller"] #salesProjectInfoSection .field input:focus, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field input:focus,
+    html[data-sales-portal="seller"] #salesProjectInfoSection .field textarea:focus, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field textarea:focus,
+    html[data-sales-portal="seller"] #salesContactSearch:focus, html[data-owner-seller-preview="true"] #salesContactSearch:focus,
+    html[data-sales-portal="seller"] .seller-operational .sales-op-toolbar .field input:focus, html[data-owner-seller-preview="true"] .seller-operational .sales-op-toolbar .field input:focus,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus, html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus,
+    html[data-sales-portal="seller"] #salesOpDayModal .field input:focus, html[data-owner-seller-preview="true"] #salesOpDayModal .field input:focus,
+    html[data-sales-portal="seller"] #salesOpDayModal .field select:focus, html[data-owner-seller-preview="true"] #salesOpDayModal .field select:focus,
+    html[data-sales-portal="seller"] #salesOpDayModal .field textarea:focus, html[data-owner-seller-preview="true"] #salesOpDayModal .field textarea:focus{
+      border-color: rgba(125, 211, 252, 0.62);
+      background: #202c44;
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.16);
+      outline: none;
+    }
+    html[data-sales-portal="seller"] #salesProjectInfoSection .field input::placeholder, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field input::placeholder,
+    html[data-sales-portal="seller"] #salesProjectInfoSection .field textarea::placeholder, html[data-owner-seller-preview="true"] #salesProjectInfoSection .field textarea::placeholder,
+    html[data-sales-portal="seller"] #salesContactSearch::placeholder, html[data-owner-seller-preview="true"] #salesContactSearch::placeholder{
+      color: rgba(232, 238, 252, 0.42);
     }
     html[data-sales-portal="seller"] #salesProjectInfoSection .hint, html[data-owner-seller-preview="true"] #salesProjectInfoSection .hint{
       font-size: 11px;
@@ -290,9 +321,6 @@
       line-height: 1.2;
       white-space: nowrap;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar > #btnSellerGenerateScopeDraft, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__action-bar > #btnSellerGenerateScopeDraft{
-      flex: 0 1 auto;
-    }
     html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work, html[data-owner-seller-preview="true"] .seller-operational .seller-op-scope-work{
       margin: 10px 0 0;
       padding: 12px 14px;
@@ -323,14 +351,22 @@
       margin: 0;
       padding: 12px 14px;
       border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(0, 0, 0, 0.22);
-      color: rgba(232, 238, 252, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
+      color: #e8eefc;
+      caret-color: #e8eefc;
+      color-scheme: dark;
       font-family: inherit;
       font-size: 13px;
       line-height: 1.6;
       resize: vertical;
       box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work__editor:focus, html[data-owner-seller-preview="true"] .seller-operational .seller-op-scope-work__editor:focus{
+      border-color: rgba(125, 211, 252, 0.62);
+      background: #202c44;
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.16);
+      outline: none;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work .field > label, html[data-owner-seller-preview="true"] .seller-operational .seller-op-scope-work .field > label{
       position: absolute;
@@ -580,12 +616,12 @@
       min-height: 42px;
       padding: 10px 12px;
       border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(6, 10, 20, 0.58);
+      border: 1px solid rgba(226, 232, 240, 0.36);
+      background: #1a2438;
       font-size: 13px;
       font-weight: 600;
-      color: rgba(232, 238, 252, 0.96);
-      caret-color: rgba(232, 238, 252, 0.96);
+      color: #e8eefc;
+      caret-color: #e8eefc;
       color-scheme: dark;
       box-sizing: border-box;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -604,8 +640,9 @@
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table td select:focus, html[data-owner-seller-preview="true"] .seller-operational .sales-labor-table td select:focus,
     body.seller-portal-layout .seller-operational .sales-labor-table td input:focus, body.owner-seller-preview-layout .seller-operational .sales-labor-table td input:focus,
     body.seller-portal-layout .seller-operational .sales-labor-table td select:focus, body.owner-seller-preview-layout .seller-operational .sales-labor-table td select:focus{
-      border-color: rgba(34, 197, 94, 0.38);
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+      border-color: rgba(125, 211, 252, 0.62);
+      background: #202c44;
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.16);
       outline: none;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table td input[readonly], html[data-owner-seller-preview="true"] .seller-operational .sales-labor-table td input[readonly],
@@ -621,8 +658,8 @@
       font-size: 14px;
       font-weight: 650;
       letter-spacing: 0.015em;
-      border-color: rgba(255, 255, 255, 0.14);
-      background: rgba(8, 14, 28, 0.75);
+      border-color: rgba(226, 232, 240, 0.36);
+      background: #1a2438;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table td select[data-key="type"], html[data-owner-seller-preview="true"] .seller-operational .sales-labor-table td select[data-key="type"],
     body.seller-portal-layout .seller-operational .sales-labor-table td select[data-key="type"], body.owner-seller-preview-layout .seller-operational .sales-labor-table td select[data-key="type"]{
@@ -643,8 +680,8 @@
       font-variant-numeric: tabular-nums;
       letter-spacing: 0.02em;
       text-align: center;
-      border-color: rgba(59, 130, 246, 0.22);
-      background: rgba(59, 130, 246, 0.07);
+      border-color: rgba(226, 232, 240, 0.36);
+      background: #1a2438;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-td-actions, html[data-owner-seller-preview="true"] .seller-operational .sales-labor-td-actions,
     body.seller-portal-layout .seller-operational .sales-labor-td-actions, body.owner-seller-preview-layout .seller-operational .sales-labor-td-actions{
@@ -714,20 +751,36 @@
       flex: 1 1 auto;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-weekdays, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-weekdays{
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 4px;
-      margin: 0 0 6px;
-      font-size: 10px;
-      color: rgba(232, 238, 252, 0.55);
+      display: none !important;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-calendar-grid, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-calendar-grid{
-      gap: 4px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 6px;
       flex: 1 1 auto;
+      align-content: start;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell{
-      min-height: 40px;
-      padding: 4px;
+      min-width: 0;
+      min-height: 0;
+      max-height: 88px;
+      padding: 6px 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__daynum, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__daynum,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__date, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__date,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__task, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__task,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__crew, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__calendar-card .sales-op-cal-cell__crew{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: block;
+      -webkit-line-clamp: unset;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .sales-quote-dates-row, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__dates-card .sales-quote-dates-row,
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .owner-date-group, html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash__dates-card .owner-date-group,
@@ -2629,7 +2682,7 @@
         if (isSectionVisibleOutsideSellerDash('salesNotesSection')) return false;
         if (isSectionVisibleOutsideSellerDash('salesLaborSection')) return false;
         if (!dash.querySelector('#salesMessageToClient')) return false;
-        if (!dash.querySelector('#btnSellerGenerateScopeDraft, #btnAddOperationalDay')) return false;
+        if (!dash.querySelector('#btnAddOperationalDay')) return false;
         if (!dash.querySelector('#btnReviewConfirmOperationalPlan')) return false;
         var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
         if (!verifySellerOpStackChildOrder(stack)) return false;
@@ -4027,8 +4080,7 @@
         return __mgSellerFinalLayoutCheck();
       };
       window.__mgC20ScriptLoaded = 'C20-C31-C';
-      window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
-      window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
+      window.removeSellerGenerateScopeDraftButton = removeSellerGenerateScopeDraftButton;
 
       function hideSellerLegacySectionsOutsidePlanHard() {
         if (
@@ -4313,7 +4365,7 @@
           quoteCta.setAttribute('aria-hidden', 'true');
         }
 
-        ensureSellerGenerateScopeDraftButton();
+        removeSellerGenerateScopeDraftButton();
         flattenSellerOpDashLegacyColumns(dash);
         ensureSellerOpDashCardsGrid(dash);
         return true;
@@ -4548,52 +4600,11 @@
         return syncSalesMessageToClientField(draft);
       }
 
-      function bindSellerGenerateScopeDraftButton(btn) {
-        btn = btn || document.getElementById('btnSellerGenerateScopeDraft');
-        if (!btn || btn.dataset.sellerScopeDraftBound === 'true') return btn;
-        btn.dataset.sellerScopeDraftBound = 'true';
-        btn.addEventListener('click', function () {
-          generateSellerScopeDraftFromOperationalPlan();
+      function removeSellerGenerateScopeDraftButton() {
+        document.querySelectorAll('#btnSellerGenerateScopeDraft').forEach(function (el) {
+          el.remove();
         });
-        return btn;
-      }
-
-      function ensureSellerGenerateScopeDraftButton(actionBar) {
-        if (!canRunSellerApprovedContentLayout()) return null;
-
-        actionBar =
-          actionBar ||
-          document.querySelector(
-            '.seller-op-dash[data-seller-owner-layout="true"] .seller-op-dash__action-bar, .seller-op-dash[data-seller-owner-layout="true"] .owner-op-dash__action-bar'
-          );
-        if (!actionBar) return null;
-
-        document.querySelectorAll('#btnSellerGenerateScopeDraft').forEach(function (el, idx) {
-          if (idx > 0) el.remove();
-        });
-
-        var btn = document.getElementById('btnSellerGenerateScopeDraft');
-        if (!btn) {
-          btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'btn';
-          btn.id = 'btnSellerGenerateScopeDraft';
-          btn.textContent = 'Generate Scope Draft';
-        }
-
-        var addDayBtn = document.getElementById('btnAddOperationalDay');
-        if (addDayBtn && actionBar.contains(addDayBtn)) {
-          if (btn.parentNode !== actionBar) {
-            actionBar.insertBefore(btn, addDayBtn.nextSibling);
-          } else if (btn.previousElementSibling !== addDayBtn) {
-            actionBar.insertBefore(btn, addDayBtn.nextSibling);
-          }
-        } else if (!actionBar.contains(btn)) {
-          actionBar.insertBefore(btn, actionBar.firstChild);
-        }
-
-        bindSellerGenerateScopeDraftButton(btn);
-        return btn;
+        return null;
       }
 
       function bindVoicePlanReviewButton(reviewBtn) {
@@ -4627,10 +4638,10 @@
         if (!btn.className) btn.className = 'btn';
         btn.textContent = 'Review & confirm plan';
 
-        var scopeDraftBtn = document.getElementById('btnSellerGenerateScopeDraft');
-        if (scopeDraftBtn && actionBar.contains(scopeDraftBtn)) {
-          if (btn.parentNode !== actionBar || btn.previousElementSibling !== scopeDraftBtn) {
-            actionBar.insertBefore(btn, scopeDraftBtn.nextSibling);
+        var addDayBtn = document.getElementById('btnAddOperationalDay');
+        if (addDayBtn && actionBar.contains(addDayBtn)) {
+          if (btn.parentNode !== actionBar || btn.previousElementSibling !== addDayBtn) {
+            actionBar.insertBefore(btn, addDayBtn.nextSibling);
           }
         } else if (!actionBar.contains(btn)) {
           var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
@@ -4988,7 +4999,7 @@
           addDayBtn.classList.add('primary');
           actionBar.insertBefore(addDayBtn, actionBar.firstChild);
         }
-        ensureSellerGenerateScopeDraftButton(actionBar);
+        removeSellerGenerateScopeDraftButton();
         ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
         if (!laborBar) {
@@ -5031,7 +5042,7 @@
         });
 
         finalizeSellerOrphanCleanup();
-        ensureSellerGenerateScopeDraftButton(actionBar);
+        removeSellerGenerateScopeDraftButton();
         ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         return true;
       }
@@ -5089,22 +5100,7 @@
           addDayBtn.classList.add('primary');
           actionBar.appendChild(addDayBtn);
         }
-        var scopeDraftBtn = document.getElementById('btnSellerGenerateScopeDraft');
-        if (!scopeDraftBtn) {
-          scopeDraftBtn = document.createElement('button');
-          scopeDraftBtn.type = 'button';
-          scopeDraftBtn.className = 'btn';
-          scopeDraftBtn.id = 'btnSellerGenerateScopeDraft';
-          scopeDraftBtn.textContent = 'Generate Scope Draft';
-        }
-        if (!actionBar.contains(scopeDraftBtn)) {
-          if (addDayBtn && addDayBtn.parentNode === actionBar) {
-            actionBar.insertBefore(scopeDraftBtn, addDayBtn.nextSibling);
-          } else {
-            actionBar.appendChild(scopeDraftBtn);
-          }
-        }
-        bindSellerGenerateScopeDraftButton(scopeDraftBtn);
+        removeSellerGenerateScopeDraftButton();
         ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         var laborBar = document.createElement('div');
         laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
@@ -6340,12 +6336,15 @@
               const dateLabel = hasStart && cell.date
                 ? formatSalesOpDate(cell.date).replace(/, \d{4}$/, '')
                 : 'Plan day';
+              const taskLabel = cell.phase || 'Scheduled work';
+              const crewLabel = cell.crew || '';
+              const titleLabel = [dayLabel, dateLabel, taskLabel, crewLabel].filter(Boolean).join(' · ');
               return (
-                '<article class="sales-op-cal-cell ' + escapeHtmlOperational(cell.toneClass) + '">' +
+                '<article class="sales-op-cal-cell ' + escapeHtmlOperational(cell.toneClass) + '" title="' + escapeHtmlOperational(titleLabel) + '">' +
                 '<div class="sales-op-cal-cell__daynum">' + escapeHtmlOperational(dayLabel) + '</div>' +
                 '<div class="sales-op-cal-cell__date">' + escapeHtmlOperational(dateLabel) + '</div>' +
-                '<div class="sales-op-cal-cell__task">' + escapeHtmlOperational(cell.phase || 'Scheduled work') + '</div>' +
-                '<div class="sales-op-cal-cell__crew">' + escapeHtmlOperational(cell.crew || '') + '</div>' +
+                '<div class="sales-op-cal-cell__task">' + escapeHtmlOperational(taskLabel) + '</div>' +
+                '<div class="sales-op-cal-cell__crew">' + escapeHtmlOperational(crewLabel) + '</div>' +
                 '</article>'
               );
             })
