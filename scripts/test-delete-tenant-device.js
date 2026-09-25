@@ -36,6 +36,7 @@ const DEVICE_A = "44444444-4444-4444-8444-444444444444";
 
 const fnSrc = read("netlify/functions/delete-tenant-device.js");
 const uiSrc = read("public/js/team-devices.js");
+const htmlSrc = read("public/team-devices.html");
 const revokeSrc = read("netlify/functions/revoke-tenant-device.js");
 
 checkSyntax("netlify/functions/delete-tenant-device.js");
@@ -68,7 +69,18 @@ ok("revoke remains soft-only", revokeSrc.includes('status: "revoked"') && !revok
 ok("UI Delete action exists", uiSrc.includes('data-td-device-action="delete"'));
 ok("UI Delete label exists", uiSrc.includes(">Delete</button>"));
 ok("UI posts to delete-tenant-device", uiSrc.includes("/delete-tenant-device"));
-ok("UI confirms permanent delete", uiSrc.includes("Delete ${label} permanently?"));
+ok("delete confirm is an in-app modal", htmlSrc.includes('id="tdDeleteDeviceModal"'));
+ok("delete confirm title is professional", htmlSrc.includes('id="tdDeleteDeviceTitle">Delete device<'));
+ok(
+  "delete confirm is not a browser dialog",
+  !uiSrc.includes("Delete ${label} permanently?") && !uiSrc.includes("handleDeleteDevice")
+);
+ok("delete confirm explains session end", htmlSrc.includes("Any active session on that tablet ends immediately."));
+ok(
+  "delete confirm preserves quotes and members",
+  htmlSrc.includes("Quotes, projects, and member accounts are not deleted.")
+);
+ok("delete confirm button is Delete device", htmlSrc.includes('id="tdDeleteDeviceConfirm">Delete device<'));
 ok("UI still offers Revoke on active devices", uiSrc.includes('data-td-device-action="revoke"'));
 ok(
   "revoked rows keep Delete instead of a dead Revoked span",
@@ -76,7 +88,7 @@ ok(
     uiSrc.includes('data-td-device-action="delete"') &&
     !uiSrc.includes('<span class="td-protected">Revoked</span>')
 );
-ok("handleDeleteDevice is wired", uiSrc.includes("if (action === \"delete\") void handleDeleteDevice(id);"));
+ok("delete action opens the confirm modal", uiSrc.includes('if (action === "delete") openDeleteDeviceModal(id);'));
 
 function loadHandler(supabaseRequest) {
   [
