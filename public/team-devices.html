@@ -120,6 +120,40 @@
       color: rgba(232, 238, 252, 0.72);
       line-height: 1.45;
     }
+    .td-confirm-modal .modal-card {
+      width: min(460px, 96vw);
+    }
+    .td-confirm-lead {
+      margin: 0 0 8px;
+      font-size: 0.875rem;
+      color: rgba(232, 238, 252, 0.78);
+      line-height: 1.45;
+    }
+    .td-confirm-device {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: #e8eefc;
+      word-break: break-word;
+    }
+    .td-confirm-list {
+      margin: 12px 0 0;
+      padding-left: 1.15em;
+      font-size: 0.875rem;
+      color: rgba(232, 238, 252, 0.78);
+      line-height: 1.55;
+    }
+    .td-confirm-list li + li { margin-top: 4px; }
+    .td-confirm-note {
+      margin: 12px 0 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.62);
+      line-height: 1.45;
+    }
     body.team-devices-page .account-pill,
     body.team-devices-page .td-hero,
     body.team-devices-page .td-section__head .sub {
@@ -326,6 +360,33 @@
       <div class="modal-footer">
         <button type="button" class="btn ghost" id="tdPairingCopy">Copy code</button>
         <button type="button" class="btn primary" id="tdPairingDone">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tdDeleteDeviceModal" class="modal td-confirm-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="tdDeleteDeviceTitle" aria-describedby="tdDeleteDeviceSubtitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tdDeleteDeviceTitle">Delete device</div>
+          <div class="modal-subtitle" id="tdDeleteDeviceSubtitle">Confirm this action before continuing. It cannot be reversed.</div>
+        </div>
+        <button type="button" class="btn ghost" id="tdDeleteDeviceClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <p class="td-confirm-lead">You are about to permanently remove this device from Team &amp; Devices:</p>
+        <p class="td-confirm-device" id="tdDeleteDeviceName"></p>
+        <ul class="td-confirm-list">
+          <li>The device is removed from this company list.</li>
+          <li>Any active session on that tablet ends immediately.</li>
+          <li>The tablet will need a new device record to sign in again.</li>
+        </ul>
+        <p class="td-confirm-note">Quotes, projects, and member accounts are not deleted.</p>
+        <p id="tdDeleteDeviceError" class="sub" style="color:#fca5a5;margin:12px 0 0;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="tdDeleteDeviceCancel">Cancel</button>
+        <button type="button" class="btn danger" id="tdDeleteDeviceConfirm">Delete device</button>
       </div>
     </div>
   </div>

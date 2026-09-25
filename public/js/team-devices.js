@@ -11,6 +11,8 @@
     devices: [],
     pairingCode: null,
     inviteInFlight: false,
+    pendingDeleteId: null,
+    deleteInFlight: false,
   };
 
   function $(id) {
@@ -453,7 +455,7 @@
         if (!id) return;
         if (action === "reset") void handleResetPairing(id);
         if (action === "revoke") void handleRevokeDevice(id);
-        if (action === "delete") void handleDeleteDevice(id);
+        if (action === "delete") openDeleteDeviceModal(id);
       });
     });
   }
@@ -546,26 +548,65 @@
     await loadDevices();
   }
 
-  async function handleDeleteDevice(deviceId) {
+  function openDeleteDeviceModal(deviceId) {
     const row = state.devices.find((d) => d.id === deviceId);
-    const label = row?.display_name || "this device";
-    const ok = window.confirm(
-      `Delete ${label} permanently? This removes it from Team & Devices and disconnects any sessions. This cannot be undone.`
-    );
-    if (!ok) return;
+    if (!row?.id) return;
+    state.pendingDeleteId = row.id;
+    const nameEl = $("tdDeleteDeviceName");
+    if (nameEl) nameEl.textContent = row.display_name || "Unnamed device";
+    const err = $("tdDeleteDeviceError");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    const confirmBtn = $("tdDeleteDeviceConfirm");
+    if (confirmBtn) confirmBtn.disabled = false;
+    openModal($("tdDeleteDeviceModal"));
+  }
 
-    const { response, data } = await apiRequest("/delete-tenant-device", {
-      method: "POST",
-      body: JSON.stringify({ device_id: deviceId }),
-    });
+  function closeDeleteDeviceModal() {
+    if (state.deleteInFlight) return;
+    state.pendingDeleteId = null;
+    closeModal($("tdDeleteDeviceModal"));
+  }
 
-    if (!response.ok || data.ok !== true) {
-      showNotice(apiErrorMessage(data, "Could not delete device."), "err");
-      return;
+  async function confirmDeleteDevice() {
+    const deviceId = state.pendingDeleteId;
+    if (!deviceId || state.deleteInFlight) return;
+
+    state.deleteInFlight = true;
+    const confirmBtn = $("tdDeleteDeviceConfirm");
+    if (confirmBtn) confirmBtn.disabled = true;
+    const err = $("tdDeleteDeviceError");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
     }
 
-    showNotice("Device deleted.", "ok");
-    await loadDevices();
+    try {
+      const { response, data } = await apiRequest("/delete-tenant-device", {
+        method: "POST",
+        body: JSON.stringify({ device_id: deviceId }),
+      });
+
+      if (!response.ok || data.ok !== true) {
+        const message = apiErrorMessage(data, "Could not delete device.");
+        if (err) {
+          err.hidden = false;
+          err.textContent = message;
+        }
+        showNotice(message, "err");
+        return;
+      }
+
+      state.pendingDeleteId = null;
+      closeModal($("tdDeleteDeviceModal"));
+      showNotice("Device deleted.", "ok");
+      await loadDevices();
+    } finally {
+      state.deleteInFlight = false;
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
   }
 
   function populateDeviceMemberDropdown() {
@@ -718,6 +759,12 @@
       clearPairingModal();
       closeModal($("tdPairingModal"));
     });
+    $("tdDeleteDeviceClose")?.addEventListener("click", closeDeleteDeviceModal);
+    $("tdDeleteDeviceCancel")?.addEventListener("click", closeDeleteDeviceModal);
+    $("tdDeleteDeviceConfirm")?.addEventListener("click", () => {
+      void confirmDeleteDevice();
+    });
+
     $("tdPairingCopy")?.addEventListener("click", async () => {
       const errEl = $("tdPairingError");
       if (!state.pairingCode) return;
@@ -732,10 +779,14 @@
       }
     });
 
-    [$("tdCreateMemberModal"), $("tdCreateDeviceModal"), $("tdPairingModal")].forEach((modal) => {
+    [$("tdCreateMemberModal"), $("tdCreateDeviceModal"), $("tdPairingModal"), $("tdDeleteDeviceModal")].forEach((modal) => {
       modal?.addEventListener("click", (event) => {
         if (event.target === modal) {
           if (modal.id === "tdPairingModal") clearPairingModal();
+          if (modal.id === "tdDeleteDeviceModal") {
+            closeDeleteDeviceModal();
+            return;
+          }
           closeModal(modal);
         }
       });
