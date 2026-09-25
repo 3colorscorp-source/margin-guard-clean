@@ -391,6 +391,33 @@
     </div>
   </div>
 
+  <div id="tdDeleteMemberModal" class="modal td-confirm-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="tdDeleteMemberTitle" aria-describedby="tdDeleteMemberSubtitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tdDeleteMemberTitle">Delete member</div>
+          <div class="modal-subtitle" id="tdDeleteMemberSubtitle">Confirm this action before continuing. It cannot be reversed.</div>
+        </div>
+        <button type="button" class="btn ghost" id="tdDeleteMemberClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <p class="td-confirm-lead">You are about to permanently remove this member from Team &amp; Devices:</p>
+        <p class="td-confirm-device" id="tdDeleteMemberName"></p>
+        <ul class="td-confirm-list">
+          <li>The member is removed from this company list.</li>
+          <li>Assigned devices are deleted and any active sessions end immediately.</li>
+          <li>This person will need a new membership to sign in again.</li>
+        </ul>
+        <p class="td-confirm-note">Quotes, projects, and company records are not deleted.</p>
+        <p id="tdDeleteMemberError" class="sub" style="color:#fca5a5;margin:12px 0 0;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="tdDeleteMemberCancel">Cancel</button>
+        <button type="button" class="btn danger" id="tdDeleteMemberConfirm">Delete member</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>

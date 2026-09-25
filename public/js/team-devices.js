@@ -13,6 +13,8 @@
     inviteInFlight: false,
     pendingDeleteId: null,
     deleteInFlight: false,
+    pendingMemberDeleteId: null,
+    memberDeleteInFlight: false,
   };
 
   function $(id) {
@@ -310,6 +312,9 @@
               `<button type="button" class="btn danger" data-td-action="remove" data-td-id="${escapeHtml(row.id)}">Remove</button>`
             );
           }
+          parts.push(
+            `<button type="button" class="btn danger" data-td-action="delete" data-td-id="${escapeHtml(row.id)}">Delete</button>`
+          );
           actionsHtml = `<div class="td-row-actions">${parts.join("")}</div>`;
         }
 
@@ -334,6 +339,10 @@
         if (!id) return;
         if (action === "invite-login") {
           void handleSupervisorInvite(id);
+          return;
+        }
+        if (action === "delete") {
+          openDeleteMemberModal(id);
           return;
         }
         void handleMemberAction(action, id);
@@ -490,6 +499,79 @@
     showNotice(`Membership updated (${status}).`, "ok");
     await loadMemberships();
     await loadDevices();
+  }
+
+  function memberDeleteLabel(row) {
+    const name = memberDisplayName(row);
+    const email = String(row?.email || "").trim();
+    if (email && name !== email) return `${name} (${email})`;
+    return name || "this member";
+  }
+
+  function openDeleteMemberModal(membershipId) {
+    const row = state.memberships.find((m) => m.id === membershipId);
+    if (!row?.id) return;
+    if (PROTECTED_ROLES.has(norm(row.role))) {
+      showNotice("Owner and admin memberships cannot be deleted.", "info");
+      return;
+    }
+    state.pendingMemberDeleteId = row.id;
+    const nameEl = $("tdDeleteMemberName");
+    if (nameEl) nameEl.textContent = memberDeleteLabel(row);
+    const err = $("tdDeleteMemberError");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    const confirmBtn = $("tdDeleteMemberConfirm");
+    if (confirmBtn) confirmBtn.disabled = false;
+    openModal($("tdDeleteMemberModal"));
+  }
+
+  function closeDeleteMemberModal() {
+    if (state.memberDeleteInFlight) return;
+    state.pendingMemberDeleteId = null;
+    closeModal($("tdDeleteMemberModal"));
+  }
+
+  async function confirmDeleteMember() {
+    const membershipId = state.pendingMemberDeleteId;
+    if (!membershipId || state.memberDeleteInFlight) return;
+
+    state.memberDeleteInFlight = true;
+    const confirmBtn = $("tdDeleteMemberConfirm");
+    if (confirmBtn) confirmBtn.disabled = true;
+    const err = $("tdDeleteMemberError");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+
+    try {
+      const { response, data } = await apiRequest("/delete-tenant-membership", {
+        method: "POST",
+        body: JSON.stringify({ membership_id: membershipId }),
+      });
+
+      if (!response.ok || data.ok !== true) {
+        const message = apiErrorMessage(data, "Could not delete member.");
+        if (err) {
+          err.hidden = false;
+          err.textContent = message;
+        }
+        showNotice(message, "err");
+        return;
+      }
+
+      state.pendingMemberDeleteId = null;
+      closeModal($("tdDeleteMemberModal"));
+      showNotice("Member deleted.", "ok");
+      await loadMemberships();
+      await loadDevices();
+    } finally {
+      state.memberDeleteInFlight = false;
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
   }
 
   async function handleResetPairing(deviceId) {
@@ -764,6 +846,11 @@
     $("tdDeleteDeviceConfirm")?.addEventListener("click", () => {
       void confirmDeleteDevice();
     });
+    $("tdDeleteMemberClose")?.addEventListener("click", closeDeleteMemberModal);
+    $("tdDeleteMemberCancel")?.addEventListener("click", closeDeleteMemberModal);
+    $("tdDeleteMemberConfirm")?.addEventListener("click", () => {
+      void confirmDeleteMember();
+    });
 
     $("tdPairingCopy")?.addEventListener("click", async () => {
       const errEl = $("tdPairingError");
@@ -779,12 +866,16 @@
       }
     });
 
-    [$("tdCreateMemberModal"), $("tdCreateDeviceModal"), $("tdPairingModal"), $("tdDeleteDeviceModal")].forEach((modal) => {
+    [$("tdCreateMemberModal"), $("tdCreateDeviceModal"), $("tdPairingModal"), $("tdDeleteDeviceModal"), $("tdDeleteMemberModal")].forEach((modal) => {
       modal?.addEventListener("click", (event) => {
         if (event.target === modal) {
           if (modal.id === "tdPairingModal") clearPairingModal();
           if (modal.id === "tdDeleteDeviceModal") {
             closeDeleteDeviceModal();
+            return;
+          }
+          if (modal.id === "tdDeleteMemberModal") {
+            closeDeleteMemberModal();
             return;
           }
           closeModal(modal);
