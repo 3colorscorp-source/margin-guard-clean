@@ -1,5 +1,5 @@
 /**
- * Contract Builder customer preview: toolbar must not cut a dark line through the paper.
+ * Contract Builder customer preview — ultra-pro document studio.
  * Isolated source assertions. No live Netlify/Supabase.
  * Run: node scripts/test-contract-builder-preview-toolbar.js
  */
@@ -19,31 +19,44 @@ function ok(label, cond) {
   console.log("PASS " + label);
 }
 
-const start = html.indexOf("body.cb-customer-preview {");
-ok("customer preview CSS block exists", start >= 0);
-const previewCss = start >= 0 ? html.slice(start, start + 900) : "";
+function sliceFrom(startToken, endToken) {
+  const i = html.indexOf(startToken);
+  assert.ok(i >= 0, "missing " + startToken);
+  const rest = html.slice(i);
+  const j = rest.indexOf(endToken);
+  return j > 0 ? rest.slice(0, j) : rest.slice(0, 4000);
+}
 
+const previewCss = sliceFrom(
+  "/* Customer preview: document studio, not the builder chrome. */",
+  ".cb-legal-banner {"
+);
+
+ok("customer preview CSS block exists", previewCss.length > 200);
+ok("preview clears hidden topbar offset", previewCss.includes("--mg-topbar-height: 0px"));
+ok("preview uses a light document studio background", previewCss.includes("#d6d1c7"));
 ok(
-  "preview clears hidden topbar offset",
-  previewCss.includes("--mg-topbar-height: 0px")
+  "preview hides builder brand and draft pill",
+  previewCss.includes(".cb-toolbar__left")
 );
 ok(
-  "preview toolbar has no full-width dark bar",
-  previewCss.includes("background: transparent") &&
-    previewCss.includes("border-bottom: none") &&
-    previewCss.includes("backdrop-filter: none")
+  "preview hides the internal draft notice article",
+  previewCss.includes("#art-notice")
 );
 ok(
-  "preview keeps Back/Edit/Print on a compact chip",
-  previewCss.includes(".cb-toolbar__right") && previewCss.includes("border-radius: 12px")
+  "preview toolbar is a floating action chip",
+  previewCss.includes("position: fixed") &&
+    previewCss.includes("right: 18px") &&
+    previewCss.includes("background: transparent")
 );
 ok(
-  "preview toolbar sticks to the top of the viewport",
-  previewCss.includes("position: sticky") && previewCss.includes("top: 0 !important")
+  "preview actions sit on a compact light chip",
+  previewCss.includes("border-radius: 999px") &&
+    previewCss.includes("rgba(255, 252, 247, 0.94)")
 );
 ok(
-  "preview shell does not reserve a second toolbar gap",
-  previewCss.includes("padding-top: 12px")
+  "preview paper is letter-width with a document shadow",
+  previewCss.includes("max-width: 816px") && previewCss.includes("0 18px 50px")
 );
 ok(
   "builder toolbar still sits below the app topbar when not in preview",
