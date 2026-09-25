@@ -1,9 +1,9 @@
 ﻿<!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Margin Guard | Vendedor</title>
+  <title>Margin Guard | Seller</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
     html[data-sales-portal="seller"] body.seller-portal-layout, html[data-owner-seller-preview="true"] body.owner-seller-preview-layout {
@@ -32,6 +32,25 @@
     html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-copy, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero-copy,
     html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-inner > div:first-child, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero-inner > div:first-child{
       max-width: 58ch;
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-lead, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero-lead,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero .hero-title, html[data-owner-seller-preview="true"] .seller-owner-upper .sales-layout-hero .hero-title,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero .sub, html[data-owner-seller-preview="true"] .seller-owner-upper .sales-layout-hero .sub,
+    html[data-sales-portal="seller"] .sales-left-panel .section-head .sub, html[data-owner-seller-preview="true"] .sales-left-panel .section-head .sub,
+    html[data-sales-portal="seller"] .sales-live-sidebar .section-head .sub, html[data-owner-seller-preview="true"] .sales-live-sidebar .section-head .sub,
+    html[data-sales-portal="seller"] .sales-contact-picker__hint, html[data-owner-seller-preview="true"] .sales-contact-picker__hint,
+    html[data-sales-portal="seller"] .sales-labor__lead, html[data-owner-seller-preview="true"] .sales-labor__lead,
+    html[data-sales-portal="seller"] .sales-labor-guide__kicker, html[data-owner-seller-preview="true"] .sales-labor-guide__kicker,
+    html[data-sales-portal="seller"] .sales-labor-guide__text, html[data-owner-seller-preview="true"] .sales-labor-guide__text,
+    html[data-sales-portal="seller"] .sales-op-timeline-sub, html[data-owner-seller-preview="true"] .sales-op-timeline-sub,
+    html[data-sales-portal="seller"] #salesOperationalOverrideDaysHint, html[data-owner-seller-preview="true"] #salesOperationalOverrideDaysHint,
+    html[data-sales-portal="seller"] #salesOperationalOverrideHoursHint, html[data-owner-seller-preview="true"] #salesOperationalOverrideHoursHint,
+    html[data-sales-portal="seller"] .sales-system-price__hint, html[data-owner-seller-preview="true"] .sales-system-price__hint,
+    html[data-sales-portal="seller"] #salesFlowCaption, html[data-owner-seller-preview="true"] #salesFlowCaption,
+    html[data-sales-portal="seller"] .seller-op-scope-work__lead, html[data-owner-seller-preview="true"] .seller-op-scope-work__lead,
+    html[data-sales-portal="seller"] .owner-field-quote-notes__tip, html[data-owner-seller-preview="true"] .owner-field-quote-notes__tip,
+    html[data-sales-portal="seller"] .seller-send-modal .modal-subtitle, html[data-owner-seller-preview="true"] .seller-send-modal .modal-subtitle{
+      display: none !important;
     }
     html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-lead, html[data-owner-seller-preview="true"] .seller-owner-upper .owner-hero-lead,
     html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero .sub, html[data-owner-seller-preview="true"] .seller-owner-upper .sales-layout-hero .sub{
@@ -1403,15 +1422,15 @@
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(1)::before,
       html[data-owner-seller-preview="true"] .seller-operational table.sales-labor-table tbody td:nth-child(1)::before,
       body.seller-portal-layout .seller-operational table.sales-labor-table tbody td:nth-child(1)::before,
-      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(1)::before { content: "Trabajador"; }
+      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(1)::before { content: "Worker"; }
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(2)::before,
       html[data-owner-seller-preview="true"] .seller-operational table.sales-labor-table tbody td:nth-child(2)::before,
       body.seller-portal-layout .seller-operational table.sales-labor-table tbody td:nth-child(2)::before,
-      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(2)::before { content: "Tipo"; }
+      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(2)::before { content: "Type"; }
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(3)::before,
       html[data-owner-seller-preview="true"] .seller-operational table.sales-labor-table tbody td:nth-child(3)::before,
       body.seller-portal-layout .seller-operational table.sales-labor-table tbody td:nth-child(3)::before,
-      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(3)::before { content: "Días"; }
+      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(3)::before { content: "Days"; }
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(4)::before,
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(5)::before,
       html[data-owner-seller-preview="true"] .seller-operational table.sales-labor-table tbody td:nth-child(4)::before,
@@ -1423,7 +1442,7 @@
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table tbody td:nth-child(6)::before,
       html[data-owner-seller-preview="true"] .seller-operational table.sales-labor-table tbody td:nth-child(6)::before,
       body.seller-portal-layout .seller-operational table.sales-labor-table tbody td:nth-child(6)::before,
-      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(6)::before { content: "Acciones"; }
+      body.owner-seller-preview-layout .seller-operational table.sales-labor-table tbody td:nth-child(6)::before { content: "Actions"; }
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table td input,
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table td select,
       html[data-sales-portal="seller"] .seller-operational table.sales-labor-table input[data-key="name"],
@@ -1708,10 +1727,10 @@
     })();
   </script>
   <div class="container">
-    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+    <div class="account-pill" id="accountEmail">Active account</div>
     <div class="topbar-actions" id="salesDeviceLogoutHost" hidden aria-hidden="true" style="display:none"></div>
     <div class="sales-owner-nav-actions" data-owner-nav>
-      <button type="button" class="btn" id="btnSendQuote" data-owner-nav>Enviar estimate</button>
+      <button type="button" class="btn" id="btnSendQuote" data-owner-nav>Send estimate</button>
     </div>
 
     <div class="grid sales-layout">
@@ -1719,14 +1738,14 @@
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
-            <span class="eyebrow">Estimate Workspace</span>
-            <h2 class="hero-title">Construye, negocia y envia el estimate desde Vendedor.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla concentra header, cliente, lineas de labor, mensaje para cliente y acciones comerciales sin brincar a otra vista.</div>
+            <span class="eyebrow">Quote Workspace</span>
+            <h2 class="hero-title" hidden></h2>
+            <div class="sub" hidden></div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Estado actual</div>
+            <div class="hero-score-label">Current status</div>
             <div class="hero-score-value" id="salesHeroState">Base</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Completa el estimate para empezar a negociar.</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Complete the estimate to start negotiating.</div>
           </div>
         </div>
       </div>
@@ -1737,13 +1756,13 @@
           <div class="card-inner seller-quote-card__inner">
             <div class="section-head">
               <div>
-                <h2>Estimate comercial</h2>
-                <div class="sub">Paso 1: crea o actualiza el estimate. Paso 2: envia al cliente. Paso 3: cuando cierre, firma el proyecto.</div>
+                <h2>Project Quote</h2>
+                <div class="sub" hidden></div>
               </div>
               <div class="badge amber" id="salesEstimateStatus">draft</div>
             </div>
 
-            <div class="notice" id="salesEstimateSummary">Completa el header, cliente y mano de obra para dejar listo el estimate.</div>
+            <div class="notice" id="salesEstimateSummary">Complete the header, client, and labor to get this estimate ready.</div>
 
             <div class="sales-quote-header seller-quote-header owner-quote-header">
               <button type="button" class="btn seller-quote-header__new owner-quote-header__new" id="btnNewSalesQuote">+ New Quote</button>
@@ -1758,7 +1777,7 @@
                     id="salesContactSearch"
                     type="search"
                     maxlength="120"
-                    placeholder="Search name, email, phone…"
+                    placeholder=""
                     autocomplete="off"
                     aria-autocomplete="list"
                     aria-controls="salesContactResults"
@@ -1770,7 +1789,7 @@
                   <span class="sales-contact-picker__chip-label" id="salesContactChipLabel"></span>
                   <button type="button" class="btn ghost" id="salesContactClear">Clear</button>
                 </div>
-                <p class="hint sales-contact-picker__hint">Selecting a contact only prefills this quote. You can still edit the fields.</p>
+                <p class="hint sales-contact-picker__hint" hidden></p>
                 <div class="sales-contact-picker__actions">
                   <button type="button" class="btn ghost" id="salesContactSave" disabled>Save as contact</button>
                 </div>
@@ -1779,40 +1798,40 @@
               </div>
               <div class="form">
                 <div class="field">
-                  <label>Proyecto / Job name</label>
-                  <input id="salesProjectName" maxlength="60" placeholder="Ej: Master bath remodel" />
+                  <label>Project / Job name</label>
+                  <input id="salesProjectName" maxlength="60" placeholder="" />
                   <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
                 </div>
                 <div class="field">
-                  <label>Cliente</label>
-                  <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
+                  <label>Client</label>
+                  <input id="salesClientName" maxlength="60" placeholder="" />
                   <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
                 </div>
                 <div class="field sales-email-field">
-                  <label>Email del cliente (desde el estimate)</label>
-                  <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+                  <label>Customer email</label>
+                  <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="" />
                   <button type="button" class="btn ghost sales-cc-toggle" id="btnSalesToggleCc" aria-expanded="false" aria-controls="salesCcWrap">
                     Add CC / Send copy
                   </button>
                   <div id="salesCcWrap" class="sales-cc-wrap" hidden>
-                    <label for="salesAdditionalRecipients">Send copy to (optional)</label>
+                    <label for="salesAdditionalRecipients">CC</label>
                     <input
                       id="salesAdditionalRecipients"
                       name="additional_recipients"
                       type="text"
                       maxlength="500"
-                      placeholder="example: spouse@email.com, architect@email.com"
+                      placeholder=""
                       autocomplete="off"
                     />
                   </div>
                 </div>
                 <div class="field">
-                  <label>Telefono del cliente</label>
-                  <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
+                  <label>Customer phone</label>
+                  <input id="salesCustomerPhone" maxlength="30" placeholder="" />
                 </div>
                 <div class="field" style="grid-column:1 / -1;">
                   <label>Job site address</label>
-                  <input id="salesLocation" maxlength="90" placeholder="Direccion del trabajo" />
+                  <input id="salesLocation" maxlength="90" placeholder="" />
                 </div>
               </div>
             </div>
@@ -1823,12 +1842,10 @@
                 <div class="field">
                   <label>Issue date</label>
                   <input id="salesIssueDate" type="date" readonly tabindex="-1" aria-readonly="true" />
-                  <div class="hint">Auto-set to today. Controlled by Margin Guard.</div>
                 </div>
                 <div class="field">
                   <label>Expiration date</label>
                   <input id="salesExpirationDate" type="date" readonly tabindex="-1" aria-readonly="true" />
-                  <div class="hint">Auto-set to issue date + 15 days.</div>
                 </div>
                 <div class="field">
                   <label>Start date</label>
@@ -1851,13 +1868,13 @@
               <h3 class="sales-quote-section-title">Notes</h3>
               <div class="form sales-quote-notes-col">
                 <div class="field">
-                  <label>Mensaje para cliente</label>
-                  <textarea id="salesMessageToClient" rows="4" maxlength="2000" placeholder="Mensaje visible para el cliente en el estimate o correo."></textarea>
+                  <label>Message to customer</label>
+                  <textarea id="salesMessageToClient" rows="4" maxlength="2000" placeholder=""></textarea>
                   <div class="hint"><span id="salesMessageToClientCount">0</span>/2000</div>
                 </div>
                 <div class="field">
-                  <label>Notas internas</label>
-                  <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas de negociacion, exclusiones, observaciones internas."></textarea>
+                  <label>Internal notes</label>
+                  <textarea id="salesNotes" rows="4" maxlength="600" placeholder=""></textarea>
                   <div class="hint"><span id="salesNotesCount">0</span>/600</div>
                 </div>
               </div>
@@ -1869,24 +1886,21 @@
               <header class="sales-labor__head">
                 <div class="sales-labor__intro">
                   <span class="eyebrow sales-labor__eyebrow">Labor</span>
-                  <h2 id="salesLaborHeading" class="sales-labor__title">Mano de obra</h2>
-                  <p class="sub sales-labor__lead">Labor worker-days sync from the Operational Plan when auto-sync is on. Rates come from Business Settings.</p>
+                  <h2 id="salesLaborHeading" class="sales-labor__title">Labor</h2>
+                  <p class="sub sales-labor__lead" hidden></p>
                 </div>
                 <div class="inline-actions sales-labor__actions">
-                  <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
-                  <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+                  <button class="btn primary" type="button" id="btnAddSalesWorker">Add worker</button>
+                  <button class="btn danger" type="button" id="btnClearSalesWorkers">Clear labor</button>
                 </div>
               </header>
 
               <div class="sales-labor-guide" role="note">
-                <div class="sales-labor-guide__head">
-                  <span class="sales-labor-guide__kicker">Guía rápida</span>
-                </div>
                 <label class="sales-labor-sync-toggle" id="salesLaborAutoSyncWrap">
                   <input type="checkbox" id="salesLaborAutoSync" checked />
                   Auto-sync labor from Operational Plan
                 </label>
-                <p class="sales-labor-guide__text" id="salesLaborSyncNote">Labor days are synced from the Operational Plan.</p>
+                <p class="sales-labor-guide__text" id="salesLaborSyncNote" hidden></p>
                 <p class="notice" id="salesLaborManualWarn" style="display:none;margin-top:8px;" role="status">
                   Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
                 </p>
@@ -1897,12 +1911,12 @@
                 <table class="table sales-labor-table">
                   <thead>
                     <tr>
-                      <th class="sales-labor-th sales-labor-th--worker" scope="col">Trabajador</th>
-                      <th class="sales-labor-th sales-labor-th--type" scope="col">Tipo</th>
-                      <th class="sales-labor-th sales-labor-th--units" scope="col">Días</th>
-                      <th class="sales-labor-th sales-labor-th--rate" scope="col">Costo base (sistema)</th>
-                      <th class="sales-labor-th sales-labor-th--labor" scope="col">Costo labor</th>
-                      <th class="sales-labor-th sales-labor-th--actions" scope="col">Acciones</th>
+                      <th class="sales-labor-th sales-labor-th--worker" scope="col">Worker</th>
+                      <th class="sales-labor-th sales-labor-th--type" scope="col">Type</th>
+                      <th class="sales-labor-th sales-labor-th--units" scope="col">Days</th>
+                      <th class="sales-labor-th sales-labor-th--rate" scope="col">Base cost (system)</th>
+                      <th class="sales-labor-th sales-labor-th--labor" scope="col">Labor cost</th>
+                      <th class="sales-labor-th sales-labor-th--actions" scope="col">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="salesWorkersBody"></tbody>
@@ -1923,18 +1937,18 @@
                   <div class="sales-op-layout__left">
                     <header class="sales-op-timeline-head">
                       <h3 class="sales-op-timeline-title">Operational Plan <span id="salesOpPlanDayCount"></span></h3>
-                      <p class="sales-op-timeline-sub" id="salesOperationalLead">Click a day to edit tasks and crew.</p>
+                      <p class="sales-op-timeline-sub" id="salesOperationalLead" hidden></p>
                     </header>
                     <div class="sales-op-toolbar form sales-operational__toolbar">
                       <div class="field" id="salesOperationalOverrideDaysWrap">
                         <label id="salesOperationalOverrideDaysLabel">Estimated project days (override)</label>
-                        <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
-                        <div class="hint" id="salesOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
+                        <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="" />
+                        <div class="hint" id="salesOperationalOverrideDaysHint" hidden></div>
                       </div>
                       <div class="field" id="salesOperationalOverrideHoursWrap" style="display:none;">
                         <label id="salesOperationalOverrideHoursLabel">Estimated project hours (override)</label>
-                        <input id="salesOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
-                        <div class="hint" id="salesOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
+                        <input id="salesOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="" />
+                        <div class="hint" id="salesOperationalOverrideHoursHint" hidden></div>
                       </div>
                     </div>
                     <div class="sales-op-metrics-inline" id="salesOperationalMetrics" aria-live="polite"></div>
@@ -1975,9 +1989,9 @@
               </div>
             </details>
 
-            <div class="sales-quote-cta seller-quote-cta" id="salesQuoteCta" role="group" aria-label="Enviar estimate o firmar proyecto">
-              <button type="button" class="btn primary sales-quote-cta__btn sales-quote-cta__btn--send" id="btnSendQuoteInline">Enviar estimate</button>
-              <button type="button" class="btn sales-quote-cta__btn sales-quote-cta__btn--sold" id="btnMarkSold">Firmar proyecto</button>
+            <div class="sales-quote-cta seller-quote-cta" id="salesQuoteCta" role="group" aria-label="Send estimate or sign project">
+              <button type="button" class="btn primary sales-quote-cta__btn sales-quote-cta__btn--send" id="btnSendQuoteInline">Send estimate</button>
+              <button type="button" class="btn sales-quote-cta__btn sales-quote-cta__btn--sold" id="btnMarkSold">Sign project</button>
             </div>
             <div class="notice sales-signed-status" id="salesSignedStatus" style="display:none;" aria-live="polite"></div>
 
@@ -1985,23 +1999,23 @@
 
             <div id="salesPriceControlsSection">
             <div class="dashboard-note">
-              <div class="dashboard-note-title">Control de precio</div>
-              <div class="dashboard-note-copy" id="salesEntryHint">El sistema protege el mínimo, la negociación y el precio recomendado según las reglas del negocio.</div>
+              <div class="dashboard-note-title">Price control</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">The system protects the minimum, negotiation, and recommended price using business rules.</div>
             </div>
 
             <div style="margin-top:10px;">
-              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Posicion del estimate</label>
+              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Estimate position</label>
               <input id="salesStageRange" type="range" min="0" max="2" step="1" value="2" class="sales-stage-range" />
-              <div class="sales-stage-labels">
-                <span id="salesStageMin">Minimo</span>
-                <span id="salesStageNegotiation">Negociacion</span>
-                <span id="salesStageRecommended">Recomendado</span>
+              <div class="sales-stage-labels notranslate" translate="no">
+                <span id="salesStageMin">Minimum</span>
+                <span id="salesStageNegotiation">Negotiation</span>
+                <span id="salesStageRecommended">Recommended</span>
               </div>
             </div>
 
-            <div class="notice" id="salesRule" style="margin-top:10px;display:none;">Completa la mano de obra para calcular el precio.</div>
+            <div class="notice" id="salesRule" style="margin-top:10px;display:none;">Add labor to calculate the price.</div>
             <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
-            <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">Si el precio queda bajo la recomendacion, avanza con responsabilidad y alinea al dueno.</div>
+            <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">If the price is below the recommendation, proceed carefully and align with the owner.</div>
             </div>
           </div>
         </div>
@@ -2013,8 +2027,8 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Resultado en vivo</h2>
-                <div class="sub">Lectura comercial para defender el estimate con claridad.</div>
+                <h2>Live Score</h2>
+                <div class="sub" hidden></div>
               </div>
               <div class="badge amber" id="salesTraffic">Base</div>
             </div>
@@ -2022,44 +2036,43 @@
 
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Precio recomendado</div>
-                <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa mano de obra para calcular el recomendado.</div>
+                <div class="owner-quote-kicker">Recommended price</div>
+                <div class="owner-quote-price notranslate" id="salesPrimaryPrice" translate="no">$0.00</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Add labor to calculate the recommended price.</div>
                 <div class="sales-system-price" aria-live="polite">
-                  <span class="sales-system-price__label">Precio del estimate (sistema)</span>
-                  <strong id="salesPriceDisplay" class="sales-system-price__value">—</strong>
-                  <p class="small sales-system-price__hint">Controlled by Margin Guard pricing rules.</p>
+                  <span class="sales-system-price__label">Price estimate (system)</span>
+                  <strong id="salesPriceDisplay" class="sales-system-price__value notranslate" translate="no">—</strong>
                 </div>
                 <input id="salesPrice" type="hidden" value="" />
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
-                    <div class="title">Comision estimada</div>
+                    <div class="title">Estimated commission</div>
                     <div class="big" id="salesPrimaryCommission">0.00%</div>
-                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 estimado</div>
+                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 estimated</div>
                   </div>
                   <div class="owner-mini-card">
-                    <div class="title">Siguiente paso</div>
-                    <div class="big" id="salesFlowHeadline">Completar datos</div>
-                    <div class="small" id="salesFlowCaption">Primero define la mano de obra.</div>
+                    <div class="title">Next step</div>
+                    <div class="big" id="salesFlowHeadline">Complete details</div>
+                    <div class="small" id="salesFlowCaption" hidden></div>
                   </div>
                 </div>
               </div>
             </div>
 
             <div class="sep"></div>
-            <div class="kpi sales-kpi-grid" id="salesKpis"></div>
+            <div class="kpi sales-kpi-grid notranslate" id="salesKpis" translate="no"></div>
 
             <div class="sep"></div>
-            <h2 style="margin-top:0;">Proyecto activo para Supervisor</h2>
+            <h2 style="margin-top:0;">Active project for Supervisor</h2>
             <div class="owner-mini-card" style="margin-bottom:12px;">
-              <div class="title">Proyecto firmado</div>
-              <div class="big" id="salesSignedProject">Sin proyecto firmado</div>
-              <div class="small" id="salesSignedMeta">Firma un estimate para mandarlo a Supervisor.</div>
+              <div class="title">Signed project</div>
+              <div class="big" id="salesSignedProject">No signed project yet</div>
+              <div class="small" id="salesSignedMeta">Sign an estimate to send it to Supervisor.</div>
             </div>
-            <div class="badge amber" id="salesSignedBadge">Pendiente de firma</div>
+            <div class="badge amber" id="salesSignedBadge">Pending signature</div>
 
             <div class="sep"></div>
-            <h2 style="margin-top:0;">Mensajes de negociacion</h2>
+            <h2 style="margin-top:0;">Negotiation messages</h2>
             <ul class="msg-list sales-msg-grid" id="negotiationList"></ul>
           </div>
         </div>
@@ -2155,52 +2168,52 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title">Enviar estimate</div>
-          <div class="modal-subtitle">Usa Netlify Functions + Zapier para enviar la propuesta actual al cliente.</div>
+          <div class="modal-title">Send estimate</div>
+          <div class="modal-subtitle" hidden></div>
         </div>
         <button class="icon-btn" id="btnSendClose">X</button>
       </div>
       <div class="modal-body">
         <div class="dashboard-note" style="margin-bottom:14px;">
-          <div class="dashboard-note-title">Preview final del estimate</div>
-          <div class="dashboard-note-copy">Todo aqui se llena desde la cotizacion. Solo revisa y confirma el envio final.</div>
+          <div class="dashboard-note-title">Final estimate preview</div>
+          <div class="dashboard-note-copy">Everything here is filled from the quote. Review and confirm the final send.</div>
         </div>
         <div class="form">
           <div class="field">
-            <label>Email del cliente</label>
-            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" readonly />
+            <label>Customer email</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="" readonly />
           </div>
           <div class="field">
-            <label>Nombre del cliente</label>
-            <input id="toName" maxlength="60" placeholder="Nombre" readonly />
+            <label>Customer name</label>
+            <input id="toName" maxlength="60" placeholder="" readonly />
           </div>
           <div class="field">
-            <label>Iniciales del vendedor</label>
-            <input id="salesInitials" maxlength="6" placeholder="LM" />
+            <label>Seller initials</label>
+            <input id="salesInitials" maxlength="6" placeholder="" />
             <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
           </div>
           <div class="field">
-            <label>Deposito requerido para agendar</label>
-            <input id="deposit" type="text" value="$1,000.00" readonly />
+            <label>Required deposit to schedule</label>
+            <input id="deposit" class="notranslate" type="text" value="$1,000.00" readonly translate="no" />
           </div>
           <div class="field">
-            <label>Asunto del envio</label>
+            <label>Email subject</label>
             <input id="subject" maxlength="90" readonly />
           </div>
         </div>
         <div class="field">
-          <label>Resumen del estimate visible al cliente</label>
+          <label>Customer-visible estimate summary</label>
           <textarea id="scope" rows="6" maxlength="1200" readonly></textarea>
         </div>
         <div class="field">
-          <label>Correo final al cliente</label>
+          <label>Final email to the customer</label>
           <textarea id="message" rows="12" maxlength="1200" readonly></textarea>
         </div>
         <div class="notice" id="sendStatus" data-mg-send-status-class="notice" style="display:none;"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn" id="btnSendCancel">Cancelar</button>
-        <button class="btn primary" id="btnSendNow">Confirmar y enviar estimate</button>
+        <button class="btn" id="btnSendCancel">Cancel</button>
+        <button class="btn primary" id="btnSendNow">Confirm and send estimate</button>
       </div>
     </div>
   </div>
@@ -2815,10 +2828,10 @@
         var quoteBadge = document.getElementById('salesEstimateStatus');
         if (quoteHead) quoteHead.textContent = 'Project Quote';
         if (quoteSub) {
-          quoteSub.textContent =
-            'Estos datos cambian por proyecto. No alteran la configuracion permanente del negocio.';
+          quoteSub.textContent = '';
+          quoteSub.hidden = true;
         }
-        if (quoteBadge) quoteBadge.textContent = 'Quote actual';
+        if (quoteBadge) quoteBadge.textContent = 'Current quote';
         ['salesEstimateSummary'].forEach(function (id) {
           var el = document.getElementById(id);
           if (!el) return;
@@ -3858,7 +3871,7 @@
           !!(dates && (dates.hidden || !isVisible(dates)));
         var rightPanelSellerSafe =
           isVisible(right) &&
-          !!(liveScoreHead && /resultado en vivo/i.test(String(liveScoreHead.textContent || ''))) &&
+          !!(liveScoreHead && /resultado en vivo|live score/i.test(String(liveScoreHead.textContent || ''))) &&
           !isOwnerSnapshotVisibleInSellerPanel();
         var sellerRightPanelSticky =
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
@@ -4082,7 +4095,7 @@
         var workspace = document.createElement('div');
         workspace.className = 'owner-workspace-grid seller-workspace-grid';
         workspace.setAttribute('role', 'region');
-        workspace.setAttribute('aria-label', 'Cotizacion vendedor');
+        workspace.setAttribute('aria-label', 'Seller quote');
 
         if (leftPanel) {
           leftPanel.classList.add('owner-workspace-main');
@@ -4111,15 +4124,19 @@
         var scoreLabel = document.querySelector('.sales-layout-hero .hero-score-label');
         var scoreMeta = document.getElementById('salesHeroMeta');
         if (eyebrow) eyebrow.textContent = 'Quote Workspace';
-        if (title) title.textContent = 'Cotiza el proyecto actual sin mover las reglas del negocio.';
+        if (title) {
+          title.textContent = '';
+          title.hidden = true;
+        }
         if (sub) {
-          sub.textContent =
-            'Vendedor se enfoca en la cotizacion viva. Las reglas permanentes del negocio las define el dueno.';
+          sub.textContent = '';
+          sub.hidden = true;
           sub.classList.add('owner-hero-lead');
         }
-        if (scoreLabel) scoreLabel.textContent = 'Estado actual';
-        if (scoreMeta && !String(scoreMeta.textContent || '').trim()) {
-          scoreMeta.textContent = 'Proyecto, mano de obra, PDF y envio al cliente.';
+        if (scoreLabel) scoreLabel.textContent = 'Current status';
+        var accountPill = document.getElementById('accountEmail');
+        if (accountPill && /cuenta activa/i.test(String(accountPill.textContent || ''))) {
+          accountPill.textContent = 'Active account';
         }
 
         var quoteHead = document.querySelector('.sales-left-panel .section-head h2');
@@ -4127,10 +4144,10 @@
         var quoteBadge = document.getElementById('salesEstimateStatus');
         if (quoteHead) quoteHead.textContent = 'Project Quote';
         if (quoteSub) {
-          quoteSub.textContent =
-            'Estos datos cambian por proyecto. No alteran la configuracion permanente del negocio.';
+          quoteSub.textContent = '';
+          quoteSub.hidden = true;
         }
-        if (quoteBadge) quoteBadge.textContent = 'Quote actual';
+        if (quoteBadge) quoteBadge.textContent = 'Current quote';
       }
 
       function applySellerOwnerShellLayout() {
@@ -4213,7 +4230,8 @@
           if (laborTitle) laborTitle.textContent = 'Labor';
           var laborLead = labor.querySelector('.sales-labor__lead');
           if (laborLead) {
-            laborLead.textContent = 'Plan crew roles and worker-days for this estimate.';
+            laborLead.textContent = '';
+            laborLead.hidden = true;
           }
           reorderSellerLaborSectionOwnerLike();
         }
@@ -4228,27 +4246,21 @@
           if (messageInput) {
             messageInput.classList.add('owner-op-scope-work__editor', 'seller-op-scope-work__editor');
             messageInput.rows = 6;
-            messageInput.placeholder = 'Scope of work included with this estimate for the client.';
-            messageInput.setAttribute('aria-describedby', 'sellerScopeWorkLead');
+            messageInput.placeholder = '';
+            messageInput.removeAttribute('aria-describedby');
           }
           var hint = messageField.querySelector('.hint');
           if (hint) {
             hint.classList.add('owner-op-scope-work__foot', 'owner-field-quote-notes__foot');
-            if (!hint.querySelector('.owner-field-quote-notes__tip')) {
-              var tip = document.createElement('span');
-              tip.className = 'owner-field-quote-notes__tip';
-              tip.textContent = 'This text is sent with the estimate PDF and client email.';
-              hint.insertBefore(tip, hint.firstChild);
-            }
           }
         }
 
         var addDayBtn = document.getElementById('btnAddOperationalDay');
         if (addDayBtn) addDayBtn.classList.add('primary');
         var addWorkerBtn = document.getElementById('btnAddSalesWorker');
-        if (addWorkerBtn) addWorkerBtn.textContent = '+ Agregar trabajador';
+        if (addWorkerBtn) addWorkerBtn.textContent = '+ Add worker';
         var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
-        if (clearLaborBtn) clearLaborBtn.textContent = 'Limpiar labor';
+        if (clearLaborBtn) clearLaborBtn.textContent = 'Clear labor';
 
         var crewAvail = document.getElementById('salesOpCrewAvailability');
         if (crewAvail && !crewAvail.closest('.sales-op-avail-table-wrap')) {
@@ -4944,7 +4956,7 @@
           scope.innerHTML =
             '<header class="seller-op-scope-work__head owner-op-scope-work__head">' +
             '<h3 class="seller-op-scope-work__title owner-op-scope-work__title" id="sellerScopeWorkHeading">Scope of Work</h3>' +
-            '<p class="seller-op-scope-work__lead owner-op-scope-work__lead" id="sellerScopeWorkLead">Review and edit before sending to client.</p>' +
+            '<p class="seller-op-scope-work__lead owner-op-scope-work__lead" id="sellerScopeWorkLead" hidden></p>' +
             '</header>';
           stack.appendChild(scope);
         }
@@ -5095,7 +5107,7 @@
         scopeWork.innerHTML =
           '<header class="seller-op-scope-work__head">' +
           '<h3 class="seller-op-scope-work__title" id="sellerScopeWorkHeading">Scope of Work</h3>' +
-          '<p class="seller-op-scope-work__lead" id="sellerScopeWorkLead">Review and edit before sending to client.</p>' +
+          '<p class="seller-op-scope-work__lead" id="sellerScopeWorkLead" hidden></p>' +
           '</header>';
 
         var messageField = findSalesMessageFieldWrapper();
@@ -5111,18 +5123,12 @@
           if (messageInput) {
             messageInput.classList.add('owner-op-scope-work__editor', 'seller-op-scope-work__editor');
             messageInput.rows = 6;
-            messageInput.placeholder = 'Scope of work included with this estimate for the client.';
-            messageInput.setAttribute('aria-describedby', 'sellerScopeWorkLead');
+            messageInput.placeholder = '';
+            messageInput.removeAttribute('aria-describedby');
           }
           var scopeHint = messageField.querySelector('.hint');
           if (scopeHint) {
             scopeHint.classList.add('owner-op-scope-work__foot', 'owner-field-quote-notes__foot');
-            if (!scopeHint.querySelector('.owner-field-quote-notes__tip')) {
-              var scopeTip = document.createElement('span');
-              scopeTip.className = 'owner-field-quote-notes__tip';
-              scopeTip.textContent = 'This text is sent with the estimate PDF and client email.';
-              scopeHint.insertBefore(scopeTip, scopeHint.firstChild);
-            }
           }
           scopeWork.appendChild(messageField);
         }
@@ -5877,10 +5883,8 @@
         if (daysWrap) daysWrap.style.display = mode === 'day' ? '' : 'none';
         if (hoursWrap) hoursWrap.style.display = mode === 'hour' ? '' : 'none';
         if (lead) {
-          lead.textContent =
-            mode === 'day'
-              ? 'Define daily phases and crew-days for Supervisor execution. Units follow Business Settings (days).'
-              : 'Define daily phases and crew hours for Supervisor execution. Units follow Business Settings (hours).';
+          lead.textContent = '';
+          lead.hidden = true;
         }
         return mode;
       }
@@ -6364,7 +6368,7 @@
           '<input class="sales-op-day-number" data-field="day_number" type="number" min="1" step="1" value="' +
           escapeHtmlOperational(day.day_number != null ? day.day_number : dayIndex + 1) + '" />' +
           '<input class="sales-op-phase" data-field="phase" maxlength="120" value="' + escapeHtmlOperational(day.phase || '') +
-          '" placeholder="Phase (e.g. Prep + waterproofing)" />' +
+          '" placeholder="" />' +
           '</div>' +
           '<div class="sales-operational-day__workers">' + workerRows +
           '<button type="button" class="btn sales-op-add-worker" data-action="add-worker">Add crew</button>' +
@@ -7713,6 +7717,10 @@
         const nodes = collectSellerMoneyNodesById(id);
         const list = nodes.length ? nodes : [document.getElementById(id)].filter(Boolean);
         for (let i = 0; i < list.length; i += 1) {
+          try {
+            list[i].setAttribute('translate', 'no');
+            list[i].classList.add('notranslate');
+          } catch (_attrErr) { /* ignore */ }
           if (list[i].textContent === text) continue;
           window.__mgSellerAuthoritativePriceWriteCount =
             (Number(window.__mgSellerAuthoritativePriceWriteCount) || 0) + 1;
@@ -7883,11 +7891,11 @@
         );
         setText(
           'salesPrimaryCommissionMeta',
-          `${sellerMoney(metrics.commissionDisplay, settings, state)} estimado · ${sellerMoney(
+          `${sellerMoney(metrics.commissionDisplay, settings, state)} estimated · ${sellerMoney(
             metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost,
             settings,
             state
-          )} mano de obra`
+          )} labor cost`
         );
         setText(
           'salesEstimateSummary',
@@ -7949,9 +7957,9 @@
               sellerMoney(metrics.recommended, settings, state) +
               '.',
             belowRecommendation
-              ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.'
+              ? 'If the price is below the recommendation, proceed carefully and confirm with the owner before signing.'
               : metrics.needsApproval
-                ? 'El precio coincide con la recomendacion; el margen interno aun requiere revision del dueno.'
+                ? 'The price matches the recommendation; internal margin still needs owner review.'
               : 'Estimate can be sent directly to the customer.',
           ];
           negotiationList.innerHTML = guidance
@@ -8554,7 +8562,7 @@
 
         if (titleNode) titleNode.textContent = 'Margin Guard';
         if (logoNode) logoNode.textContent = 'MG';
-        document.title = 'Margin Guard | Vendedor';
+        document.title = 'Margin Guard | Seller';
 
         if (branding.accentHex) {
           document.documentElement.style.setProperty('--tenant-accent', branding.accentHex);
@@ -8688,7 +8696,7 @@
             ...out,
             marginBlocked: false,
             marginLevel: 'green',
-            marginMessage: '(Carga app.js para reglas de margen automaticas.)',
+            marginMessage: '(Load app.js for automatic margin rules.)',
             realMarginPct: null,
             targetMarginPct: Number(settings.profitPct || 30),
             floorMarginPct: Number(settings.minimumMarginPct != null ? settings.minimumMarginPct : 15)
@@ -9010,20 +9018,20 @@
           setText('salesPrimaryMeta', pricingPendingMessage);
         }
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-        setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : belowRecommendation ? 'Bajo recomendado' : 'Listo para enviar');
+        setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Complete details' : belowRecommendation ? 'Below recommendation' : 'Ready to send');
         setText(
           'salesFlowCaption',
           metrics.workerDays <= 0
-            ? 'Primero define la mano de obra.'
+            ? 'First define the labor.'
             : belowRecommendation
-              ? 'Si el precio queda bajo la recomendacion, puedes seguir: hazlo con criterio y alinea al dueno.'
-              : 'El precio esta en un rango saludable para este estimate.'
+              ? 'If the price is below the recommendation, you can still proceed — do it carefully and align with the owner.'
+              : 'This price is in a healthy range for this estimate.'
         );
         setText(
           'salesPricingGuidance',
           belowRecommendation
-            ? 'Precio bajo la recomendacion: no hay bloqueo; avanza con responsabilidad comercial.'
-            : 'Precio alineado con el rango recomendado o superior.'
+            ? 'Price below recommendation: there is no block; proceed with commercial responsibility.'
+            : 'Price is at or above the recommended range.'
         );
         setText('salesRule', (function () {
           const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
@@ -9033,21 +9041,21 @@
               ruleEl.style.display = '';
               ruleEl.className = 'notice';
             }
-            return 'Completa la mano de obra para calcular el precio.';
+            return 'Add labor to calculate the price.';
           }
           if (ruleEl) ruleEl.style.display = '';
           if (metrics.marginBlocked && Boolean(state._sliderTouched || state._manualPriceTouched)) {
             if (ruleEl) ruleEl.className = 'notice err';
-            return 'Margen por debajo del minimo objetivo: revisa antes de enviar.';
+            return 'Margin is below the minimum target: review before sending.';
           }
           if (metrics.needsApproval && Boolean(state._sliderTouched || state._manualPriceTouched)) {
             if (ruleEl) ruleEl.className = 'notice amber';
-            return 'Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.';
+            return 'Margin is below target: no block, only commercial responsibility.';
           }
           if (ruleEl) ruleEl.className = 'notice success';
           return Boolean(state._sliderTouched || state._manualPriceTouched)
-            ? 'Precio dentro del rango permitido del negocio.'
-            : 'Precio listo segun las reglas del negocio.';
+            ? 'Price is inside the allowed business range.'
+            : 'Price is ready according to business rules.';
         })());
         const mline = document.getElementById('salesMarginDecisionLine');
         if (mline) {
@@ -9097,7 +9105,7 @@
           setText('salesPrimaryPrice', sellerMoney(0, settings, state));
           setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + sellerMoney(0, settings, state));
           setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-          setText('salesPrimaryCommissionMeta', sellerMoney(0, settings, state) + ' estimado · ' + sellerMoney(0, settings, state) + ' mano de obra');
+          setText('salesPrimaryCommissionMeta', sellerMoney(0, settings, state) + ' estimated · ' + sellerMoney(0, settings, state) + ' labor cost');
           setText('salesStageMin', sellerMoney(0, settings, state));
           setText('salesStageNegotiation', sellerMoney(0, settings, state));
           setText('salesStageRecommended', sellerMoney(0, settings, state));
@@ -9120,7 +9128,7 @@
           // vuelve a pintar las fechas normalmente.
           const heroMetaNode = document.getElementById('salesHeroMeta');
           if (heroMetaNode) {
-            heroMetaNode.textContent = 'Completa el estimate para empezar a negociar.';
+            heroMetaNode.textContent = 'Complete the estimate to start negotiating.';
           }
         }
         enforceSellerRightPanelCurrencyConsistency(state, settings, metrics);
@@ -9705,10 +9713,10 @@
         const signedProject = document.getElementById('salesSignedProject');
         const signedMeta = document.getElementById('salesSignedMeta');
         const signedBadge = document.getElementById('salesSignedBadge');
-        if (signedProject) signedProject.textContent = 'Sin proyecto firmado';
-        if (signedMeta) signedMeta.textContent = 'Firma un estimate para mandarlo a Supervisor.';
+        if (signedProject) signedProject.textContent = 'No signed project yet';
+        if (signedMeta) signedMeta.textContent = 'Sign an estimate to send it to Supervisor.';
         if (signedBadge) {
-          signedBadge.textContent = 'Pendiente de firma';
+          signedBadge.textContent = 'Pending signature';
           signedBadge.className = 'badge amber';
         }
 
@@ -9967,7 +9975,7 @@
             'Client: ' + state.signedClientName + ' | Start: ' + startDate + ' | Target finish: ' + finishDate;
         }
         if (signedBadge) {
-          signedBadge.textContent = 'Proyecto firmado';
+          signedBadge.textContent = 'Signed project';
           signedBadge.className = 'badge green';
         }
         const markSoldBtn = document.getElementById('btnMarkSold');
@@ -11263,7 +11271,7 @@ async function openSellerSendModal(event) {
     const sendBtnClose = document.getElementById('btnSendNow');
     if (sendBtnClose) {
       sendBtnClose.disabled = false;
-      sendBtnClose.textContent = 'Confirmar y enviar estimate';
+      sendBtnClose.textContent = 'Confirm and send estimate';
     }
 
     modal.setAttribute('aria-hidden', 'true');
@@ -12219,7 +12227,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         setSendModalSendingState(false);
         if (sendButton) {
           sendButton.disabled = false;
-          sendButton.textContent = 'Confirmar y enviar estimate';
+          sendButton.textContent = 'Confirm and send estimate';
         }
       }
     }

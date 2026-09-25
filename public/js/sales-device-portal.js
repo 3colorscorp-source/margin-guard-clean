@@ -64,19 +64,19 @@
 
   function paintOwnerAccount(data) {
     const email = document.getElementById("accountEmail");
-    if (email) email.textContent = data.email || "Cuenta activa";
+    if (email) email.textContent = data.email || "Active account";
 
     const plan = document.getElementById("planStatus");
     if (plan) {
       if (data.is_admin) {
-        plan.textContent = "Acceso admin (sin suscripción requerida)";
+        plan.textContent = "Admin access (no subscription required)";
       } else {
         const renewText = data.renewsAt
           ? new Date(data.renewsAt).toLocaleDateString()
           : "";
         plan.textContent = renewText
-          ? `Plan anual activo · Renueva ${renewText}`
-          : "Plan anual activo";
+          ? `Annual plan active · Renews ${renewText}`
+          : "Annual plan active";
       }
     }
 
@@ -92,20 +92,20 @@
       btnManage.dataset.mgSalesPortalBound = "1";
       btnManage.addEventListener("click", async () => {
         btnManage.disabled = true;
-        btnManage.textContent = "Abriendo...";
+        btnManage.textContent = "Opening...";
         try {
           const { response, data } = await api("/create-portal-session", {
             method: "POST",
             body: "{}",
           });
           if (!response.ok || !data.url) {
-            throw new Error(data.error || "No se pudo abrir portal");
+            throw new Error(data.error || "Could not open the portal");
           }
           window.location.href = data.url;
         } catch (err) {
-          window.alert(err.message || "Error al abrir el portal");
+          window.alert(err.message || "Could not open the portal");
           btnManage.disabled = false;
-          btnManage.textContent = "Gestionar plan";
+          btnManage.textContent = "Manage plan";
         }
       });
     }
@@ -375,7 +375,7 @@
     btn.type = "button";
     btn.className = "btn danger";
     btn.id = "btnDeviceLogout";
-    btn.textContent = "Cerrar sesion dispositivo";
+    btn.textContent = "Sign out device";
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       try {
@@ -731,7 +731,7 @@
     document.documentElement.dataset.portalType = "seller";
 
     const plan = document.getElementById("planStatus");
-    if (plan) plan.textContent = "Seller device · Vendedor";
+    if (plan) plan.textContent = "Seller device · Seller";
 
     const navSales = document.getElementById("navSalesVendor");
     if (navSales) {

@@ -20,8 +20,8 @@
       label: 'Operations',
       ownerOnly: true,
       items: [
-        { type: 'link', href: '/owner', label: 'Dueno', icon: 'DU', ownerNav: true },
-        { type: 'link', href: '/sales?portal=owner', label: 'Vendedor', icon: 'VE', ownerNav: true, activePaths: ['/sales'] },
+        { type: 'link', href: '/owner', label: 'Owner', icon: 'DU', ownerNav: true },
+        { type: 'link', href: '/sales?portal=owner', label: 'Seller', icon: 'VE', ownerNav: true, activePaths: ['/sales'] },
         { type: 'link', href: '/supervisor', label: 'Supervisor', icon: 'SU', ownerNav: true },
         { type: 'link', href: '/project-control', label: 'Project Control', icon: 'PC', ownerNav: true },
         { type: 'link', href: '/sales-admin', label: 'Sales Admin', icon: 'SA', ownerNav: true },
@@ -42,8 +42,8 @@
       label: 'Account',
       ownerOnly: true,
       items: [
-        { type: 'button', id: 'btnManagePlan', label: 'Gestionar plan', icon: 'PL', ownerNav: true },
-        { type: 'button', id: 'btnLogout', label: 'Cerrar sesión', icon: 'LO', danger: true, ownerNav: true }
+        { type: 'button', id: 'btnManagePlan', label: 'Manage plan', icon: 'PL', ownerNav: true },
+        { type: 'button', id: 'btnLogout', label: 'Sign out', icon: 'LO', danger: true, ownerNav: true }
       ]
     }
   ];
@@ -58,7 +58,7 @@
             {
               type: 'link',
               href: '/sales',
-              label: 'Vendedor',
+              label: 'Seller',
               icon: 'VE',
               activePaths: ['/sales', '/seller']
             }
