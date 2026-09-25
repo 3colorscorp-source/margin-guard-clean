@@ -93,9 +93,7 @@ body{
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
   color:var(--text);
   background:
-    radial-gradient(1200px 900px at 10% 10%, rgba(34,197,94,.10), transparent 60%),
-    radial-gradient(900px 600px at 80% 20%, rgba(59,130,246,.10), transparent 55%),
-    radial-gradient(900px 600px at 70% 90%, rgba(168,85,247,.08), transparent 55%),
+    radial-gradient(ellipse 90% 48% at 50% -18%, rgba(15,118,110,.05), transparent 58%),
     var(--bg);
 }
 a{ color:inherit; text-decoration:none; }
@@ -1194,8 +1192,8 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   display:none;
 }
 .mg-modal-card{
-  background:linear-gradient(145deg, #0b1220, #111827);
-  border:1px solid rgba(59,130,246,0.2);
+  background:#141413;
+  border:1px solid rgba(15,118,110,0.22);
   border-radius:14px;
   padding:20px;
   width:320px;
@@ -1232,7 +1230,7 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   background:rgba(255,255,255,.07);
 }
 .modal[aria-hidden="false"]{ display:flex; }
-.modal-card{ width:min(860px, 96vw); max-height: 90vh; overflow:auto; background:#0b1220; border:1px solid rgba(255,255,255,.08); border-radius:16px; box-shadow: 0 20px 80px rgba(0,0,0,.55); }
+.modal-card{ width:min(860px, 96vw); max-height: 90vh; overflow:auto; background:#141413; border:1px solid rgba(255,255,255,.07); border-radius:16px; box-shadow: 0 20px 80px rgba(0,0,0,.45); }
 .modal-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 16px 10px; border-bottom:1px solid rgba(255,255,255,.06); }
 .modal-title{ font-weight:850; font-size:var(--mg-font-hero-title); line-height:var(--mg-line-height-title); }
 .modal-subtitle{ opacity:.8; font-size:var(--mg-font-body); line-height:var(--mg-line-height-body); margin-top:4px; }
@@ -2152,9 +2150,9 @@ body[data-role="owner"] .owner-notes__head{
   margin-bottom:14px;
 }
 body[data-role="owner"] .owner-notes__eyebrow{
-  border-color:rgba(168,85,247,.22);
-  background:rgba(168,85,247,.08);
-  color:rgba(233,213,255,.92);
+  border-color:rgba(15,118,110,.22);
+  background:rgba(15,118,110,.08);
+  color:rgba(204,251,241,.92);
   letter-spacing:.1em;
 }
 body[data-role="owner"] .owner-notes__title{
@@ -2600,9 +2598,9 @@ body[data-role="owner"] table.owner-labor-table input[data-key="rate"][readonly]
   font-variant-numeric:tabular-nums;
   text-align:right;
   border-style:solid;
-  border-color:rgba(168,85,247,.28);
-  background:rgba(168,85,247,.08);
-  color:rgba(232,238,252,.88);
+  border-color:rgba(15,118,110,.28);
+  background:rgba(15,118,110,.08);
+  color:rgba(242,239,232,.88);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
 }
 body[data-role="owner"] table.owner-labor-table .row-actions{
@@ -2750,11 +2748,11 @@ body[data-role="owner"] .owner-quote-snapshot__status #statusBadge{
 /* /owner — CTA hacia Invoices Hub (sustituye UI de invoice en Owner) */
 body[data-role="owner"] .owner-invoices-hub-cta{
   margin-top:14px;
-  border:1px solid rgba(168,85,247,.2);
+  border:1px solid rgba(15,118,110,.2);
   background:
-    radial-gradient(520px 200px at 100% 0%, rgba(168,85,247,.12), transparent 58%),
+    radial-gradient(520px 200px at 100% 0%, rgba(15,118,110,.12), transparent 58%),
     linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-  box-shadow:0 16px 48px rgba(0,0,0,.28);
+  box-shadow:0 16px 48px rgba(8,6,4,.28);
 }
 body[data-role="owner"] .owner-invoices-hub-cta__inner{
   display:flex;
@@ -2764,9 +2762,9 @@ body[data-role="owner"] .owner-invoices-hub-cta__inner{
   max-width:62ch;
 }
 body[data-role="owner"] .owner-invoices-hub-cta__eyebrow{
-  border-color:rgba(168,85,247,.28);
-  background:rgba(168,85,247,.09);
-  color:rgba(221,214,254,.92);
+  border-color:rgba(15,118,110,.28);
+  background:rgba(15,118,110,.09);
+  color:rgba(204,251,241,.92);
 }
 body[data-role="owner"] .owner-invoices-hub-cta__title{
   margin:0;
@@ -3032,7 +3030,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   height:22px;
   border-radius:999px;
   border:2px solid rgba(255,255,255,.9);
-  background:#0b1220;
+  background:#0b0b0a;
   box-shadow:0 0 0 4px rgba(255,255,255,.08);
   cursor:pointer;
 }
@@ -3041,7 +3039,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   height:22px;
   border-radius:999px;
   border:2px solid rgba(255,255,255,.9);
-  background:#0b1220;
+  background:#0b0b0a;
   box-shadow:0 0 0 4px rgba(255,255,255,.08);
   cursor:pointer;
 }
@@ -8389,58 +8387,75 @@ body.business-settings-page .bs-summary-label{
   }
 }
 
-/* Step 3E-C16-Q3L-1 — global pro dark foundation */
+/* Step 3E-C16-Q3L-1 — global ultra-pro dark foundation */
 :root{
-  --bg:#06080f;
-  --panel:#0d1119;
-  --panel2:#0a0e16;
-  --shadow:0 12px 40px rgba(0,0,0,.35);
+  --bg:#0b0b0a;
+  --panel:#141413;
+  --panel2:#0b0b0a;
+  --stroke:rgba(255,255,255,.07);
+  --text:#f4f4f1;
+  --muted:rgba(244,244,241,.56);
+  --shadow:0 12px 32px rgba(0,0,0,.28);
 }
 body:not([data-role="dashboard"]){
   background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255,255,255,.02), transparent 70%),
-    #06080f;
+    radial-gradient(ellipse 90% 48% at 50% -18%, rgba(15,118,110,.05), transparent 58%),
+    #0b0b0a;
 }
 .topbar{
-  background:#0a0e16;
+  background:#0b0b0a;
   backdrop-filter:none;
 }
 .mg-topbar{
-  background:#0a0e16;
+  background:#0b0b0a;
   backdrop-filter:none;
 }
 .mg-sidebar{
-  background:#0a0e16;
+  background:#0b0b0a;
   backdrop-filter:none;
-  box-shadow:4px 0 24px rgba(0,0,0,.32);
+  box-shadow:none;
 }
 .card{
-  background:#0d1119;
-  border-color:rgba(255,255,255,.08);
-  box-shadow:0 8px 24px rgba(0,0,0,.28);
+  background:#141413;
+  border-color:rgba(255,255,255,.07);
+  box-shadow:none;
 }
 .logo{
-  background:rgba(255,255,255,.04);
-  border-color:rgba(34,197,94,.22);
+  background:rgba(15,118,110,.12);
+  border-color:rgba(15,118,110,.28);
   box-shadow:none;
 }
 .mg-sidebar__brand-mark{
-  background:rgba(255,255,255,.04);
-  border-color:rgba(34,197,94,.22);
+  background:rgba(15,118,110,.12);
+  border-color:rgba(15,118,110,.28);
 }
-.btn.primary,
+.mg-sidebar__item--active{
+  background:rgba(15,118,110,.12);
+  border-color:rgba(15,118,110,.28);
+  box-shadow:inset 3px 0 0 #0f766e;
+}
+.mg-sidebar__pin[aria-pressed="true"]{
+  border-color:rgba(15,118,110,.35);
+  background:rgba(15,118,110,.12);
+}
+.btn.primary{
+  border-color:rgba(15,118,110,.42);
+  background:rgba(15,118,110,.16);
+  box-shadow:none;
+}
 .btn.primary:hover{
+  background:rgba(15,118,110,.22);
   box-shadow:none;
 }
 .btn.active{
-  outline:2px solid rgba(255,255,255,.18);
+  outline:2px solid rgba(255,255,255,.14);
   box-shadow:none;
 }
 .owner-hero{
-  background:#0d1119;
+  background:#141413;
 }
 body[data-role="owner"] .owner-hero .hero-score{
-  background:rgba(9,14,24,.92);
+  background:rgba(11,11,10,.92);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
 }
 body[data-role="owner"] .owner-hero .hero-score::after{
@@ -8451,8 +8466,60 @@ body[data-role="owner"] .owner-hero .hero-score::after{
   text-shadow:none;
 }
 body[data-role="owner"] .owner-quote-snapshot{
-  background:#0d1119;
-  box-shadow:0 8px 24px rgba(0,0,0,.28);
+  background:#141413;
+  box-shadow:none;
+}
+/* owner field wells — ultra-pro retint without rewriting owner.html */
+body[data-role="owner"] .sales-quote-section .field input,
+body[data-role="owner"] .sales-quote-section .field textarea,
+body[data-role="owner"] .owner-operational .sales-op-toolbar .field input,
+body[data-role="owner"] .owner-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled),
+body[data-role="owner"] #ownerOpDayModal input:not([readonly]):not(:disabled),
+body[data-role="owner"] #ownerOpDayModal select:not(:disabled),
+body[data-role="owner"] #ownerOpDayModal textarea:not([readonly]),
+body[data-role="owner"] .owner-input-project-name,
+body[data-role="owner"] .owner-input-client-gc,
+body[data-role="owner"] .owner-input-client-email,
+body[data-role="owner"] .owner-input-client-phone,
+body[data-role="owner"] .owner-input-location,
+body[data-role="owner"] .owner-input-biz-pdf,
+body[data-role="owner"] .owner-input-start-date,
+body[data-role="owner"] .owner-op-scope-work__editor,
+body[data-role="owner"] .owner-input-quote-notes,
+body[data-role="owner"] .owner-input-project-name:placeholder-shown,
+body[data-role="owner"] .owner-input-client-gc:placeholder-shown,
+body[data-role="owner"] .owner-input-client-email:placeholder-shown,
+body[data-role="owner"] .owner-input-client-phone:placeholder-shown,
+body[data-role="owner"] .owner-input-location:placeholder-shown,
+body[data-role="owner"] .owner-input-biz-pdf:placeholder-shown,
+body[data-role="owner"] .owner-input-quote-notes:placeholder-shown,
+body[data-role="owner"] table.owner-labor-table td input:not([readonly]),
+body[data-role="owner"] table.owner-labor-table td select{
+  background:#191918 !important;
+  color:#f4f4f1 !important;
+  caret-color:#f4f4f1 !important;
+}
+body[data-role="owner"] .sales-quote-section .field input:focus,
+body[data-role="owner"] .sales-quote-section .field textarea:focus,
+body[data-role="owner"] .owner-operational .sales-op-toolbar .field input:focus,
+body[data-role="owner"] .owner-operational .owner-op-dash__dates-card .field input:not([readonly]):not(:disabled):focus,
+body[data-role="owner"] #ownerOpDayModal input:focus,
+body[data-role="owner"] #ownerOpDayModal select:focus,
+body[data-role="owner"] #ownerOpDayModal textarea:focus,
+body[data-role="owner"] .owner-input-project-name:focus,
+body[data-role="owner"] .owner-input-client-gc:focus,
+body[data-role="owner"] .owner-input-client-email:focus,
+body[data-role="owner"] .owner-input-client-phone:focus,
+body[data-role="owner"] .owner-input-location:focus,
+body[data-role="owner"] .owner-input-biz-pdf:focus,
+body[data-role="owner"] .owner-input-start-date:focus,
+body[data-role="owner"] .owner-op-scope-work__editor:focus,
+body[data-role="owner"] .owner-input-quote-notes:focus,
+body[data-role="owner"] table.owner-labor-table td input:not([readonly]):focus,
+body[data-role="owner"] table.owner-labor-table td select:focus{
+  border-color:rgba(15,118,110,.50) !important;
+  background:#1f1f1e !important;
+  box-shadow:0 0 0 3px rgba(15,118,110,.14) !important;
 }
 
 /* Step 3E-C16-Q3L-3 — important text contrast recovery LOCAL DRAFT */
