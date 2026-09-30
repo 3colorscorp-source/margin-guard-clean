@@ -317,7 +317,10 @@ function main() {
   eq("parser keeps materials amount for summary", clientApi.parseNotes(pepperNotes).materialsAmount, "$512.00");
   eq("parser keeps labor amount for summary", clientApi.parseNotes(pepperNotes).laborAmount, "$4536.32");
   ok("public invoice puts materials in summary totals", publicHtml.includes("breakdownSummaryRowsHtml"));
-  ok("public invoice summary has Materials label", publicHtml.includes('"<span>Materials</span>"') || publicHtml.includes("<span>Materials</span>"));
+  ok("public invoice summary has Materials label", publicHtml.includes("<span>Materials</span>"));
+  ok("public invoice summary rows have ledger dividers", /border-bottom:\s*1px solid #eceff3/.test(publicHtml));
+  ok("public invoice remaining balance has a double rule", /border-top:\s*2px solid #111827/.test(publicHtml));
+  ok("public work details use notebook lines", publicHtml.includes("repeating-linear-gradient"));
   ok("public work details hide hourly calendar", !/Hourly service/.test(clientText));
   ok("public work details hide hourly rates", !/\/hr/.test(clientText) && !/ at \$/.test(clientText));
   ok("public work details hide labor subtotal label", !/Labor subtotal/i.test(clientText));
