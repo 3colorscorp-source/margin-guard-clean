@@ -252,6 +252,31 @@
       }
     }
 
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-details {
+      margin-top: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(15, 118, 110, 0.08);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-details-title {
+      margin: 0 0 8px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(244, 244, 241, 0.58);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-description,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-billing {
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgba(244, 244, 241, 0.92);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-billing-wrap {
+      margin-top: 14px;
+    }
+
     /* Phase 1 — read-only Project Billing folder inside the invoice drawer */
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-project-billing {
       margin-top: 12px;
@@ -1788,6 +1813,14 @@
           <div class="hub-drawer-kv" id="hubDrawerLastReminderWrap">
             <span class="hub-drawer-k">Last reminder</span>
             <span class="hub-drawer-v" id="hubDrawerLastReminder">—</span>
+          </div>
+        </div>
+        <div id="hubDrawerWorkDetailsWrap" class="hub-drawer-section hub-drawer-work-details" style="display:none;">
+          <div class="sub hub-drawer-work-details-title">Description</div>
+          <div id="hubDrawerWorkDescription" class="hub-drawer-work-description"></div>
+          <div id="hubDrawerWorkBillingWrap" class="hub-drawer-work-billing-wrap" style="display:none;">
+            <div class="sub hub-drawer-work-details-title">Billed work</div>
+            <div id="hubDrawerWorkBilling" class="hub-drawer-work-billing"></div>
           </div>
         </div>
         <div id="hubDrawerProjectBillingWrap" class="hub-drawer-section hub-drawer-project-billing" style="display:none;">

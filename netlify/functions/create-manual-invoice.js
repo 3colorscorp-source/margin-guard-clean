@@ -495,6 +495,8 @@ exports.handler = async (event) => {
         balance_due: finalInvoice.balance_due,
         status: finalInvoice.status,
         due_date: finalInvoice.due_date,
+        notes: String(finalInvoice.notes || "").trim(),
+        invoice_label: finalInvoice.invoice_label || "Manual Invoice",
       },
     });
   } catch (err) {

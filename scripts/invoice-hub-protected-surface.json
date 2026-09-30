@@ -90,6 +90,7 @@
   },
   "requiredRegressionTests": [
     "scripts/test-create-manual-invoice-modern-owner-session.js",
+    "scripts/test-invoice-hub-drawer-work-details.js",
     "scripts/test-interpret-manual-invoice-description.js",
     "scripts/test-list-tenant-invoices-modern-owner-session.js",
     "scripts/test-send-invoice-zapier-modern-owner-session.js",
