@@ -247,7 +247,23 @@ async function main() {
     ok("cross-tenant lookup still tenant-scoped", invoiceGets.some((g) => g.id === INV_B && g.tenantId === TENANT_A));
     eq("dry-run did not call Zapier", zapierCalls.length, 0);
     eq("dry-run did not PATCH sent_at or status", writes.length, 0);
+
+    const html = String(modernBody.canonical && modernBody.canonical.email_html || "");
+    const bodyText = String(modernBody.canonical && modernBody.canonical.email_body || "");
+    ok("dry_run html has View Invoice button", html.includes("View Invoice") && /background:#0f8a5f/.test(html));
+    ok("dry_run html links the public invoice", html.includes("invoice-public.html?token="));
+    ok("dry_run body is document copy", bodyText.includes("ready for review"));
+    ok("dry_run body still has amounts", bodyText.includes("Contract total") && /\$100\.00/.test(bodyText));
+    ok("dry_run body does not use casual greeting", !/I hope you're doing well/.test(bodyText) && !/they're doing well/.test(bodyText));
+    ok("dry_run body does not dump You can view it here", !/You can view it here:/.test(bodyText));
   });
+
+  const hubHtml = read("public/estimates-invoices.html");
+  ok("send forwards invoice pdf bytes", /sanitizeInvoicePdfBase64/.test(src) && /payload\.pdf_base64/.test(src));
+  ok("hub send builds invoice pdf", /buildHubInvoicePdfForSend/.test(appSrc));
+  ok("hub page loads invoice pdf helper", hubHtml.includes("/js/invoice-pdf.js"));
+  ok("hub page loads work-details helper for pdf", hubHtml.includes("/js/invoice-client-work-details.js"));
+  ok("invoice pdf helper does not invent license copy", !/1083733/.test(read("public/js/invoice-pdf.js")));
 
   console.log("\n" + passed + " passed");
 }
