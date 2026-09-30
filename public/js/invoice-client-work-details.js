@@ -184,14 +184,8 @@
     const billed = summarizeBilledWork(parsed.billedWork);
     const parts = [];
     if (parsed.description) parts.push(parsed.description);
-    const laborLines = [];
-    if (parsed.laborAmount) laborLines.push("Labor: " + parsed.laborAmount);
-    if (billed && !billedLooksTechnical(billed)) laborLines.push(billed);
-    if (laborLines.length) parts.push(laborLines.join("\n"));
-    if (parsed.materialsAmount || parsed.materials) {
-      const head = parsed.materialsAmount ? "Materials: " + parsed.materialsAmount : "Materials";
-      parts.push(parsed.materials ? head + "\n" + parsed.materials : head);
-    }
+    if (billed && !billedLooksTechnical(billed)) parts.push(billed);
+    if (parsed.materials) parts.push("Materials\n" + parsed.materials);
     return parts.join("\n\n");
   }
 

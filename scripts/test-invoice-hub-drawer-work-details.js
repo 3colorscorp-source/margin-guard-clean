@@ -311,8 +311,13 @@ function main() {
   ok("public work details show Assistant hours", clientText.includes("Assistant: 34 hours"));
   ok("public work details compress days", clientText.includes("Days: Sep 16, 23, 28–30"));
   ok("public work details keep materials copy", clientText.includes("4 bags of thinset"));
-  ok("public work details show materials amount", clientText.includes("Materials: $512.00"));
-  ok("public work details show labor amount", clientText.includes("Labor: $4536.32"));
+  ok("public work details keep materials as copy not money", /^Materials$/m.test(clientText));
+  ok("work details do not show materials amount", !/Materials: \$/.test(clientText));
+  ok("work details do not show labor amount", !/Labor: \$/.test(clientText));
+  eq("parser keeps materials amount for summary", clientApi.parseNotes(pepperNotes).materialsAmount, "$512.00");
+  eq("parser keeps labor amount for summary", clientApi.parseNotes(pepperNotes).laborAmount, "$4536.32");
+  ok("public invoice puts materials in summary totals", publicHtml.includes("breakdownSummaryRowsHtml"));
+  ok("public invoice summary has Materials label", publicHtml.includes('"<span>Materials</span>"') || publicHtml.includes("<span>Materials</span>"));
   ok("public work details hide hourly calendar", !/Hourly service/.test(clientText));
   ok("public work details hide hourly rates", !/\/hr/.test(clientText) && !/ at \$/.test(clientText));
   ok("public work details hide labor subtotal label", !/Labor subtotal/i.test(clientText));
