@@ -165,11 +165,11 @@ function insertPdfLinkPlain(body, pdfUrl) {
   const text = String(body || "");
   if (!url || !text) return text;
   if (text.includes(url)) return text;
-  const block = "Invoice PDF\n" + url + "\n\n";
+  const block = "View / Download PDF\n" + url + "\n\n";
   if (text.includes(INVOICE_EMAIL_CLOSING)) {
     return text.replace(INVOICE_EMAIL_CLOSING, block + INVOICE_EMAIL_CLOSING);
   }
-  return text.replace(/\nView invoice\n([^\n]+)\n/, "\nView invoice\n$1\n\nInvoice PDF\n" + url + "\n");
+  return text.replace(/\nView invoice\n([^\n]+)\n/, "\nView invoice\n$1\n\nView / Download PDF\n" + url + "\n");
 }
 
 function insertPdfLinkHtml(html, pdfUrl) {
@@ -178,13 +178,14 @@ function insertPdfLinkHtml(html, pdfUrl) {
   if (!url || !src) return src;
   if (src.includes(url)) return src;
   const href = escapeEmailHtml(url);
-  const block =
-    '<p style="margin:0 0 26px;font-size:12px;line-height:1.5;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">' +
+  const pdfBtn =
+    '<td width="12"></td>' +
+    '<td bgcolor="#0f8a5f" style="border-radius:4px;">' +
     '<a href="' +
     href +
-    '" style="color:#0f8a5f;text-decoration:underline;">Download invoice PDF</a>.</p>';
-  if (src.includes("open the invoice here</a>.</p>")) {
-    return src.replace("open the invoice here</a>.</p>", "open the invoice here</a>.</p>" + block);
+    '" style="display:inline-block;padding:14px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:.03em;font-family:Arial,Helvetica,sans-serif;">View PDF</a></td>';
+  if (src.includes("</a></td></tr></table>")) {
+    return src.replace("</a></td></tr></table>", "</a></td>" + pdfBtn + "</tr></table>");
   }
   return src;
 }
@@ -1222,6 +1223,7 @@ exports.handler = async (event) => {
       }
     }
     if (pdfUrl) {
+      const pdfFileUrl = pdfUrl + (pdfUrl.indexOf("?") >= 0 ? "&" : "?") + "raw=1";
       payload.email_body = insertPdfLinkPlain(payload.email_body, pdfUrl);
       payload["Email Body"] = payload.email_body;
       payload.email_html = insertPdfLinkHtml(payload.email_html, pdfUrl);
@@ -1230,10 +1232,11 @@ exports.handler = async (event) => {
       payload["Email Html"] = payload.email_html;
       payload["Html Body"] = payload.email_html;
       payload["Message Text"] = payload.email_html;
-      payload.pdf_url = pdfUrl;
-      payload.pdfUrl = pdfUrl;
-      payload["Pdf Url"] = pdfUrl;
-      payload["PDF Url"] = pdfUrl;
+      payload.pdf_url = pdfFileUrl;
+      payload.pdfUrl = pdfFileUrl;
+      payload["Pdf Url"] = pdfFileUrl;
+      payload["PDF Url"] = pdfFileUrl;
+      payload.pdf_view_url = pdfUrl;
       payload.pdf_filename = pdfFileName;
       payload["Pdf Filename"] = pdfFileName;
     }

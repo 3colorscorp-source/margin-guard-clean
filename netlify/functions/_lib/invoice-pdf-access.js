@@ -200,6 +200,23 @@ async function createInvoicePdfSignedUrl(objectPath, expiresIn = SIGNED_URL_EXPI
   return { download_url: absolute, expires_in: ttl };
 }
 
+async function fetchInvoicePdfBytes(objectPath) {
+  const parsed = parseInvoicePdfObjectPath(objectPath);
+  if (!parsed) {
+    throw new Error("Invalid invoice PDF path");
+  }
+  const signed = await createInvoicePdfSignedUrl(parsed.objectPath, SIGNED_URL_EXPIRES_SEC);
+  const response = await fetch(signed.download_url);
+  if (!response.ok) {
+    throw new Error("Unable to load invoice PDF");
+  }
+  const buf = Buffer.from(await response.arrayBuffer());
+  if (!buf.length) {
+    throw new Error("Invoice PDF was empty");
+  }
+  return { bytes: buf, fileName: parsed.fileName || "Invoice.pdf" };
+}
+
 module.exports = {
   INVOICE_PDF_BUCKET,
   SIGNED_URL_EXPIRES_SEC,
@@ -210,4 +227,5 @@ module.exports = {
   ensureInvoicePdfBucket,
   uploadInvoicePdf,
   createInvoicePdfSignedUrl,
+  fetchInvoicePdfBytes,
 };
