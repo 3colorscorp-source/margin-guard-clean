@@ -258,14 +258,16 @@ async function main() {
     ok("dry_run body does not use casual greeting", !/I hope you're doing well/.test(bodyText) && !/they're doing well/.test(bodyText));
     ok("dry_run body does not dump You can view it here", !/You can view it here:/.test(bodyText));
     const payloadBody = String(modernBody.payload && modernBody.payload["Email Body"] || "");
-    ok("payload Email Body is the View Invoice button letter", payloadBody.includes("View Invoice") && payloadBody.includes("<a href="));
+    ok("payload Email Body is plaintext not HTML source", !payloadBody.includes("<!DOCTYPE") && !payloadBody.includes("<a href="));
+    ok("payload Email Body has View invoice url", payloadBody.includes("View invoice") && payloadBody.includes("invoice-public.html"));
+    ok("payload Email Html has View Invoice button", String(modernBody.payload && modernBody.payload["Email Html"] || "").includes("View Invoice") && /bgcolor="#0f8a5f"/.test(String(modernBody.payload && modernBody.payload["Email Html"] || "")));
     ok("payload Email Body does not dump invoice summary", !/Invoice summary/.test(payloadBody));
     ok("payload Email Body does not dump pdf function url", !/get-invoice-pdf/.test(payloadBody));
   });
 
   const hubHtml = read("public/estimates-invoices.html");
   ok("send uploads invoice pdf as a file url", /attachInvoicePdfFile/.test(src) && /payload\.pdf_url/.test(src));
-  ok("zapier payload does not ship pdf_base64", !/payload\.pdf_base64 = pdfBase64/.test(src));
+  ok("send Email Body stays plaintext", /payload\["Email Body"\] = text/.test(src) && !/payload\["Email Body"\] = html/.test(src));
   ok("send uploads invoice pdf for email delivery", /uploadInvoicePdf/.test(src) && /buildInvoicePdfAccessUrl/.test(src));
   ok("hub send builds invoice pdf", /buildHubInvoicePdfForSend/.test(appSrc));
   ok("hub page loads invoice pdf helper", hubHtml.includes("/js/invoice-pdf.js"));

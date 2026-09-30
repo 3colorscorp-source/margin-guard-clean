@@ -158,6 +158,14 @@ function buildInvoiceClientHtml({ customerName, intro, publicUrl, businessName, 
   });
 }
 
+function buildInvoiceClientPlain({ customerName, intro, publicUrl, businessName }) {
+  const brand = String(businessName || "").trim();
+  const lines = [];
+  if (brand) lines.push(brand, "Invoice", "");
+  lines.push(String(customerName || "").trim() + ",", "", String(intro || "").trim(), "", "View invoice", String(publicUrl || "").trim(), "", INVOICE_EMAIL_CLOSING, "", brand);
+  return lines.join("\n");
+}
+
 function applyClientFacingZapierEmail(payload, { customerName, intro, publicUrl, businessName }) {
   const html = buildInvoiceClientHtml({
     customerName,
@@ -166,17 +174,74 @@ function applyClientFacingZapierEmail(payload, { customerName, intro, publicUrl,
     businessName,
     ctaLabel: "View Invoice"
   });
-  payload.email_body = html;
+  const text = buildInvoiceClientPlain({
+    customerName,
+    intro,
+    publicUrl,
+    businessName
+  });
+  // Gmail invoice zap maps Email Body as Plain. HTML here dumps as source.
+  payload.email_body = text;
+  payload["Email Body"] = text;
   payload.email_html = html;
   payload.html_body = html;
   payload.messageText = html;
-  payload["Email Body"] = html;
   payload["Email Html"] = html;
   payload["Html Body"] = html;
   payload["Message Text"] = html;
   payload["Body Type"] = "Html";
   payload.body_type = "html";
   return payload;
+}
+
+function pickResendFromAddress() {
+  for (const value of [
+    process.env.RESEND_FROM_EMAIL,
+    process.env.DEPOSIT_EMAIL_FROM,
+    process.env.RESEND_FROM
+  ]) {
+    if (value && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+async function sendInvoiceViaResend({ to, subject, html, pdfBase64, pdfFileName, replyTo }) {
+  const key = String(process.env.RESEND_API_KEY || "").trim();
+  const from = pickResendFromAddress();
+  const recipient = String(to || "").trim();
+  if (!recipient) return { ok: false, reason: "no_recipient" };
+  if (!key) return { ok: false, reason: "no_api_key" };
+  if (!from) return { ok: false, reason: "no_from" };
+  const body = {
+    from,
+    to: [recipient],
+    subject: String(subject || "Invoice").trim() || "Invoice",
+    html: String(html || "")
+  };
+  const rt = String(replyTo || "").trim();
+  if (rt) body.reply_to = rt;
+  if (pdfBase64) {
+    body.attachments = [
+      {
+        filename: String(pdfFileName || "Invoice.pdf").trim() || "Invoice.pdf",
+        content: pdfBase64
+      }
+    ];
+  }
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + key,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.warn("[Invoice Send] Resend failed", res.status, String(text).slice(0, 400));
+    return { ok: false, reason: "http_error", status: res.status };
+  }
+  return { ok: true };
 }
 
 function attachInvoicePdfFile(payload, pdfUrl, pdfFileName) {
@@ -1317,75 +1382,95 @@ exports.handler = async (event) => {
       });
     }
 
-    // Webhook required only for real sends (dry_run already returned above).
-    if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
-      return jsonError(
-        503,
-        "webhook_not_configured",
-        "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
-      );
-    }
-
-    console.log("[zapier-signature] running...");
-    console.log(
-      "[zapier-signature] secret exists:",
-      !!process.env.ZAPIER_WEBHOOK_SECRET
-    );
-    const signatureMeta = buildZapierSignatureMeta(payload);
-    console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
-    if (signatureMeta) {
-      payload.zapier_signature = signatureMeta.signature;
-      payload.zapier_timestamp = signatureMeta.timestamp;
-      payload.zapier_nonce = signatureMeta.nonce;
-      payload.zapier_signature_version = signatureMeta.version;
-    }
-    console.log("[send-invoice-zapier] payload fields", {
-      project_name,
-      invoice_copy_variant: canonical.invoice_copy_variant,
-      amount: payload.amount,
-      paid_to_date: payload.paid_to_date,
-      balance_due: payload.balance_due,
-      contract_total: payload.contract_total,
-      remaining_balance: payload.remaining_balance,
-      email_subject: payload.email_subject
-    });
-
-    console.log("[zapier-invoice]", {
-      tenant_id: tenantId,
-      invoice_id,
-      event_type,
-      idempotency_key
-    });
-
-    let zapRes;
+    let delivery = "";
     try {
-      const headers = { "Content-Type": "application/json", Accept: "application/json" };
-      if (signatureMeta) {
-        headers["X-MG-Signature"] = signatureMeta.signature;
-        headers["X-MG-Timestamp"] = signatureMeta.timestamp;
-        headers["X-MG-Nonce"] = signatureMeta.nonce;
-        headers["X-MG-Signature-Version"] = signatureMeta.version;
+      const resend = await sendInvoiceViaResend({
+        to: client_email,
+        subject: pickFirstStr(payload.email_subject, payload["Email Subject"], canonical.email_subject),
+        html: payload.email_html,
+        pdfBase64,
+        pdfFileName,
+        replyTo: pickFirstStr(invoice.business_email, tenantRow?.owner_email)
+      });
+      if (resend && resend.ok) {
+        delivery = "resend";
+        console.log("[Invoice Send] Resend completed");
       }
-      zapRes = await fetch(webhookUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload)
-      });
     } catch (error) {
-      console.warn("[Invoice Send] Zapier request failed", error?.message || error);
-      return jsonError(502, "webhook_unreachable", "Unable to reach invoice send webhook.");
+      console.warn("[Invoice Send] Resend request failed", error?.message || error);
     }
 
-    if (!zapRes.ok) {
-      const zapierText = await zapRes.text().catch(() => "");
-      console.warn("[Invoice Send] Zapier non-OK", zapRes.status, zapierText.slice(0, 500));
-      return jsonError(502, "zapier_error", "Zapier webhook returned an error", {
-        status: zapRes.status,
-        details: zapierText.slice(0, 500)
+    if (!delivery) {
+      if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
+        return jsonError(
+          503,
+          "webhook_not_configured",
+          "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
+        );
+      }
+
+      console.log("[zapier-signature] running...");
+      console.log(
+        "[zapier-signature] secret exists:",
+        !!process.env.ZAPIER_WEBHOOK_SECRET
+      );
+      const signatureMeta = buildZapierSignatureMeta(payload);
+      console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
+      if (signatureMeta) {
+        payload.zapier_signature = signatureMeta.signature;
+        payload.zapier_timestamp = signatureMeta.timestamp;
+        payload.zapier_nonce = signatureMeta.nonce;
+        payload.zapier_signature_version = signatureMeta.version;
+      }
+      console.log("[send-invoice-zapier] payload fields", {
+        project_name,
+        invoice_copy_variant: canonical.invoice_copy_variant,
+        amount: payload.amount,
+        paid_to_date: payload.paid_to_date,
+        balance_due: payload.balance_due,
+        contract_total: payload.contract_total,
+        remaining_balance: payload.remaining_balance,
+        email_subject: payload.email_subject
       });
-    }
 
-    console.log("[Invoice Send] Zapier completed");
+      console.log("[zapier-invoice]", {
+        tenant_id: tenantId,
+        invoice_id,
+        event_type,
+        idempotency_key
+      });
+
+      let zapRes;
+      try {
+        const headers = { "Content-Type": "application/json", Accept: "application/json" };
+        if (signatureMeta) {
+          headers["X-MG-Signature"] = signatureMeta.signature;
+          headers["X-MG-Timestamp"] = signatureMeta.timestamp;
+          headers["X-MG-Nonce"] = signatureMeta.nonce;
+          headers["X-MG-Signature-Version"] = signatureMeta.version;
+        }
+        zapRes = await fetch(webhookUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        console.warn("[Invoice Send] Zapier request failed", error?.message || error);
+        return jsonError(502, "webhook_unreachable", "Unable to reach invoice send webhook.");
+      }
+
+      if (!zapRes.ok) {
+        const zapierText = await zapRes.text().catch(() => "");
+        console.warn("[Invoice Send] Zapier non-OK", zapRes.status, zapierText.slice(0, 500));
+        return jsonError(502, "zapier_error", "Zapier webhook returned an error", {
+          status: zapRes.status,
+          details: zapierText.slice(0, 500)
+        });
+      }
+
+      delivery = "zapier";
+      console.log("[Invoice Send] Zapier completed");
+    }
 
     const sentAt = new Date().toISOString();
     const filter = `id=eq.${encodeURIComponent(String(invoice.id))}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
@@ -1422,7 +1507,7 @@ exports.handler = async (event) => {
 
     console.log("[Invoice Send] invoice marked sent");
 
-    return json(200, { ok: true, forwarded: true, invoice: row });
+    return json(200, { ok: true, forwarded: true, delivery, invoice: row });
   } catch (error) {
     console.warn("[Invoice Send] error", error?.message || error);
     return jsonError(500, "server_error", error.message || "Server error");
