@@ -200,8 +200,9 @@ exports.handler = async (event) => {
         const tenantBusinessEmail = pickFirst(td?.business_email);
         const tenantBusinessPhone = pickFirst(td?.business_phone);
         let tenantBusinessAddress = pickFirst(td?.business_address);
-        if (!tenantBusinessAddress) {
-          tenantBusinessAddress = await loadTenantBusinessAddressFromSnapshot(tenantId);
+        const snapshotAddress = await loadTenantLetterheadAddressFromSnapshot(tenantId);
+        if (snapshotAddress) {
+          tenantBusinessAddress = snapshotAddress;
         }
         if (tenantBusinessName) {
           invoice.business_name = tenantBusinessName;
@@ -215,6 +216,10 @@ exports.handler = async (event) => {
         if (tenantBusinessAddress) {
           invoice.business_address = tenantBusinessAddress;
         }
+        const tenantServiceLine = await loadTenantServiceLineFromSnapshot(tenantId);
+        if (tenantServiceLine) {
+          invoice.service_line = tenantServiceLine;
+        }
         const snapshotLogo = normalizePublicLogoUrl(pickFirst(invoice.logo_url));
         const tenantLogo = normalizePublicLogoUrl(pickFirst(td?.logo_url));
         let resolvedLogo = "";
@@ -227,6 +232,19 @@ exports.handler = async (event) => {
         }
         if (resolvedLogo) {
           invoice.logo_url = resolvedLogo;
+        }
+        try {
+          const legalRows = await supabaseRequest(
+            `tenant_legal_profiles?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=contractor_license_number&limit=1`,
+            { method: "GET" }
+          );
+          const legalRow = Array.isArray(legalRows) && legalRows[0] ? legalRows[0] : null;
+          const licenseNumber = pickFirst(legalRow && legalRow.contractor_license_number);
+          if (licenseNumber) {
+            invoice.contractor_license_number = licenseNumber;
+          }
+        } catch (_legalErr) {
+          /* keep invoice without license rather than inventing one */
         }
       } catch (_err) {
         /* keep invoice business_name fallback */
@@ -453,19 +471,64 @@ async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferP
   }
 }
 
-async function loadTenantBusinessAddressFromSnapshot(tenantId) {
+async function loadTenantLetterheadAddressFromSnapshot(tenantId) {
   if (!tenantId) return "";
   try {
     const payload = await loadLatestTenantSnapshotPayload(tenantId);
     const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    const brand =
+      storage && typeof storage.mg_business_branding_v1 === "object" ? storage.mg_business_branding_v1 : {};
     const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
+    const settings = payload && typeof payload.settings === "object" ? payload.settings : {};
+    const branding = payload && typeof payload.branding === "object" ? payload.branding : {};
     return pickFirst(
+      mg.businessServiceArea,
+      mg.business_service_area,
+      mg.service_area,
+      brand.businessServiceArea,
+      brand.business_service_area,
+      brand.service_area,
+      settings.businessServiceArea,
+      settings.business_service_area,
+      branding.businessServiceArea,
+      branding.business_service_area,
       mg.businessAddress,
       mg.business_address,
       mg.address,
       mg.companyAddress,
       mg.company_address,
-      mg.mailing_address
+      mg.mailing_address,
+      brand.businessAddress,
+      brand.business_address,
+      settings.businessAddress,
+      settings.business_address,
+      branding.businessAddress,
+      branding.business_address
+    );
+  } catch (_err) {
+    return "";
+  }
+}
+
+async function loadTenantServiceLineFromSnapshot(tenantId) {
+  if (!tenantId) return "";
+  try {
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
+    const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    const brand =
+      storage && typeof storage.mg_business_branding_v1 === "object" ? storage.mg_business_branding_v1 : {};
+    const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
+    const settings = payload && typeof payload.settings === "object" ? payload.settings : {};
+    const branding = payload && typeof payload.branding === "object" ? payload.branding : {};
+    return pickFirst(
+      brand.serviceLine,
+      brand.service_line,
+      mg.serviceLine,
+      mg.service_line,
+      settings.serviceLine,
+      settings.service_line,
+      branding.serviceLine,
+      branding.service_line
     );
   } catch (_err) {
     return "";

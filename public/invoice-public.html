@@ -51,7 +51,7 @@
       border-bottom:1px solid var(--line);
       display:flex;
       justify-content:space-between;
-      align-items:center;
+      align-items:flex-start;
       gap:18px;
       flex-wrap:wrap;
       background:#fff;
@@ -73,6 +73,13 @@
       color:var(--muted);
       font-size:13px;
       margin-top:4px;
+    }
+
+    .letterhead-lines{
+      margin-top:10px;
+      font-size:13px;
+      line-height:1.55;
+      color:#374151;
     }
 
     .brand-head{
@@ -569,6 +576,7 @@
 
       .brand h1{ font-size:18px; }
       .brand .sub{ margin-top:1px; font-size:11px; }
+      .letterhead-lines{ margin-top:6px; font-size:11px; line-height:1.4; }
       .brand-head{ gap:8px; }
       .brand-mark,
       .brand-mark--initials{
@@ -737,7 +745,6 @@
   <script>
 (function () {
   const TENANT_NAME_FALLBACK = "Invoice";
-  const BUSINESS_SUBTITLE = "Service invoice";
   const invoiceBox = document.getElementById("invoice");
 
   function escapeHtml(value) {
@@ -772,19 +779,40 @@
     return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
   }
 
-  function buildBrandHeaderHtml(brandName, logoUrl) {
+  function formatLicenseLine(raw) {
+    const n = String(raw || "").trim();
+    if (!n) return "";
+    if (/^l#/i.test(n) || /^lic(ense)?\.?\s*#/i.test(n)) return n;
+    return "L# " + n;
+  }
+
+  function buildBrandHeaderHtml(brandName, logoUrl, identity) {
     const nameEsc = escapeHtml(brandName || TENANT_NAME_FALLBACK);
     const logoResolved = safeHttpUrl(logoUrl);
     const altText = escapeHtml(brandName || "Business logo");
     const mark = logoResolved
       ? `<img class="brand-mark" src="${escapeHtml(logoResolved)}" alt="${altText}" width="44" height="44" decoding="async" />`
       : `<div class="brand-mark brand-mark--initials" aria-hidden="true">${escapeHtml(buildInitialsFromBusinessName(brandName))}</div>`;
+    const ident = identity && typeof identity === "object" ? identity : {};
+    const slogan = String(ident.serviceLine || "").trim();
+    const license = formatLicenseLine(ident.licenseNumber);
+    const phone = String(ident.phone || "").trim();
+    const email = String(ident.email || "").trim();
+    const address = String(ident.address || "").trim();
+    const lines = [];
+    if (license) lines.push(escapeHtml(license));
+    if (phone) lines.push("Phone: " + escapeHtml(phone));
+    if (email) lines.push("Email: " + escapeHtml(email));
+    if (address) lines.push("Address: " + escapeHtml(address));
+    const sub = slogan ? '<div class="sub">' + escapeHtml(slogan) + "</div>" : "";
+    const letterhead = lines.length ? '<div class="letterhead-lines">' + lines.join("<br>") + "</div>" : "";
     return (
       '<div class="brand-head">' +
         mark +
         '<div class="brand-copy">' +
           "<h1>" + nameEsc + "</h1>" +
-          '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+          sub +
+          letterhead +
         "</div>" +
       "</div>"
     );
@@ -1048,7 +1076,6 @@
       '<div class="topbar">' +
         '<div class="brand">' +
           "<h1>" + escapeHtml(TENANT_NAME_FALLBACK) + "</h1>" +
-          '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
         "</div>" +
       "</div>" +
       '<div class="content">' +
@@ -1317,8 +1344,6 @@
           : "No payments recorded yet.";
 
       const accent = safeAccentColor(data.accent_color);
-      const invLabelRaw = String(data.invoice_label || "").trim();
-      const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
       const projectNameRaw = String(data.project_name || "").trim();
       const emptyWorkDetails = parentProjectDisplay
         ? "Project balance for " + (projectNameRaw || "this project") + "."
@@ -1342,8 +1367,13 @@
       invoiceBox.innerHTML =
         '<div class="topbar">' +
           '<div class="topbar-main brand">' +
-            buildBrandHeaderHtml(brandName, data.logo_url) +
-            invoiceTitleBlock +
+            buildBrandHeaderHtml(brandName, data.logo_url, {
+              serviceLine: data.service_line || data.serviceLine,
+              licenseNumber: data.contractor_license_number || data.contractorLicenseNumber,
+              phone: data.business_phone,
+              email: data.business_email,
+              address: data.business_address
+            }) +
           "</div>" +
           '<div class="topbar-right">' +
             '<div class="invoice-meta">' +

@@ -327,6 +327,17 @@ function main() {
   ok("public work details hide invoice total", !/Invoice total/i.test(clientText));
   ok("public work details hide materials subtotal label", !/Materials subtotal/i.test(clientText));
 
+  const publicFn = read("netlify/functions/get-public-invoice.js");
+  ok("public invoice header does not invent Service invoice", !/Service invoice/.test(publicHtml));
+  ok("public invoice letterhead uses slogan from settings", publicHtml.includes("serviceLine") && publicHtml.includes("letterhead-lines"));
+  ok("public invoice letterhead can show L#", /function formatLicenseLine/.test(publicHtml) && publicHtml.includes("L# "));
+  ok("public invoice overlay loads service line from snapshot", /loadTenantServiceLineFromSnapshot/.test(publicFn));
+  ok("public invoice overlay loads contractor L#", /tenant_legal_profiles/.test(publicFn) && /contractor_license_number/.test(publicFn));
+  ok("public invoice does not invent license copy", !/1083733/.test(publicFn) && !/1083733/.test(publicHtml));
+  ok("public invoice header does not print Manual Invoice", !/invoiceTitleBlock/.test(publicHtml));
+  ok("public invoice letterhead overlay can use stored service area", /loadTenantLetterheadAddressFromSnapshot/.test(publicFn));
+  ok("public invoice does not invent Prepared by", !/Prepared by/.test(publicHtml));
+
   console.log("\n" + passed + " passed");
 }
 
