@@ -128,12 +128,22 @@ async function runWith({ deviceImpl, fetchImpl }) {
   }
 }
 
+function jsonResForSellerSettings(url, snapshotRows, licenseRows) {
+  if (/tenant_legal_profiles/.test(String(url))) {
+    return jsonRes(200, licenseRows || []);
+  }
+  return jsonRes(200, snapshotRows);
+}
+
 (async function main() {
   const valid = await runWith({
     deviceImpl: async () => sellerCtx(TENANT_A),
     fetchImpl: async (url) => {
       const parsed = new URL(url);
       eq("valid seller snapshot tenant query", parsed.searchParams.get("tenant_id"), "eq." + TENANT_A);
+      if (/tenant_legal_profiles/.test(String(url))) {
+        return jsonResForSellerSettings(url, [], [{ contractor_license_number: "1061234" }]);
+      }
       ok("valid seller uses latest snapshot order", /created_at\.desc/.test(parsed.search));
       ok("valid seller limits to one snapshot", /limit=1/.test(parsed.search));
       return jsonRes(200, [
@@ -145,6 +155,7 @@ async function runWith({ deviceImpl, fetchImpl }) {
   eq("valid seller ok", valid.body.ok, true);
   eq("valid seller hoursPerDay", valid.body.settings.hoursPerDay, 8);
   eq("valid seller tenant A installer", valid.body.settings.baseInstaller, 75);
+  eq("valid seller license number from legal profile", valid.body.settings.contractorLicenseNumber, "1061234");
   eq("valid seller source is snapshot", valid.body.source, "tenant_snapshot");
   ok("valid seller fetch stayed on fake supabase", valid.fetchLog.every((row) => row.url.startsWith(FAKE_SUPABASE)));
 
@@ -155,6 +166,9 @@ async function runWith({ deviceImpl, fetchImpl }) {
       const tenantEq = parsed.searchParams.get("tenant_id");
       ok("cross-tenant query does not use tenant B", tenantEq !== "eq." + TENANT_B);
       eq("cross-tenant still scopes to seller tenant A", tenantEq, "eq." + TENANT_A);
+      if (/tenant_legal_profiles/.test(String(url))) {
+        return jsonRes(200, []);
+      }
       return jsonRes(200, [
         { payload: { storage: { mg_settings_v2: { ...VALID_MG, baseInstaller: 75 } } } },
       ]);
@@ -203,6 +217,9 @@ async function runWith({ deviceImpl, fetchImpl }) {
     fetchImpl: async (url) => {
       const parsed = new URL(url);
       eq("owner snapshot tenant query", parsed.searchParams.get("tenant_id"), "eq." + TENANT_A);
+      if (/tenant_legal_profiles/.test(String(url))) {
+        return jsonRes(200, []);
+      }
       return jsonRes(200, [{ payload: { storage: { mg_settings_v2: VALID_MG } } }]);
     },
   });
@@ -213,10 +230,14 @@ async function runWith({ deviceImpl, fetchImpl }) {
 
   const ownerMxn = await runWith({
     deviceImpl: async () => ownerCtx(TENANT_A),
-    fetchImpl: async () =>
-      jsonRes(200, [
+    fetchImpl: async (url) => {
+      if (/tenant_legal_profiles/.test(String(url))) {
+        return jsonRes(200, []);
+      }
+      return jsonRes(200, [
         { payload: { storage: { mg_settings_v2: { ...VALID_MG, currency: "MXN" } } } },
-      ]),
+      ]);
+    },
   });
   eq("owner legitimate MXN stays MXN", ownerMxn.body.settings.currency, "MXN");
   ok("owner path does not hardcode USD", ownerMxn.body.settings.currency !== "USD");
@@ -227,6 +248,8 @@ async function runWith({ deviceImpl, fetchImpl }) {
   );
   ok("endpoint uses owner or seller dual-auth", /resolveOwnerOrSellerContext\(event\)/.test(src));
   ok("endpoint no longer seller-device-only", !/requireSellerDevice\(event\)/.test(src));
+  ok("seller settings injects Legal Profile license after pricing validation", /validateSellerSafeSettings[\s\S]*tenant_legal_profiles/.test(src));
+  ok("seller settings assigns contractorLicenseNumber from legal profile", /settings\.contractorLicenseNumber = licenseNumber/.test(src));
 
   console.log("\n" + passed + " passed");
 })().catch((err) => {

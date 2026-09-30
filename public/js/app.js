@@ -9481,6 +9481,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     return name;
   }
 
+  async function loadOwnerContractorLicenseNumber() {
+    try {
+      const response = await fetch("/.netlify/functions/tenant-legal-profile", {
+        method: "GET",
+        credentials: "include"
+      });
+      const data = await response.json().catch(function () {
+        return {};
+      });
+      return String(data && data.profile && data.profile.contractor_license_number || "").trim();
+    } catch (_err) {
+      return "";
+    }
+  }
+
   async function resolveOwnerPublishBranding(settings) {
     const cached = readStore(LS_BRANDING, {});
     let raw = {};
@@ -9575,6 +9590,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!H || typeof H.buildEstimatePdfPayload !== "function" || typeof H.buildEstimateTenantPayload !== "function") {
       return null;
     }
+    const licenseNumber = await loadOwnerContractorLicenseNumber();
+    const settingsForPdf = {
+      ...freshSettings,
+      contractorLicenseNumber: licenseNumber || freshSettings.contractorLicenseNumber || freshSettings.contractor_license_number || ""
+    };
     const savedRow = publishData.row && typeof publishData.row === "object" ? publishData.row : null;
     const estimateNumber = String(
       publishData.quote_number_display || (savedRow && savedRow.quote_number_display) || state.estimateNumber || ""
@@ -9637,13 +9657,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       savedTenantOverlay.business_address = savedAddr;
     }
 
-    const tenantPdf = H.buildEstimateTenantPayload(branding, freshSettings, {});
+    const tenantPdf = H.buildEstimateTenantPayload(branding, settingsForPdf, {});
     const ownerForPdf = loadOwner();
     const projectNotes = nonEmptyString(ownerForPdf.quoteNotes);
     const basePayload = {
       ...tenantPdf,
       branding,
-      settings: freshSettings,
+      settings: settingsForPdf,
       logoUrl: ownerEstimatePickFirstNonEmpty(branding.logoUrl, freshSettings.publicLogoUrl),
       marketLine: branding.marketLine || freshSettings.marketLine || "",
       estimateNumber,
@@ -9668,12 +9688,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       publicQuoteUrl
     };
 
-    const tenantForRebuild = H.buildEstimateTenantPayload({ ...branding, ...savedTenantOverlay }, freshSettings, basePayload);
+    const tenantForRebuild = H.buildEstimateTenantPayload({ ...branding, ...savedTenantOverlay }, settingsForPdf, basePayload);
     const pdfPayloadWithLink = {
       ...basePayload,
       ...tenantForRebuild,
       branding,
-      settings: freshSettings,
+      settings: settingsForPdf,
       customerEmail: toEmail || state.customerEmail || "",
       customerPhone,
       clientEmail: toEmail || state.customerEmail || "",

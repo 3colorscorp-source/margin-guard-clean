@@ -826,6 +826,7 @@
       businessEmail: next.business_email,
       businessPhone: next.business_phone,
       businessAddress: next.business_address,
+      contractorLicenseNumber: next.contractor_license_number || next.contractorLicenseNumber,
       logoUrl: next.logo_url || next.logoUrl || next.public_logo_url,
       clientName: next.client_name || next.customer_name,
       clientEmail: next.client_email || next.customer_email,

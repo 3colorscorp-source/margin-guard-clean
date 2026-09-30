@@ -239,6 +239,19 @@ exports.handler = async (event) => {
     const resolvedBusinessEmail = pickFirst(td ? td.business_email : "", estimate.business_email);
     const resolvedBusinessPhone = pickFirst(td ? td.business_phone : "", estimate.business_phone);
     const resolvedBusinessAddress = pickFirst(td ? td.business_address : "", estimate.business_address);
+    let contractorLicenseNumber = "";
+    if (tenantId) {
+      try {
+        const legalRows = await supabaseRequest(
+          `tenant_legal_profiles?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=contractor_license_number&limit=1`,
+          { method: "GET" }
+        );
+        const legalRow = Array.isArray(legalRows) && legalRows[0] ? legalRows[0] : null;
+        contractorLicenseNumber = pickFirst(legalRow && legalRow.contractor_license_number);
+      } catch (_legalErr) {
+        contractorLicenseNumber = "";
+      }
+    }
 
     return json(200, {
       ok: true,
@@ -248,6 +261,7 @@ exports.handler = async (event) => {
         business_email: resolvedBusinessEmail,
         business_phone: resolvedBusinessPhone,
         business_address: resolvedBusinessAddress,
+        contractor_license_number: contractorLicenseNumber,
         tenant_branding_business_name: tenantBrandingBusinessName,
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,

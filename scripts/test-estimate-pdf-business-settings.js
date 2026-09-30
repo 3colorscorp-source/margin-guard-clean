@@ -118,4 +118,41 @@ const tenantEmptySlogan = H.buildEstimateTenantPayload(
 );
 eq("tenant payload does not invent service line", tenantEmptySlogan.serviceLine, "");
 
+ok("formatPdfLicenseLine is exported", typeof H.formatPdfLicenseLine === "function");
+eq("license number is prefixed L#", H.formatPdfLicenseLine("1061234"), "L# 1061234");
+eq("already prefixed L# is kept", H.formatPdfLicenseLine("L# 1061234"), "L# 1061234");
+eq("already prefixed Lic # is kept", H.formatPdfLicenseLine("Lic # 1061234"), "Lic # 1061234");
+eq("empty license is not invented", H.formatPdfLicenseLine(""), "");
+eq("whitespace license is omitted", H.formatPdfLicenseLine("   "), "");
+
+const fromLicenseSettings = H.resolvePdfBusinessIdentity({
+  settings: { contractorLicenseNumber: "1061234" },
+  branding: { contractorLicenseNumber: "IGNORE" },
+  contractorLicenseNumber: "IGNORE PAYLOAD"
+});
+eq("settings license number wins", fromLicenseSettings.contractorLicenseNumber, "1061234");
+
+const fromLegalProfile = H.resolvePdfBusinessIdentity({
+  settings: {},
+  branding: { legalProfile: { contractor_license_number: "998877" } }
+});
+eq("legal profile license used when settings empty", fromLegalProfile.contractorLicenseNumber, "998877");
+
+const emptyLicense = H.resolvePdfBusinessIdentity({ settings: {}, branding: {} });
+eq("empty license is not invented on identity", emptyLicense.contractorLicenseNumber, "");
+
+const tenantLicense = H.buildEstimateTenantPayload(
+  { contractorLicenseNumber: "IGNORE" },
+  { contractorLicenseNumber: "1061234" },
+  { contractorLicenseNumber: "IGNORE PAYLOAD" }
+);
+eq("tenant payload settings license wins", tenantLicense.contractorLicenseNumber, "1061234");
+
+ok("helpers draw L# on the estimate PDF header", /bizLines\.push\(licenseLine\)/.test(helpersSrc));
+ok("sales PDF draws L# on the proposal header", /return 'L# ' \+ n/.test(salesHtml) && /if \(licenseLine\)/.test(salesHtml));
+ok("seller settings load Legal Profile license", /tenant_legal_profiles/.test(read("netlify/functions/get-seller-business-settings.js")));
+ok("public estimate overlays contractor_license_number", /contractor_license_number: contractorLicenseNumber/.test(pubEst));
+ok("public PDF maps contractorLicenseNumber", /contractorLicenseNumber: next\.contractor_license_number \|\| next\.contractorLicenseNumber/.test(builderJs));
+ok("owner send loads tenant-legal-profile for L#", /loadOwnerContractorLicenseNumber/.test(appJs) && /tenant-legal-profile/.test(appJs));
+
 console.log("Passed " + passed + " assertions.");
