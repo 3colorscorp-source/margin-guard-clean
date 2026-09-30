@@ -144,6 +144,62 @@ function buildInvoiceEmailHtml({
   );
 }
 
+/** Customer-facing Gmail letter: View Invoice button only. Summary lives on the PDF. */
+function buildInvoiceClientHtml({ customerName, intro, publicUrl, businessName, ctaLabel }) {
+  return buildInvoiceEmailHtml({
+    customerName,
+    intro,
+    publicUrl,
+    summaryTitle: "",
+    summaryRows: [],
+    closing: INVOICE_EMAIL_CLOSING,
+    businessName,
+    ctaLabel: ctaLabel || "View Invoice"
+  });
+}
+
+function applyClientFacingZapierEmail(payload, { customerName, intro, publicUrl, businessName }) {
+  const html = buildInvoiceClientHtml({
+    customerName,
+    intro,
+    publicUrl,
+    businessName,
+    ctaLabel: "View Invoice"
+  });
+  payload.email_body = html;
+  payload.email_html = html;
+  payload.html_body = html;
+  payload.messageText = html;
+  payload["Email Body"] = html;
+  payload["Email Html"] = html;
+  payload["Html Body"] = html;
+  payload["Message Text"] = html;
+  payload["Body Type"] = "Html";
+  payload.body_type = "html";
+  return payload;
+}
+
+function attachInvoicePdfFile(payload, pdfUrl, pdfFileName) {
+  const url = String(pdfUrl || "").trim();
+  if (!url) return payload;
+  const fileUrl = /(?:\?|&)raw=1(?:&|$)/.test(url) ? url : url + (url.indexOf("?") >= 0 ? "&" : "?") + "raw=1";
+  const name = String(pdfFileName || "Invoice.pdf").trim() || "Invoice.pdf";
+  payload.pdf_url = fileUrl;
+  payload.pdfUrl = fileUrl;
+  payload["Pdf Url"] = fileUrl;
+  payload["PDF Url"] = fileUrl;
+  payload.file = fileUrl;
+  payload.file_url = fileUrl;
+  payload.filename = name;
+  payload.pdf_filename = name;
+  payload["Pdf Filename"] = name;
+  payload["Attachment"] = fileUrl;
+  payload["Attachment Url"] = fileUrl;
+  payload["Attachment Filename"] = name;
+  payload.files = [{ url: fileUrl, filename: name, mime_type: "application/pdf" }];
+  return payload;
+}
+
 const INVOICE_EMAIL_CLOSING = "If you have questions about this invoice, we are here to help.";
 
 function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, summaryRows, closing, businessName }) {
@@ -207,7 +263,8 @@ function finishInvoiceEmailCopy({ subject, customerName, intro, publicUrl, summa
     subject,
     body: text,
     html,
-    text
+    text,
+    intro
   };
 }
 
@@ -606,6 +663,7 @@ function buildCanonicalInvoiceEmail({
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
       email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
+      email_intro: emailCopy.intro,
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -664,6 +722,7 @@ function buildCanonicalInvoiceEmail({
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
       email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
+      email_intro: emailCopy.intro,
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -715,6 +774,7 @@ function buildCanonicalInvoiceEmail({
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
       email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
+      email_intro: emailCopy.intro,
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -758,6 +818,7 @@ function buildCanonicalInvoiceEmail({
     email_subject: emailCopy.subject,
     email_body: emailCopy.body,
     email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
+    email_intro: emailCopy.intro,
     invoice_amount,
     balance_due,
     amount_due_on_this_invoice: balance_due,
@@ -1201,6 +1262,12 @@ exports.handler = async (event) => {
       idempotency_key
     };
     const payload = applyCanonicalToZapierPayload(basePayload, canonical);
+    applyClientFacingZapierEmail(payload, {
+      customerName: client_name,
+      intro: canonical.email_intro,
+      publicUrl: public_invoice_url,
+      businessName: business_name
+    });
     const pdfBase64 = sanitizeInvoicePdfBase64(pickFirstStr(body.pdfBase64, body.pdf_base64, body.pdfContentBase64));
     const pdfFileName = sanitizeInvoicePdfFileName(
       pickFirstStr(body.pdfFileName, body.pdf_filename, body.fileName),
@@ -1222,24 +1289,7 @@ exports.handler = async (event) => {
         pdfUrl = "";
       }
     }
-    if (pdfUrl) {
-      const pdfFileUrl = pdfUrl + (pdfUrl.indexOf("?") >= 0 ? "&" : "?") + "raw=1";
-      payload.email_body = insertPdfLinkPlain(payload.email_body, pdfUrl);
-      payload["Email Body"] = payload.email_body;
-      payload.email_html = insertPdfLinkHtml(payload.email_html, pdfUrl);
-      payload.html_body = payload.email_html;
-      payload.messageText = payload.email_html;
-      payload["Email Html"] = payload.email_html;
-      payload["Html Body"] = payload.email_html;
-      payload["Message Text"] = payload.email_html;
-      payload.pdf_url = pdfFileUrl;
-      payload.pdfUrl = pdfFileUrl;
-      payload["Pdf Url"] = pdfFileUrl;
-      payload["PDF Url"] = pdfFileUrl;
-      payload.pdf_view_url = pdfUrl;
-      payload.pdf_filename = pdfFileName;
-      payload["Pdf Filename"] = pdfFileName;
-    }
+    attachInvoicePdfFile(payload, pdfUrl, pdfFileName);
 
     const wantsDryRun = !!(body.dry_run || body.email_preview || body.debug_preview);
     if (wantsDryRun) {
@@ -1274,16 +1324,6 @@ exports.handler = async (event) => {
         "webhook_not_configured",
         "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
       );
-    }
-
-    if (pdfBase64) {
-      payload.pdf_base64 = pdfBase64;
-      payload.pdf_filename = pdfFileName;
-      payload["Pdf Base64"] = pdfBase64;
-      payload["Pdf Filename"] = pdfFileName;
-      payload.file = pdfBase64;
-      payload["Attachment"] = pdfBase64;
-      payload["Attachment Filename"] = pdfFileName;
     }
 
     console.log("[zapier-signature] running...");
