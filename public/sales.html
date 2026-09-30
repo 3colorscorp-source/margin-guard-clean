@@ -8374,7 +8374,7 @@
           'support_email',
           'contact_email',
           'reply_to_email'
-        ], ''));
+        ], safeTrim(st.businessEmail) || ''));
 
         const businessPhone = safeTrim(pickFirstValue(r, [
           'businessPhone',
@@ -8385,7 +8385,7 @@
           'mobile_phone',
           'whatsapp_phone',
           'whatsapp'
-        ], ''));
+        ], safeTrim(st.businessPhone) || ''));
 
         const businessAddress = safeTrim(pickFirstValue(r, [
           'businessAddress',
@@ -8396,7 +8396,7 @@
           'mailing_address',
           'full_address',
           'office_address'
-        ], ''));
+        ], safeTrim(st.businessAddress || st.address || st.companyAddress) || ''));
 
         const businessServiceArea = safeTrim(pickFirstValue(r, [
           'businessServiceArea',
@@ -8433,20 +8433,13 @@
 
         const signatureLine = safeTrim(pickFirstValue(r, [
           'signatureLine',
-          'signature_line',
-          'signature_tagline',
-          'email_signature',
-          'tagline',
-          'headline'
-        ], 'Professional Estimate Delivery'));
+          'signature_line'
+        ], safeTrim(st.signatureLine) || ''));
 
         const serviceLine = safeTrim(pickFirstValue(r, [
           'serviceLine',
-          'service_line',
-          'service_category',
-          'industry_line',
-          'brand_footer'
-        ], 'Professional Service Estimate'));
+          'service_line'
+        ], safeTrim(st.serviceLine) || ''));
 
         const marketLine = safeTrim(pickFirstValue(r, [
           'marketLine',
@@ -8551,9 +8544,8 @@
               businessServiceArea: apiRow.businessServiceArea || merged.businessServiceArea,
               logoUrl: apiRow.logoUrl || merged.logoUrl || '',
               accentHex: apiRow.accentHex || merged.accentHex,
-              signatureLine: apiRow.signatureLine || merged.signatureLine,
-              // API does not return service_line; apiRow.serviceLine is only normalizeBrandingRow default — prefer local cache.
-              serviceLine: merged.serviceLine || apiRow.serviceLine,
+              signatureLine: settings.signatureLine || cached.signatureLine || apiRow.signatureLine || merged.signatureLine,
+              serviceLine: settings.serviceLine || cached.serviceLine || apiRow.serviceLine || merged.serviceLine,
               marketLine: apiRow.marketLine || merged.marketLine
             };
           }
@@ -10217,22 +10209,21 @@
     data.settings && typeof data.settings === 'object' ? data.settings : null;
 
   const proposalSubtitle = pickTenantString(
-    data.serviceLine,
-    data.service_line,
-    branding?.serviceLine,
-    branding?.service_line,
     settings?.serviceLine,
     settings?.service_line,
-    'Professional Service Estimate'
+    branding?.serviceLine,
+    branding?.service_line,
+    data.serviceLine,
+    data.service_line
   );
 
   const businessName = String(
-    data.businessName ||
-      data.business_name ||
-      data.bizName ||
-      data.biz_name ||
-      data.company_name ||
-      data.companyName ||
+    (data.settings &&
+      (data.settings.bizName ||
+        data.settings.businessName ||
+        data.settings.business_name ||
+        data.settings.company_name ||
+        data.settings.companyName)) ||
       (data.branding &&
         (data.branding.businessName ||
           data.branding.business_name ||
@@ -10240,16 +10231,13 @@
           data.branding.biz_name ||
           data.branding.company_name ||
           data.branding.companyName)) ||
-      (data.settings &&
-        (data.settings.businessName ||
-          data.settings.business_name ||
-          data.settings.bizName ||
-          data.settings.biz_name ||
-          data.settings.company_name ||
-          data.settings.companyName)) ||
-      data.tenantName ||
-      data.tenant_name ||
-      'Business Name'
+      data.businessName ||
+      data.business_name ||
+      data.bizName ||
+      data.biz_name ||
+      data.company_name ||
+      data.companyName ||
+      ''
   ).trim();
 
   const blockedGenericBusinessNames = new Set([
@@ -10279,7 +10267,7 @@
             data.branding.business_name ||
             data.branding.companyName ||
             data.branding.company_name)) ||
-        'Business Name'
+        ''
     ).trim();
 
     if (fallbackBusinessName) {
@@ -10611,13 +10599,17 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(...textDark);
-  doc.text(safeBusinessName || 'Business Name', left, y);
+  if (safeBusinessName) {
+    doc.text(safeBusinessName, left, y);
+  }
 
   const subY = y + 24;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.setTextColor(...textMuted);
-  doc.text(proposalSubtitle || 'Professional Service Estimate', left, subY);
+  if (proposalSubtitle) {
+    doc.text(proposalSubtitle, left, subY);
+  }
 
   const bizLines = [];
   if (preparedBy) {
@@ -10929,18 +10921,17 @@
     const e = base && typeof base === 'object' ? base : {};
 
     const businessName = pickFirstNonEmpty(
+      s.bizName,
+      s.businessName,
+      s.business_name,
+      s.companyName,
+      s.company_name,
       b.businessName,
       b.business_name,
       b.bizName,
       b.biz_name,
       b.companyName,
       b.company_name,
-      s.businessName,
-      s.business_name,
-      s.bizName,
-      s.biz_name,
-      s.companyName,
-      s.company_name,
       e.businessName,
       e.business_name,
       e.bizName,
@@ -10950,22 +10941,27 @@
     );
 
     const businessPhone = pickFirstNonEmpty(
+      s.businessPhone,
+      s.business_phone,
+      s.bizPhone,
+      s.biz_phone,
+      s.phone,
       b.businessPhone,
       b.business_phone,
       b.bizPhone,
       b.biz_phone,
       b.phone,
       b.contact_phone,
-      s.businessPhone,
-      s.business_phone,
-      s.bizPhone,
-      s.biz_phone,
-      s.phone,
       e.businessPhone,
       e.business_phone
     );
 
     const businessEmail = pickFirstNonEmpty(
+      s.businessEmail,
+      s.business_email,
+      s.bizEmail,
+      s.biz_email,
+      s.email,
       b.businessEmail,
       b.business_email,
       b.bizEmail,
@@ -10974,28 +10970,23 @@
       b.support_email,
       b.contact_email,
       b.reply_to_email,
-      s.businessEmail,
-      s.business_email,
-      s.bizEmail,
-      s.biz_email,
-      s.email,
       e.businessEmail,
       e.business_email
     );
 
     const businessAddress = pickFirstNonEmpty(
-      b.businessAddress,
-      b.business_address,
-      b.bizAddress,
-      b.biz_address,
-      b.mailing_address,
-      b.office_address,
       s.businessAddress,
       s.business_address,
       s.bizAddress,
       s.biz_address,
       s.address,
       s.companyAddress,
+      b.businessAddress,
+      b.business_address,
+      b.bizAddress,
+      b.biz_address,
+      b.mailing_address,
+      b.office_address,
       e.businessAddress,
       e.business_address
     );
@@ -11025,18 +11016,18 @@
     );
 
     const serviceLine = pickFirstNonEmpty(
-      b.serviceLine,
-      b.service_line,
       s.serviceLine,
       s.service_line,
+      b.serviceLine,
+      b.service_line,
       e.serviceLine
     );
 
     const signatureLine = pickFirstNonEmpty(
-      b.signatureLine,
-      b.signature_line,
       s.signatureLine,
       s.signature_line,
+      b.signatureLine,
+      b.signature_line,
       e.signatureLine
     );
 
@@ -11058,8 +11049,8 @@
       businessAddress,
       businessServiceArea,
       preparedBy,
-      serviceLine: serviceLine || 'Professional Service Estimate',
-      signatureLine: signatureLine || 'Professional Estimate Delivery',
+      serviceLine: serviceLine || '',
+      signatureLine: signatureLine || '',
       accentHex,
       accentRgb
     };
@@ -12114,9 +12105,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           '',
         accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
         accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
-        serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
+        serviceLine: settings.serviceLine || branding.serviceLine || payload.serviceLine || '',
         marketLine: branding.marketLine || payload.marketLine || '',
-        signatureLine: branding.signatureLine || payload.signatureLine || 'Professional Estimate Delivery',
+        signatureLine: settings.signatureLine || branding.signatureLine || payload.signatureLine || '',
         currency: 'USD',
         recommendedTotal: rowTotal,
         estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || '',

@@ -684,8 +684,9 @@
                 </div>
               </div>
               <div class="field">
-                <label for="serviceLine">Service line</label>
-                <input id="serviceLine" maxlength="90" placeholder="Professional Service Estimate" />
+                <label for="serviceLine">Service line / slogan</label>
+                <input id="serviceLine" maxlength="90" placeholder="" />
+                <div class="hint">This exact text appears on the estimate PDF. The system will not replace it.</div>
               </div>
               <div class="field">
                 <label for="marketLine">Market line</label>
@@ -693,7 +694,8 @@
               </div>
               <div class="field field--full">
                 <label for="signatureLine">Signature line</label>
-                <input id="signatureLine" maxlength="120" placeholder="Professional Estimate Delivery" />
+                <input id="signatureLine" maxlength="120" placeholder="" />
+                <div class="hint">Optional. Saved exactly as entered.</div>
               </div>
             </div>
           </div>
@@ -1348,7 +1350,7 @@
               <div class="bs-summary-preview">
                 <span class="bs-summary-label">Accent</span>
                 <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
-                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
+                <span id="previewSignatureLine" class="sub bs-summary-meta">—</span>
               </div>
               <div class="bs-summary-used">
                 <span class="bs-summary-label">Used by</span>
@@ -1440,9 +1442,9 @@
     businessAddress: '',
     logoUrl: '',
     accentHex: '#0f8a5f',
-    serviceLine: 'Professional Service Estimate',
+    serviceLine: '',
     marketLine: '',
-    signatureLine: 'Professional Estimate Delivery',
+    signatureLine: '',
     primaryTrade: '',
     initials: ''
   };
@@ -1587,13 +1589,14 @@
       row?.bizName ||
       row?.business_name ||
       settings?.bizName ||
-      DEFAULT_BRANDING.businessName
+      ''
     );
 
     const businessEmail = safeTrim(
       row?.business_email ||
       row?.businessEmail ||
       row?.email_signature_email ||
+      settings?.businessEmail ||
       ''
     );
 
@@ -1601,6 +1604,7 @@
       row?.business_phone ||
       row?.businessPhone ||
       row?.email_signature_phone ||
+      settings?.businessPhone ||
       ''
     );
 
@@ -1612,14 +1616,16 @@
     const businessAddress = safeTrim(
       row?.business_address ||
       row?.businessAddress ||
-      fromParts
+      fromParts ||
+      settings?.businessAddress ||
+      ''
     );
 
     const signatureLine = safeTrim(
-      row?.footer_line ||
       row?.signatureLine ||
-      row?.email_signature_name ||
-      DEFAULT_BRANDING.signatureLine
+      row?.signature_line ||
+      settings?.signatureLine ||
+      ''
     );
 
     return {
@@ -1627,10 +1633,10 @@
       businessEmail,
       businessPhone,
       businessAddress,
-      logoUrl: safeTrim(row?.logo_url || row?.logoUrl || ''),
+      logoUrl: safeTrim(row?.logo_url || row?.logoUrl || settings?.publicLogoUrl || ''),
       accentHex: safeTrim(row?.brand_primary_color || row?.accentHex || DEFAULT_BRANDING.accentHex),
-      serviceLine: safeTrim(row?.service_line || row?.serviceLine || row?.estimate_subtitle || DEFAULT_BRANDING.serviceLine),
-      marketLine: safeTrim(row?.marketLine || row?.business_region_label || ''),
+      serviceLine: safeTrim(row?.serviceLine || row?.service_line || settings?.serviceLine || ''),
+      marketLine: safeTrim(row?.marketLine || row?.market_line || settings?.marketLine || ''),
       signatureLine,
       primaryTrade: normalizePrimaryTradeCode(row?.primaryTrade || row?.primary_trade || ''),
       initials: buildInitials(businessName)
@@ -1774,6 +1780,14 @@
   function currentFormSettings() {
     return {
       bizName: safeTrim(document.getElementById('bizNameOwner')?.value || ''),
+      businessEmail: safeTrim(document.getElementById('businessEmail')?.value || ''),
+      businessPhone: safeTrim(document.getElementById('businessPhone')?.value || ''),
+      businessAddress: safeTrim(document.getElementById('businessAddress')?.value || ''),
+      publicLogoUrl: safeTrim(document.getElementById('publicLogoUrl')?.value || ''),
+      publicAccentColor: safeTrim(document.getElementById('publicAccentColor')?.value || ''),
+      serviceLine: safeTrim(document.getElementById('serviceLine')?.value || ''),
+      signatureLine: safeTrim(document.getElementById('signatureLine')?.value || ''),
+      marketLine: safeTrim(document.getElementById('marketLine')?.value || ''),
       baseInstaller: Number(document.getElementById('baseInstaller')?.value || 0),
       baseHelper: Number(document.getElementById('baseHelper')?.value || 0),
       pricingMode: safeTrim(document.getElementById('pricingMode')?.value || 'hour'),
@@ -1798,7 +1812,7 @@
   }
 
   function currentFormBranding(settings) {
-    const businessName = safeTrim(document.getElementById('bizNameOwner')?.value || settings?.bizName || DEFAULT_BRANDING.businessName);
+    const businessName = safeTrim(document.getElementById('bizNameOwner')?.value || settings?.bizName || '');
     return {
       businessName,
       businessEmail: safeTrim(document.getElementById('businessEmail')?.value || ''),
@@ -1806,9 +1820,9 @@
       businessAddress: safeTrim(document.getElementById('businessAddress')?.value || ''),
       logoUrl: safeTrim(document.getElementById('publicLogoUrl')?.value || ''),
       accentHex: safeTrim(document.getElementById('publicAccentColor')?.value || DEFAULT_BRANDING.accentHex),
-      serviceLine: safeTrim(document.getElementById('serviceLine')?.value || DEFAULT_BRANDING.serviceLine),
+      serviceLine: safeTrim(document.getElementById('serviceLine')?.value || ''),
       marketLine: safeTrim(document.getElementById('marketLine')?.value || ''),
-      signatureLine: safeTrim(document.getElementById('signatureLine')?.value || DEFAULT_BRANDING.signatureLine),
+      signatureLine: safeTrim(document.getElementById('signatureLine')?.value || ''),
       primaryTrade: normalizePrimaryTradeCode(document.getElementById('primaryTrade')?.value || ''),
       initials: buildInitials(businessName)
     };
@@ -1819,7 +1833,7 @@
     setText('previewBusinessName', safeTrim(branding.businessName) || '—');
     setText('previewBusinessMeta', previewMeta);
     setText('previewAccentHex', branding.accentHex || DEFAULT_BRANDING.accentHex);
-    setText('previewSignatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
+    setText('previewSignatureLine', safeTrim(branding.serviceLine || branding.signatureLine) || '—');
     const tradeChip = document.getElementById('previewPrimaryTradeChip');
     const tradeLabel = getPrimaryTradeLabel(branding.primaryTrade);
     if (tradeChip) {
@@ -1841,15 +1855,15 @@
 
   function fillForm(settings, branding) {
     setInputValue('bizNameOwner', branding.businessName || settings.bizName || '');
-    setInputValue('businessEmail', branding.businessEmail || '');
-    setInputValue('businessPhone', branding.businessPhone || '');
-    setInputValue('businessAddress', branding.businessAddress || '');
-    setInputValue('publicLogoUrl', branding.logoUrl || '');
+    setInputValue('businessEmail', branding.businessEmail || settings.businessEmail || '');
+    setInputValue('businessPhone', branding.businessPhone || settings.businessPhone || '');
+    setInputValue('businessAddress', branding.businessAddress || settings.businessAddress || '');
+    setInputValue('publicLogoUrl', branding.logoUrl || settings.publicLogoUrl || '');
     setInputValue('publicAccentColor', branding.accentHex || DEFAULT_BRANDING.accentHex);
     setInputValue('primaryTrade', normalizePrimaryTradeCode(branding.primaryTrade));
-    setInputValue('serviceLine', branding.serviceLine || DEFAULT_BRANDING.serviceLine);
-    setInputValue('marketLine', branding.marketLine || '');
-    setInputValue('signatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
+    setInputValue('serviceLine', branding.serviceLine || settings.serviceLine || '');
+    setInputValue('marketLine', branding.marketLine || settings.marketLine || '');
+    setInputValue('signatureLine', branding.signatureLine || settings.signatureLine || '');
     setInputValue('baseInstaller', settings.baseInstaller);
     setInputValue('baseHelper', settings.baseHelper);
     setInputValue('pricingMode', settings.pricingMode);

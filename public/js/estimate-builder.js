@@ -129,8 +129,9 @@
   }
 
   /**
-   * Multi-tenant public header: quote owner fields first, then tenant branding for that quote's tenant only.
-   * Order: quote business_name → quote company_name → tenant branding business_name → tenant branding company_name → "Business".
+   * Multi-tenant public header: live tenant branding / Business Settings first, then quote fields.
+   * Order: tenant branding business_name → tenant branding company_name → quote business_name → quote company_name.
+   * Empty stays empty — never invent "Business".
    * Does not use business_email, client email, domains, or generic contact-derived text as the title.
    */
   function resolvePublicBusinessDisplayName(est) {
@@ -143,12 +144,12 @@
     const tenantBrandingBusiness = safe(est.tenant_branding_business_name);
     const tenantBrandingCompany = safe(est.tenant_branding_company_name);
     const candidates = [
-      businessName,
-      companyName,
       tenantBrandingBusiness,
-      tenantBrandingCompany
+      tenantBrandingCompany,
+      businessName,
+      companyName
     ];
-    let resolved = "Business";
+    let resolved = "";
     for (const c of candidates) {
       if (!isInvalidBusinessDisplayName(c, ctx)) {
         resolved = c;

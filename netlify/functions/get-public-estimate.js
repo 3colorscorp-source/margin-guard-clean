@@ -83,7 +83,7 @@ function normalizePublicLogoUrl(value) {
 /**
  * Public estimate API: isolated to one quote row matched by public_token only.
  * Response is a whitelisted subset — no ids, no tenant_id in JSON.
- * Tenant branding (name + logo) is resolved server-side from tenant_id for header display only.
+ * Tenant branding (name, email, phone, address, logo) is resolved from Business Settings / tenant_branding.
  */
 exports.handler = async (event) => {
   try {
@@ -230,19 +230,24 @@ exports.handler = async (event) => {
         !!ownerSettings?.deposit_payment_link || stripeDepositCheckoutAvailable;
     }
 
-    const resolvedBusinessName =
-      pickFirst(
-        skipHeaderPlaceholderName(estimate.business_name),
-        skipHeaderPlaceholderName(estimate.company_name),
-        td ? td.branding_business_name : "",
-        td ? td.business_name : ""
-      ) || "Business";
+    const resolvedBusinessName = pickFirst(
+      skipHeaderPlaceholderName(td ? td.branding_business_name : ""),
+      skipHeaderPlaceholderName(td ? td.business_name : ""),
+      skipHeaderPlaceholderName(estimate.business_name),
+      skipHeaderPlaceholderName(estimate.company_name)
+    );
+    const resolvedBusinessEmail = pickFirst(td ? td.business_email : "", estimate.business_email);
+    const resolvedBusinessPhone = pickFirst(td ? td.business_phone : "", estimate.business_phone);
+    const resolvedBusinessAddress = pickFirst(td ? td.business_address : "", estimate.business_address);
 
     return json(200, {
       ok: true,
       estimate: sanitizePublicQuoteRow(scrubPublicPayload({
         ...estimate,
         business_name: resolvedBusinessName,
+        business_email: resolvedBusinessEmail,
+        business_phone: resolvedBusinessPhone,
+        business_address: resolvedBusinessAddress,
         tenant_branding_business_name: tenantBrandingBusinessName,
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,

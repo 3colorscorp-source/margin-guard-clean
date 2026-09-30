@@ -200,7 +200,7 @@
         company_name: bn,
         business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || "",
         business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || "",
-        business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || "",
+        business_address: branding.businessAddress || payload.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || "",
         ...buildOperationalPublishFields(state, settings)
       })
     });
@@ -381,9 +381,9 @@
         "",
       accentHex: branding.accentHex || payload.accentHex || "#8f8a5f",
       accentRgb: H.hexToRgbTuple(branding.accentHex || payload.accentHex || "#8f8a5f", [143, 138, 95]),
-      serviceLine: branding.serviceLine || payload.serviceLine || "Professional Service Estimate",
+      serviceLine: settings.serviceLine || branding.serviceLine || payload.serviceLine || "",
       marketLine: branding.marketLine || payload.marketLine || "",
-      signatureLine: branding.signatureLine || payload.signatureLine || "Professional Estimate Delivery",
+      signatureLine: settings.signatureLine || branding.signatureLine || payload.signatureLine || "",
       currency: "USD",
       recommendedTotal: rowTotal,
       estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || "",

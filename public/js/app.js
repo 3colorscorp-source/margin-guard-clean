@@ -4895,10 +4895,10 @@ Thank you.`
       }
     }
 
-    const bizName = String(branding?.business_name || settings.bizName || DEFAULTS.bizName).trim();
-    const email = String(branding?.business_email || "").trim();
-    const phone = String(branding?.business_phone || "").trim();
-    const address = String(branding?.business_address || "").trim();
+    const bizName = String(branding?.business_name || settings.bizName || "").trim();
+    const email = String(branding?.business_email || settings.businessEmail || "").trim();
+    const phone = String(branding?.business_phone || settings.businessPhone || "").trim();
+    const address = String(branding?.business_address || settings.businessAddress || "").trim();
     const logoUrl = String(branding?.logo_url || settings.publicLogoUrl || "").trim();
 
     const left = 40;
@@ -9544,14 +9544,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         "#8f8a5f"
       ),
       serviceLine: ownerEstimatePickFirstNonEmpty(
-        raw.service_line,
+        settings.serviceLine,
         cached.serviceLine,
-        "Professional Service Estimate"
+        raw.service_line
       ),
       signatureLine: ownerEstimatePickFirstNonEmpty(
-        raw.signature_line,
+        settings.signatureLine,
         cached.signatureLine,
-        "Professional Estimate Delivery"
+        raw.signature_line
       )
     };
   }
@@ -9983,9 +9983,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         clientName,
         location: projectAddress,
         businessName: bn,
-        businessPhone: branding.businessPhone || freshSettings.phone || "",
-        businessEmail: branding.businessEmail || freshSettings.email || "",
-        businessAddress: branding.businessAddress || freshSettings.address || freshSettings.companyAddress || "",
+        businessPhone: branding.businessPhone || freshSettings.businessPhone || freshSettings.phone || "",
+        businessEmail: branding.businessEmail || freshSettings.businessEmail || freshSettings.email || "",
+        businessAddress: branding.businessAddress || freshSettings.businessAddress || freshSettings.address || freshSettings.companyAddress || "",
         quoteId: publishData.quote_id,
         estimateNumber: quoteNumberDisplay,
         issueDate: state.issueDate || "",
