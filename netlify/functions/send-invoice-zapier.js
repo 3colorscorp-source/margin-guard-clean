@@ -141,13 +141,16 @@ function buildInvoiceEmailHtml({
 }
 
 function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, summaryRows, closing, businessName }) {
-  const lines = [String(customerName || "").trim() + ",", "", String(intro || "").trim(), "", "View invoice:", String(publicUrl || "").trim(), ""];
+  const brand = String(businessName || "").trim();
+  const lines = [];
+  if (brand) lines.push(brand, "Invoice", "");
+  lines.push(String(customerName || "").trim() + ",", "", String(intro || "").trim(), "", "View invoice", String(publicUrl || "").trim(), "");
   if (summaryTitle) lines.push(String(summaryTitle).trim());
   (Array.isArray(summaryRows) ? summaryRows : []).forEach((row) => {
     if (row && row.label && row.value) lines.push(String(row.label) + ": " + String(row.value));
   });
   if (summaryTitle) lines.push("");
-  lines.push(String(closing || "").trim(), "", String(businessName || "").trim());
+  lines.push(String(closing || "").trim(), "", brand);
   return lines.join("\n");
 }
 
@@ -165,11 +168,12 @@ function finishInvoiceEmailCopy({ subject, customerName, intro, publicUrl, summa
     ctaLabel: ctaLabel || "View Invoice"
   };
   const html = buildInvoiceEmailHtml(payload);
+  const text = buildInvoiceEmailPlain(payload);
   return {
     subject,
-    body: html,
+    body: text,
     html,
-    text: buildInvoiceEmailPlain(payload)
+    text
   };
 }
 
