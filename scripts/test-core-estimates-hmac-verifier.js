@@ -349,8 +349,8 @@ function main() {
   const pasteSrc = read("docs/CORE_SECURITY_ESTIMATES_ZAPIER_HMAC_VERIFIER.js");
   ok("send-quote-zapier marks fail-closed", sendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
   ok(
-    "send-quote-zapier assigns messageText onto zapierBody",
-    sendSrc.indexOf("zapierBody.messageText = resolveEstimateMessageText") >= 0
+    "send-quote-zapier assigns canonical HTML onto zapierBody",
+    sendSrc.indexOf("zapierBody.messageText = buildEstimateSendHtml") >= 0
   );
   ok("resend-tenant-quote marks fail-closed", resendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
   ok("helper still returns null when secret missing", /if \(!secret\) return null/.test(helperSrc));

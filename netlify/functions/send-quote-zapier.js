@@ -59,6 +59,37 @@ function fillPublicQuotePlaceholders(text, publicQuoteUrl) {
   return raw.replace(/\[PUBLIC_QUOTE_URL\]/gi, url);
 }
 
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+/** Canonical client email — same HTML Gmail used to send (button + attached PDF). */
+function buildEstimateSendHtml({ publicQuoteUrl, pdfUrl }) {
+  const url = String(publicQuoteUrl || "").trim();
+  const href = escapeHtmlAttr(url);
+  const pdfHref = escapeHtmlAttr(String(pdfUrl || "").trim());
+  const parts = [
+    "<p>Your project estimate is ready for review.</p>",
+    "<p>To move forward, please complete the following steps:</p>",
+    "<ol>",
+    "<li>Review your estimate</li>",
+    "<li>Confirm exclusions</li>",
+    "<li>Accept change order terms</li>",
+    "<li>Secure your project with the initial deposit</li>",
+    "</ol>",
+    `<p><a href="${href}" style="background:#16a34a;color:#ffffff;padding:12px 22px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:700;">Review &amp; Approve Estimate</a></p>`,
+    `<p>If the button does not work, use this link:<br>${href}</p>`
+  ];
+  if (pdfHref) {
+    parts.push(`<p><a href="${pdfHref}">Download estimate PDF</a></p>`);
+  }
+  parts.push("<p>Thank you.</p>");
+  return parts.join("");
+}
+
 function buildDefaultEstimateMessage({ toName, publicQuoteUrl }) {
   const name = pickFirst(toName) || "there";
   const url = String(publicQuoteUrl || "").trim();
@@ -302,35 +333,46 @@ exports.handler = async (event) => {
         req_id,
         fn: OPS_FN,
         event: "pdf_upload",
-        level: "info",
-        outcome: "ok",
-        tenant_id: tenant.id,
-        quote_id: quoteId,
-        detail: "skipped_no_pdf_payload"
-      });
-    } else if (pdfObjectPath) {
-      logOps({
-        req_id,
-        fn: OPS_FN,
-        event: "pdf_upload",
-        level: "info",
-        outcome: "ok",
-        tenant_id: tenant.id,
-        quote_id: quoteId,
-        detail: "storage_upload_ok"
-      });
-    } else {
-      logOps({
-        req_id,
-        fn: OPS_FN,
-        event: "pdf_upload",
         level: "warn",
         outcome: "fail",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        detail: pdfUploadError || "upload_failed"
+        http_status: 422,
+        detail: "pdf_required"
+      });
+      return guardJson(422, {
+        error: "Estimate PDF is required before sending.",
+        code: "pdf_required"
       });
     }
+    if (!pdfObjectPath) {
+      logOps({
+        req_id,
+        fn: OPS_FN,
+        event: "pdf_upload",
+        level: "error",
+        outcome: "fail",
+        tenant_id: tenant.id,
+        quote_id: quoteId,
+        http_status: 503,
+        detail: pdfUploadError || "upload_failed"
+      });
+      return guardJson(503, {
+        error: "Unable to send estimate PDF.",
+        code: "pdf_upload_failed"
+      });
+    }
+
+    logOps({
+      req_id,
+      fn: OPS_FN,
+      event: "pdf_upload",
+      level: "info",
+      outcome: "ok",
+      tenant_id: tenant.id,
+      quote_id: quoteId,
+      detail: "storage_upload_ok"
+    });
 
     const siteUrl = pickFirst(
       process.env.URL,
@@ -365,7 +407,7 @@ exports.handler = async (event) => {
       to_name: data.toName || data.clientName || "",
       client_email,
       project_name: data.projectName || data.project_name || "",
-      subject: data.subject || "",
+      subject: pickFirst(data.subject) || "Your Project Estimate Is Ready",
       public_quote_url: data.publicQuoteUrl || data.public_quote_url || "",
       pdf_url: publicToken ? pdfUrl : "",
       additional_recipients
@@ -374,7 +416,10 @@ exports.handler = async (event) => {
     if (!String(zapierBody.public_quote_url || "").trim()) {
       zapierBody.public_quote_url = resolvePublicQuoteUrl(data, siteUrl);
     }
-    zapierBody.messageText = resolveEstimateMessageText(data, zapierBody.public_quote_url);
+    zapierBody.messageText = buildEstimateSendHtml({
+      publicQuoteUrl: zapierBody.public_quote_url,
+      pdfUrl: zapierBody.pdf_url
+    });
 
     const webhookUrl = pickFirst(
       process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
@@ -508,5 +553,6 @@ exports.handler = async (event) => {
 exports._test = {
   fillPublicQuotePlaceholders,
   buildDefaultEstimateMessage,
+  buildEstimateSendHtml,
   resolveEstimateMessageText
 };
