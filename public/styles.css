@@ -5182,6 +5182,69 @@ body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-billi
   overflow:hidden;
   clip:rect(0 0 0 0);
 }
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-wrap{
+  display:grid;
+  gap:8px;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-voice{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-lang{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:0;
+  text-transform:none;
+  letter-spacing:0;
+  font-size:12px;
+  color:rgba(244,244,241,.7);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-lang select{
+  width:auto;
+  min-width:120px;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-status{
+  margin:0;
+  font-size:12px;
+  line-height:1.45;
+  color:rgba(244,244,241,.62);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-review{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(15,118,110,.28);
+  background:rgba(15,118,110,.1);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-review[hidden]{
+  display:none;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-review-head{
+  font-size:11px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(244,244,241,.62);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-proposed{
+  white-space:pre-wrap;
+  font-size:13px;
+  line-height:1.45;
+  color:#f4f4f1;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-review-hint{
+  margin:0;
+  font-size:12px;
+  color:rgba(244,244,241,.62);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-desc-voice .btn.is-listening{
+  background:rgba(15,118,110,.22);
+  border-color:rgba(15,118,110,.45);
+  color:#fff;
+}
 body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-charge-wrap{
   display:grid;
   gap:8px;

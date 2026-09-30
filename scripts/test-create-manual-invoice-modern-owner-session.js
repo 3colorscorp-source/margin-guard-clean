@@ -240,6 +240,8 @@ async function main() {
   ok("modal has addable workers", /hubManualAddWorker/.test(appSrc) && /hubManualWorkersList/.test(appSrc));
   ok("modal can charge by hour or day", /Charge by/.test(appSrc) && /data-hub-charge="hourly"/.test(appSrc) && /data-hub-charge="daily"/.test(appSrc));
   ok("manual create uses ultra-pro calendar", /hub-mini-cal/.test(appSrc) && /today_plus/.test(appSrc) && /is-manual-create/.test(appSrc) && /cancelLabel: "Cancel"/.test(appSrc));
+  ok("description has dictation and interpret review", /hubManualDescMicNew/.test(appSrc) && /Interpret and review/.test(appSrc) && /Confirm and apply/.test(appSrc));
+  ok("description interpret does not create the invoice", /interpret-manual-invoice-description/.test(appSrc) && /Create Invoice is still required to save/.test(appSrc));
   ok("submit sends workers array", /workers: billing_type === "flat_amount" \? \[\] : crew/.test(appSrc));
   ok("server parses workers", /parseManualInvoiceWorkers/.test(src));
 

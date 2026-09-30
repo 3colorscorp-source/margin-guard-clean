@@ -5946,8 +5946,13 @@ Thank you.`
   }
 
   let hubFormState = null;
+  let hubManualInvoiceVoiceCleanup = null;
 
   function closeHubFormModal() {
+    if (typeof hubManualInvoiceVoiceCleanup === "function") {
+      try { hubManualInvoiceVoiceCleanup(); } catch (_err) {}
+      hubManualInvoiceVoiceCleanup = null;
+    }
     hubFormState = null;
     const modal = $("hubFormModal");
     if (modal) {
@@ -17375,6 +17380,228 @@ window.renderSupervisor = renderSupervisor;
         if (totalDisplay) totalDisplay.textContent = money(total);
       };
 
+      const bindHubManualDescriptionVoice = () => {
+        const transcript = $("hubManualDescription");
+        const statusEl = $("hubManualDescStatus");
+        const reviewEl = $("hubManualDescReview");
+        const proposedEl = $("hubManualDescProposed");
+        const applyBtn = $("hubManualDescApply");
+        const interpretBtn = $("hubManualDescInterpret");
+        const micNew = $("hubManualDescMicNew");
+        const micContinue = $("hubManualDescMicContinue");
+        const languageEl = $("hubManualDescLanguage");
+        const voiceApi = window.MgVoiceOperationalPlan || {};
+        const RecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+        const maxChars = Number(voiceApi.MAX_DICTATION_CHARS) || 6000;
+        let listening = false;
+        let listeningMode = "";
+        let recognition = null;
+        let dictationCapture = null;
+        let dictationGeneration = 0;
+        let interpretBusy = false;
+        let pendingDescription = "";
+        let lastInterpretedTranscript = "";
+
+        const setDescStatus = (message) => {
+          if (statusEl) statusEl.textContent = String(message || "");
+        };
+        const syncMicLabels = () => {
+          if (micNew) {
+            micNew.textContent = listening && listeningMode === "new" ? "Stop dictation" : "New dictation";
+            micNew.setAttribute("aria-pressed", listening && listeningMode === "new" ? "true" : "false");
+            micNew.classList.toggle("is-listening", listening && listeningMode === "new");
+            micNew.disabled = interpretBusy || !RecognitionCtor;
+          }
+          if (micContinue) {
+            micContinue.textContent = listening && listeningMode === "continue" ? "Stop dictation" : "Continue dictation";
+            micContinue.setAttribute("aria-pressed", listening && listeningMode === "continue" ? "true" : "false");
+            micContinue.classList.toggle("is-listening", listening && listeningMode === "continue");
+            micContinue.disabled = interpretBusy || !RecognitionCtor;
+          }
+          if (interpretBtn) interpretBtn.disabled = interpretBusy;
+          if (applyBtn) applyBtn.disabled = interpretBusy || !String(pendingDescription || "").trim();
+        };
+        const hideReview = () => {
+          pendingDescription = "";
+          lastInterpretedTranscript = "";
+          if (proposedEl) proposedEl.textContent = "";
+          if (reviewEl) reviewEl.hidden = true;
+          if (applyBtn) applyBtn.disabled = true;
+        };
+        const stopRecognition = () => {
+          const rec = recognition;
+          recognition = null;
+          listening = false;
+          listeningMode = "";
+          if (dictationCapture) dictationCapture.end();
+          if (transcript) transcript.readOnly = false;
+          if (rec) {
+            try { rec.stop(); } catch (_err) {}
+          }
+          syncMicLabels();
+        };
+        const startDictation = (appendExisting) => {
+          if (listening) {
+            if (dictationCapture) dictationCapture.requestStop();
+            stopRecognition();
+            setDescStatus("Dictation stopped. Review the text, then choose Interpret and review.");
+            return;
+          }
+          if (!RecognitionCtor || !transcript) {
+            setDescStatus("This browser cannot dictate. Type the work, then Interpret and review.");
+            return;
+          }
+          if (!appendExisting) {
+            transcript.value = "";
+            hideReview();
+          }
+          dictationCapture =
+            typeof voiceApi.createVoiceDictationCapture === "function"
+              ? voiceApi.createVoiceDictationCapture({ maxChars })
+              : null;
+          dictationGeneration = dictationCapture ? dictationCapture.start(transcript.value || "") : 0;
+          transcript.readOnly = true;
+          const rec = new RecognitionCtor();
+          recognition = rec;
+          listening = true;
+          listeningMode = appendExisting ? "continue" : "new";
+          rec.lang = String(languageEl && languageEl.value ? languageEl.value : "en-US");
+          rec.continuous = true;
+          rec.interimResults =
+            typeof voiceApi.prefersInterimSpeechResults === "function"
+              ? voiceApi.prefersInterimSpeechResults()
+              : true;
+          rec.onresult = (event) => {
+            if (recognition !== rec || !listening || !dictationCapture) return;
+            const folded = dictationCapture.applyEvent(event, dictationGeneration);
+            if (!folded || folded.ignored) return;
+            transcript.value = folded.text;
+            if (pendingDescription) hideReview();
+          };
+          rec.onerror = (event) => {
+            const code = String((event && event.error) || "");
+            if (code === "aborted" || code === "no-speech") return;
+            setDescStatus(
+              code === "not-allowed"
+                ? "Microphone permission is required for dictation."
+                : "The microphone could not continue. Type the work, then Interpret and review."
+            );
+          };
+          rec.onend = () => {
+            if (recognition !== rec) return;
+            listening = false;
+            listeningMode = "";
+            recognition = null;
+            if (transcript) transcript.readOnly = false;
+            if (dictationCapture) dictationCapture.end();
+            syncMicLabels();
+            if (!interpretBusy) setDescStatus("Dictation stopped. Review the text, then choose Interpret and review.");
+          };
+          try {
+            rec.start();
+            setDescStatus("Listening… speak the work. Stop dictation when finished.");
+            syncMicLabels();
+          } catch (_err) {
+            stopRecognition();
+            setDescStatus("The microphone could not start. Type the work, then Interpret and review.");
+          }
+        };
+
+        if (micNew) {
+          micNew.onclick = (ev) => {
+            ev.preventDefault();
+            startDictation(false);
+          };
+        }
+        if (micContinue) {
+          micContinue.onclick = (ev) => {
+            ev.preventDefault();
+            startDictation(true);
+          };
+        }
+        if (transcript) {
+          transcript.addEventListener("input", () => {
+            if (pendingDescription) hideReview();
+          });
+        }
+        if (interpretBtn) {
+          interpretBtn.onclick = async (ev) => {
+            ev.preventDefault();
+            if (interpretBusy) return;
+            const spoken = String(transcript && transcript.value || "").trim();
+            if (spoken.length < 3) {
+              setDescStatus("Dictate or type the work first.");
+              return;
+            }
+            stopRecognition();
+            interpretBusy = true;
+            syncMicLabels();
+            setDescStatus("Interpreting the work… Description is not changed until Confirm and apply.");
+            try {
+              const res = await fetch("/.netlify/functions/interpret-manual-invoice-description", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({
+                  transcript: spoken,
+                  current_description: spoken,
+                  language: String(languageEl && languageEl.value || "").toLowerCase().startsWith("es") ? "es" : "en",
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || !data?.ok || !String(data.description || "").trim()) {
+                throw new Error(String(data?.error || "The work could not be interpreted."));
+              }
+              pendingDescription = String(data.description || "").trim();
+              lastInterpretedTranscript = spoken;
+              if (proposedEl) proposedEl.textContent = pendingDescription;
+              if (reviewEl) reviewEl.hidden = false;
+              const warnings = Array.isArray(data.warnings) && data.warnings.length
+                ? " Warnings: " + data.warnings.join(" ")
+                : "";
+              setDescStatus(
+                String(data.summary || "Voice changes are ready for review.") +
+                  warnings +
+                  " Review the proposed description, then Confirm and apply."
+              );
+            } catch (err) {
+              hideReview();
+              setDescStatus(err && err.message ? err.message : "Voice interpretation failed. Please try again.");
+            } finally {
+              interpretBusy = false;
+              syncMicLabels();
+            }
+          };
+        }
+        if (applyBtn) {
+          applyBtn.onclick = (ev) => {
+            ev.preventDefault();
+            const next = String(pendingDescription || "").trim();
+            const spoken = String(transcript && transcript.value || "").trim();
+            if (!next) {
+              setDescStatus("Interpret and review first. Confirm and apply stays blocked until then.");
+              return;
+            }
+            if (spoken !== lastInterpretedTranscript) {
+              hideReview();
+              setDescStatus("Transcript changed. Interpret again before Confirm and apply.");
+              return;
+            }
+            if (transcript) transcript.value = next;
+            hideReview();
+            setDescStatus("Description updated. Create Invoice is still required to save.");
+          };
+        }
+        if (!RecognitionCtor) {
+          setDescStatus("This browser cannot dictate. Type the work, then Interpret and review.");
+        }
+        syncMicLabels();
+        hubManualInvoiceVoiceCleanup = () => {
+          stopRecognition();
+          hideReview();
+        };
+      };
+
       showHubActionForm({
         title: "Create Invoice",
         subtitle: "Client, crew, materials, and due date.",
@@ -17386,7 +17613,31 @@ window.renderSupervisor = renderSupervisor;
           { id: "hubManualClientName", label: "Client", type: "text", value: "", placeholder: "" },
           { id: "hubManualClientEmail", label: "Email", type: "email", value: "", placeholder: "" },
           { id: "hubManualTitle", label: "Project / invoice title", type: "text", value: "", placeholder: "" },
-          { id: "hubManualDescription", label: "Description", type: "textarea", rows: 2, value: "", placeholder: "" },
+          {
+            type: "static",
+            html: `<div class="hub-manual-desc-wrap">
+              <label for="hubManualDescription">Description</label>
+              <textarea id="hubManualDescription" rows="4" maxlength="5000"></textarea>
+              <div class="hub-manual-desc-voice">
+                <label class="hub-manual-desc-lang">Language
+                  <select id="hubManualDescLanguage" aria-label="Dictation language">
+                    <option value="es-US">Español</option>
+                    <option value="en-US" selected>English</option>
+                  </select>
+                </label>
+                <button type="button" class="btn" id="hubManualDescMicNew">New dictation</button>
+                <button type="button" class="btn" id="hubManualDescMicContinue">Continue dictation</button>
+                <button type="button" class="btn primary" id="hubManualDescInterpret">Interpret and review</button>
+              </div>
+              <p class="hub-manual-desc-status" id="hubManualDescStatus" role="status" aria-live="polite">Dictate or type the work. Interpret and review, then Confirm and apply. Create Invoice is still required to save.</p>
+              <div id="hubManualDescReview" class="hub-manual-desc-review" hidden>
+                <div class="hub-manual-desc-review-head">Proposed description</div>
+                <div id="hubManualDescProposed" class="hub-manual-desc-proposed"></div>
+                <p class="hub-manual-desc-review-hint" id="hubManualDescReviewHint">Confirm and apply writes this text into Description only. It does not create the invoice.</p>
+                <button type="button" class="btn primary" id="hubManualDescApply" disabled>Confirm and apply</button>
+              </div>
+            </div>`,
+          },
           {
             type: "static",
             html: `<div class="hub-manual-charge-wrap">
@@ -17640,6 +17891,7 @@ window.renderSupervisor = renderSupervisor;
           }
           renderWorkers();
           recalcTotal();
+          bindHubManualDescriptionVoice();
         },
         onSubmit: async () => {
           const billing_type = String(val("hubManualBillingType") || "").trim();
