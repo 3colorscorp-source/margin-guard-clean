@@ -256,40 +256,65 @@
     }
 
     .summary{
-      border:1px solid var(--line);
+      border:1px solid #d8dde5;
       border-radius:16px;
       overflow:hidden;
       margin-bottom:24px;
+      background:#fff;
     }
 
     .summary-head{
-      padding:16px 20px;
-      background:#f9fafb;
-      border-bottom:1px solid var(--line);
-      font-size:15px;
+      padding:14px 20px;
+      background:#f7f8fa;
+      border-bottom:1px solid #d8dde5;
+      font-size:12px;
       font-weight:800;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:#6b7280;
     }
 
     .summary-body{
-      padding:18px 20px;
-      display:grid;
-      gap:12px;
+      padding:0;
+      display:flex;
+      flex-direction:column;
+      gap:0;
       background:#fff;
     }
 
     .sum-row{
       display:flex;
       justify-content:space-between;
+      align-items:baseline;
       gap:16px;
+      min-height:46px;
+      padding:13px 20px;
+      border-bottom:1px solid #eceff3;
       font-size:15px;
     }
 
+    .sum-row span{
+      color:#6b7280;
+    }
+
+    .sum-row strong{
+      font-variant-numeric:tabular-nums;
+      font-weight:700;
+      color:#111827;
+    }
+
     .sum-row.total{
-      padding-top:12px;
-      margin-top:4px;
-      border-top:1px solid var(--line);
-      font-size:24px;
+      padding:16px 20px;
+      margin-top:0;
+      border-top:2px solid #111827;
+      border-bottom:none;
+      font-size:22px;
       font-weight:800;
+      background:#fbfcfd;
+    }
+
+    .sum-row.total span{
+      color:#111827;
     }
 
     .sum-subhead{
@@ -304,9 +329,9 @@
     }
 
     .progress-wrap{
-      margin-top:14px;
-      padding-top:12px;
-      border-top:1px dashed var(--line);
+      margin:0 20px 16px;
+      padding-top:14px;
+      border-top:1px dashed #d8dde5;
     }
 
     .progress-meta{
@@ -381,26 +406,37 @@
     }
 
     .notes{
-      border:1px solid var(--line);
+      border:1px solid #d8dde5;
       border-radius:16px;
-      padding:18px 20px;
-      background:#fff;
+      padding:18px 20px 18px 22px;
+      background:
+        linear-gradient(#fff, #fff) padding-box;
       margin-bottom:24px;
+      box-shadow:inset 3px 0 0 #dbe4ee;
     }
 
     .notes-title{
-      font-size:17px;
+      font-size:12px;
       font-weight:800;
-      margin-bottom:8px;
-      letter-spacing:.02em;
+      margin-bottom:10px;
+      letter-spacing:.08em;
       text-transform:uppercase;
+      color:#6b7280;
     }
 
     .notes-text{
       color:#374151;
       font-size:14px;
-      line-height:1.6;
+      line-height:1.75;
       white-space:pre-wrap;
+      background-image:repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(1.75em - 1px),
+        #eef1f5 calc(1.75em - 1px),
+        #eef1f5 1.75em
+      );
+      background-origin:content-box;
     }
 
     .payment-panel{
@@ -608,19 +644,23 @@
       }
 
       .summary-body{
-        padding:8px 10px;
-        gap:5px;
+        padding:0;
+        gap:0;
       }
 
       .sum-row{
         font-size:12px;
         gap:8px;
+        min-height:0;
+        padding:7px 10px;
+        border-bottom:1px solid #eceff3;
       }
 
       .sum-row.total{
         font-size:15px;
-        padding-top:6px;
-        margin-top:2px;
+        padding:8px 10px;
+        margin-top:0;
+        border-top:2px solid #111827;
       }
 
       .sum-subhead{
@@ -629,7 +669,7 @@
       }
 
       .progress-wrap{
-        margin-top:6px;
+        margin:0 10px 8px;
         padding-top:6px;
       }
 
