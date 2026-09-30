@@ -156,11 +156,23 @@ async function withDb(fn, opts) {
   const writes = [];
   const storagePosts = [];
   const restGets = [];
+  const resendCalls = [];
   const failUpload = !!(opts && opts.failUpload);
+  const allowInvoicePatch = !!(opts && opts.allowInvoicePatch);
 
   globalThis.fetch = async (url, fetchOpts) => {
     const method = String((fetchOpts && fetchOpts.method) || "GET").toUpperCase();
     const urlStr = String(url);
+    if (/api\.resend\.com\/emails/i.test(urlStr)) {
+      let parsed = {};
+      try {
+        parsed = JSON.parse((fetchOpts && fetchOpts.body) || "{}");
+      } catch (_err) {
+        parsed = {};
+      }
+      resendCalls.push({ method, parsed });
+      return jsonRes(200, { id: "re_test" });
+    }
     if (/hooks\.zapier\.com/i.test(urlStr)) {
       zapierCalls.push({ method, url: urlStr });
       return jsonRes(200, { ok: true });
@@ -200,6 +212,15 @@ async function withDb(fn, opts) {
     const table = restPath.split("?")[0];
     if (method !== "GET") {
       writes.push({ method, table, path: restPath.slice(0, 180) });
+      if (allowInvoicePatch && method === "PATCH" && table === "invoices") {
+        return jsonRes(200, [
+          {
+            ...invoiceA,
+            status: "issued",
+            sent_at: "2026-09-30T00:00:00.000Z",
+          },
+        ]);
+      }
       return jsonRes(403, { message: "writes are not allowed in this test" });
     }
     restGets.push({ table, path: restPath.slice(0, 220) });
@@ -252,7 +273,7 @@ async function withDb(fn, opts) {
   };
 
   try {
-    return await fn({ zapierCalls, writes, storagePosts, restGets });
+    return await fn({ zapierCalls, writes, storagePosts, restGets, resendCalls });
   } finally {
     globalThis.fetch = prev;
   }
@@ -268,6 +289,8 @@ async function main() {
 
   ok("send uploads invoice PDF", /uploadInvoicePdf/.test(sendSrc) && /buildInvoicePdfAccessUrl/.test(sendSrc));
   ok("send uses View Invoice button letter", /applyClientFacingZapierEmail/.test(sendSrc) && /buildInvoiceClientHtml/.test(sendSrc));
+  ok("Email Body is plaintext not HTML", /payload\["Email Body"\] = text/.test(sendSrc) && !/payload\["Email Body"\] = html/.test(sendSrc));
+  ok("send can deliver HTML plus PDF via Resend", /sendInvoiceViaResend/.test(sendSrc) && /attachments/.test(sendSrc));
   ok("send attaches pdf as file url like quotes", /attachInvoicePdfFile/.test(sendSrc) && /payload\.file = fileUrl/.test(sendSrc));
   ok("send does not ship pdf_base64 to Zapier", !/payload\.pdf_base64 = pdfBase64/.test(sendSrc));
   ok("send does not reuse estimate PDF access", !/estimate-pdf-access/.test(sendSrc) && !/get-estimate-pdf/.test(sendSrc));
@@ -314,7 +337,8 @@ async function main() {
     ok("payload pdf_url is the raw file", /raw=1/.test(pdfUrl));
     ok("payload file is the pdf url not base64", String(payload.file || "") === pdfUrl);
     ok("payload does not include pdf_base64", !payload.pdf_base64);
-    ok("Email Body is View Invoice button", emailBody.includes("View Invoice") && emailBody.includes("<a href="));
+    ok("Email Body is plaintext not HTML source", !emailBody.includes("<!DOCTYPE") && !emailBody.includes("<a href="));
+    ok("Email Body has View invoice url", emailBody.includes("View invoice") && emailBody.includes("invoice-public.html"));
     ok("Email Body does not include invoice summary", !/Invoice summary/.test(emailBody) && !/Contract total/.test(emailBody));
     ok("Email Body does not include pdf function url", !/get-invoice-pdf/.test(emailBody));
     ok("Email Html has View Invoice button", html.includes("View Invoice") && /bgcolor="#0f8a5f"/.test(html));
@@ -341,9 +365,54 @@ async function main() {
     const body = parse(res);
     const emailBody = String((body.payload && body.payload["Email Body"]) || "");
     ok("upload failure omits pdf_url", !String(body.payload && body.payload.pdf_url || "").trim());
-    ok("upload failure still has View Invoice button", emailBody.includes("View Invoice") && emailBody.includes("invoice-public.html"));
+    ok("upload failure still has View invoice url", emailBody.includes("View invoice") && emailBody.includes("invoice-public.html"));
+    ok("upload failure Email Body is not HTML source", !emailBody.includes("<!DOCTYPE") && !emailBody.includes("<a href="));
     ok("failed upload attempted invoice-pdfs", storagePosts.some((p) => p.kind === "object"));
   }, { failUpload: true });
+
+  const prevKey = process.env.RESEND_API_KEY;
+  const prevFrom = process.env.RESEND_FROM_EMAIL;
+  process.env.RESEND_API_KEY = "re_test_key";
+  process.env.RESEND_FROM_EMAIL = "billing@example.com";
+  try {
+    await withDb(async ({ zapierCalls, resendCalls, writes }) => {
+      const handler = loadSendHandler();
+      const res = await handler.handler(
+        eventFor(
+          { e: OWNER_A, t: TENANT_A, u: USER_A, c: "" },
+          {
+            id: INV_A,
+            pdfBase64: SAMPLE_PDF_B64,
+            pdfFileName: "Invoice-INV-TEST-1.pdf",
+          }
+        )
+      );
+      eq("resend send is 200", res.statusCode, 200);
+      const body = parse(res);
+      eq("resend delivery", body.delivery, "resend");
+      eq("resend skips Zapier Gmail", zapierCalls.length, 0);
+      eq("resend called once", resendCalls.length, 1);
+      const mail = (resendCalls[0] && resendCalls[0].parsed) || {};
+      ok(
+        "resend html has View Invoice button",
+        String(mail.html || "").includes("View Invoice") && /bgcolor="#0f8a5f"/.test(String(mail.html || ""))
+      );
+      ok("resend html has no invoice summary", !/Invoice summary/.test(String(mail.html || "")));
+      ok(
+        "resend attaches the generated pdf",
+        Array.isArray(mail.attachments) &&
+          mail.attachments[0] &&
+          String(mail.attachments[0].filename || "").indexOf("Invoice") >= 0 &&
+          String(mail.attachments[0].content || "").length > 80
+      );
+      ok("invoice marked sent after resend", writes.some((w) => w.method === "PATCH" && w.table === "invoices"));
+    }, { allowInvoicePatch: true });
+  } finally {
+    if (prevKey == null) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = prevKey;
+    if (prevFrom == null) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = prevFrom;
+  }
 
   await withDb(async ({ restGets }) => {
     const handler = loadGetPdfHandler();
