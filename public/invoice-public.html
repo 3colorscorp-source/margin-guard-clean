@@ -693,6 +693,7 @@
     </div>
   </div>
 
+  <script src="/js/invoice-client-work-details.js"></script>
   <script>
 (function () {
   const TENANT_NAME_FALLBACK = "Invoice";
@@ -1066,7 +1067,12 @@
       const businessEmailRaw = String(data.business_email || "").trim();
       const businessPhoneRaw = String(data.business_phone || "").trim();
       const notesRaw = sanitizeClientFacingNotes(data.notes == null ? "" : data.notes);
-      const hasWorkDetails = notesRaw.length > 0;
+      const notesClient =
+        window.MgInvoiceClientWorkDetails &&
+        typeof window.MgInvoiceClientWorkDetails.formatClientFacingWorkDetails === "function"
+          ? String(window.MgInvoiceClientWorkDetails.formatClientFacingWorkDetails(notesRaw) || "").trim()
+          : notesRaw;
+      const hasWorkDetails = notesClient.length > 0;
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
@@ -1250,7 +1256,7 @@
         '<div class="notes-title">WORK DETAILS</div>' +
         '<div class="notes-text">' +
         (hasWorkDetails
-          ? displayText(notesRaw)
+          ? displayText(notesClient)
           : escapeHtml(emptyWorkDetails)) +
         "</div>" +
         "</div>";

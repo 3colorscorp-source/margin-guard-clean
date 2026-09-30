@@ -279,6 +279,44 @@ function main() {
   eq("empty notes have no description", empty.description, "");
   eq("empty notes have no billed work", empty.billedWork, "");
 
+  const publicHtml = read("public/invoice-public.html");
+  const clientSrc = read("public/js/invoice-client-work-details.js");
+  const clientApi = require("../public/js/invoice-client-work-details.js");
+  ok("public invoice loads client work-details helper", publicHtml.includes('src="/js/invoice-client-work-details.js"'));
+  ok("public invoice renders formatted work details", publicHtml.includes("formatClientFacingWorkDetails"));
+  ok("public invoice still uses stored notes", publicHtml.includes("sanitizeClientFacingNotes"));
+  ok("helper does not persist notes", !/supabase|fetch\(|PATCH/i.test(clientSrc));
+
+  const pepperNotes = [
+    "Service details:",
+    "This service includes the installation of membrane and tile in designated areas and the custom cutting process for the fireplace to ensure a perfect fit.",
+    "",
+    "Billing:",
+    pepperCalendar,
+    "",
+    "Labor subtotal: $4536.32",
+    "",
+    "Materials:",
+    "membrane, two blades to take cutting the tile before taking it to the shop, 4 bags of thinset",
+    "Materials subtotal: $512.00",
+    "",
+    "Invoice total: $5048.32",
+  ].join("\n");
+  const clientText = clientApi.formatClientFacingWorkDetails(pepperNotes);
+  ok(
+    "public work details keep the interpretation",
+    clientText.includes("installation of membrane and tile")
+  );
+  ok("public work details show Pro hours", clientText.includes("Pro: 16 hours"));
+  ok("public work details show Assistant hours", clientText.includes("Assistant: 34 hours"));
+  ok("public work details compress days", clientText.includes("Days: Sep 16, 23, 28–30"));
+  ok("public work details keep materials copy", clientText.includes("4 bags of thinset"));
+  ok("public work details hide hourly calendar", !/Hourly service/.test(clientText));
+  ok("public work details hide rates", !clientText.includes("$"));
+  ok("public work details hide labor subtotal", !/Labor subtotal/i.test(clientText));
+  ok("public work details hide invoice total", !/Invoice total/i.test(clientText));
+  ok("public work details hide materials subtotal", !/Materials subtotal/i.test(clientText));
+
   console.log("\n" + passed + " passed");
 }
 
