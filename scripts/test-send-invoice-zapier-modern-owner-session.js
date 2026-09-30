@@ -105,6 +105,7 @@ function loadHandler() {
     "../netlify/functions/_lib/membership-resolve",
     "../netlify/functions/_lib/owner-access",
     "../netlify/functions/_lib/tenant-for-session",
+    "../netlify/functions/_lib/invoice-pdf-access",
     "../netlify/functions/send-invoice-zapier",
   ].forEach((rel) => {
     delete require.cache[require.resolve(rel)];
@@ -262,6 +263,7 @@ async function main() {
 
   const hubHtml = read("public/estimates-invoices.html");
   ok("send forwards invoice pdf bytes", /sanitizeInvoicePdfBase64/.test(src) && /payload\.pdf_base64/.test(src));
+  ok("send uploads invoice pdf for email delivery", /uploadInvoicePdf/.test(src) && /buildInvoicePdfAccessUrl/.test(src));
   ok("hub send builds invoice pdf", /buildHubInvoicePdfForSend/.test(appSrc));
   ok("hub page loads invoice pdf helper", hubHtml.includes("/js/invoice-pdf.js"));
   ok("hub page loads work-details helper for pdf", hubHtml.includes("/js/invoice-client-work-details.js"));
