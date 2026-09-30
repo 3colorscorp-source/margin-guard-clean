@@ -55,6 +55,104 @@ function isFullRemainingStageLabel(label) {
   return FULL_REMAINING_LABEL_SET.has(String(label || "").trim().toLowerCase());
 }
 
+function escapeEmailHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildInvoiceEmailHtml({
+  customerName,
+  intro,
+  publicUrl,
+  summaryTitle,
+  summaryRows,
+  closing,
+  businessName,
+  ctaLabel
+}) {
+  const href = escapeEmailHtml(String(publicUrl || "").trim());
+  const cta = escapeEmailHtml(ctaLabel || "View Invoice");
+  const rows = (Array.isArray(summaryRows) ? summaryRows : [])
+    .filter((row) => row && row.label && row.value)
+    .map((row) => {
+      return (
+        "<tr>" +
+        '<td style="padding:7px 0;border-bottom:1px solid #eceff3;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif;">' +
+        escapeEmailHtml(row.label) +
+        "</td>" +
+        '<td style="padding:7px 0;border-bottom:1px solid #eceff3;text-align:right;font-weight:700;color:#111827;font-size:13px;font-variant-numeric:tabular-nums;font-family:Arial,Helvetica,sans-serif;">' +
+        escapeEmailHtml(row.value) +
+        "</td>" +
+        "</tr>"
+      );
+    })
+    .join("");
+  return (
+    '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:15px;line-height:1.65;color:#111827;max-width:560px;">' +
+    '<p style="margin:0 0 16px;">' +
+    escapeEmailHtml(customerName) +
+    ",</p>" +
+    '<p style="margin:0 0 24px;">' +
+    escapeEmailHtml(intro) +
+    "</p>" +
+    '<p style="margin:0 0 10px;"><a href="' +
+    href +
+    '" style="background:#0f8a5f;color:#ffffff;padding:12px 22px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:700;letter-spacing:.02em;font-family:Arial,Helvetica,sans-serif;">' +
+    cta +
+    "</a></p>" +
+    '<p style="margin:0 0 24px;font-size:12px;line-height:1.5;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">If the button does not open, use this link:<br>' +
+    href +
+    "</p>" +
+    (summaryTitle
+      ? '<p style="margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">' +
+        escapeEmailHtml(summaryTitle) +
+        "</p>"
+      : "") +
+    (rows ? '<table style="width:100%;border-collapse:collapse;margin:0 0 24px;">' + rows + "</table>" : "") +
+    '<p style="margin:0 0 24px;">' +
+    escapeEmailHtml(closing) +
+    "</p>" +
+    '<p style="margin:0;">' +
+    escapeEmailHtml(businessName) +
+    "</p>" +
+    "</div>"
+  );
+}
+
+function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, summaryRows, closing, businessName }) {
+  const lines = [String(customerName || "").trim() + ",", "", String(intro || "").trim(), "", "View invoice:", String(publicUrl || "").trim(), ""];
+  if (summaryTitle) lines.push(String(summaryTitle).trim());
+  (Array.isArray(summaryRows) ? summaryRows : []).forEach((row) => {
+    if (row && row.label && row.value) lines.push(String(row.label) + ": " + String(row.value));
+  });
+  if (summaryTitle) lines.push("");
+  lines.push(String(closing || "").trim(), "", String(businessName || "").trim());
+  return lines.join("\n");
+}
+
+const INVOICE_EMAIL_CLOSING = "If you have questions about this invoice, we are here to help.";
+
+function finishInvoiceEmailCopy({ subject, customerName, intro, publicUrl, summaryTitle, summaryRows, businessName, ctaLabel }) {
+  const payload = {
+    customerName,
+    intro,
+    publicUrl,
+    summaryTitle,
+    summaryRows,
+    closing: INVOICE_EMAIL_CLOSING,
+    businessName,
+    ctaLabel: ctaLabel || "View Invoice"
+  };
+  return {
+    subject,
+    body: buildInvoiceEmailPlain(payload),
+    html: buildInvoiceEmailHtml(payload)
+  };
+}
+
 function buildProjectPaymentEmailCopy({
   customerName,
   projectName,
@@ -69,36 +167,23 @@ function buildProjectPaymentEmailCopy({
   businessName
 }) {
   const stage = normalizeProjectPaymentLabel(invoiceLabel);
-  const subject = `${stage} invoice ready — ${projectName}`;
-  const body = [
-    `Hi ${customerName},`,
-    "",
-    "I hope you're doing well.",
-    "",
-    `A ${stage.toLowerCase()} invoice for the ${projectName} project is ready.`,
-    "",
-    "You can view it here:",
-    "",
+  return finishInvoiceEmailCopy({
+    subject: `${stage} invoice ready — ${projectName}`,
+    customerName,
+    intro: `A ${stage.toLowerCase()} invoice for ${projectName} is ready for review.`,
     publicUrl,
-    "",
-    "Here's a quick summary:",
-    `• Invoice type: ${stage}`,
-    `• This invoice amount: ${invoiceAmount}`,
-    `• Amount due on this invoice: ${invoiceBalanceDue}`,
-    "",
-    "Project payment summary:",
-    `• Project contract total: ${projectContractTotal}`,
-    `• Project paid to date: ${projectPaidToDate}`,
-    `• Remaining project balance before this invoice: ${remainingBeforeInvoice}`,
-    `• Projected remaining balance after this invoice if paid: ${projectedRemainingAfter}`,
-    "",
-    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
-    "",
-    "Thank you again — I truly appreciate the opportunity to work on your project.",
-    "",
-    `— ${businessName}`
-  ].join("\n");
-  return { subject, body };
+    summaryTitle: "Invoice summary",
+    summaryRows: [
+      { label: "Invoice type", value: stage },
+      { label: "This invoice amount", value: invoiceAmount },
+      { label: "Amount due on this invoice", value: invoiceBalanceDue },
+      { label: "Project contract total", value: projectContractTotal },
+      { label: "Project paid to date", value: projectPaidToDate },
+      { label: "Remaining project balance before this invoice", value: remainingBeforeInvoice },
+      { label: "Projected remaining balance after this invoice if paid", value: projectedRemainingAfter }
+    ],
+    businessName
+  });
 }
 
 function buildMaterialCostEmailCopy({
@@ -110,30 +195,19 @@ function buildMaterialCostEmailCopy({
   balanceDue,
   businessName
 }) {
-  const subject = `Material cost invoice ready — ${projectName}`;
-  const body = [
-    `Hi ${customerName},`,
-    "",
-    "I hope you're doing well.",
-    "",
-    `A material cost invoice for the ${projectName} project is ready. This invoice covers additional materials connected to this project.`,
-    "",
-    "You can view it here:",
-    "",
+  return finishInvoiceEmailCopy({
+    subject: `Material cost invoice ready — ${projectName}`,
+    customerName,
+    intro: `A material invoice for ${projectName} is ready. This invoice covers additional materials for the project.`,
     publicUrl,
-    "",
-    "Here's a quick summary:",
-    `• Material cost invoice: ${invoiceAmount}`,
-    `• Paid to date on this invoice: ${paidAmount}`,
-    `• Amount due on this invoice: ${balanceDue}`,
-    "",
-    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
-    "",
-    "Thank you again — I truly appreciate the opportunity to work on your project.",
-    "",
-    `— ${businessName}`
-  ].join("\n");
-  return { subject, body };
+    summaryTitle: "Invoice summary",
+    summaryRows: [
+      { label: "Material cost invoice", value: invoiceAmount },
+      { label: "Paid to date on this invoice", value: paidAmount },
+      { label: "Amount due on this invoice", value: balanceDue }
+    ],
+    businessName
+  });
 }
 
 function isPartialBalanceDueInvoice(invoice, body) {
@@ -165,33 +239,20 @@ function buildPartialBalanceDueEmailCopy({
   balanceDue,
   businessName
 }) {
-  const subject = `Invoice balance ready — ${projectName}`;
-  const body = [
-    `Hi ${customerName},`,
-    "",
-    "I hope you're doing well.",
-    "",
-    `Your invoice for the ${projectName} project has a remaining balance due. Payments already recorded on this invoice are reflected below.`,
-    "",
-    "You can view it here:",
-    "",
+  return finishInvoiceEmailCopy({
+    subject: `Invoice balance ready — ${projectName}`,
+    customerName,
+    intro: `Your invoice for ${projectName} has a remaining balance. Payments already recorded are reflected below.`,
     publicUrl,
-    "",
-    "Here's a quick summary:",
-    `• Amount due on this invoice: ${balanceDue}`,
-    "",
-    "Payment summary:",
-    `• Invoice total: ${contractOrInvoiceTotal}`,
-    `• Paid to date: ${paidToDate}`,
-    `• Remaining balance: ${balanceDue}`,
-    "",
-    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
-    "",
-    "Thank you again — I truly appreciate the opportunity to work on your project.",
-    "",
-    `— ${businessName}`
-  ].join("\n");
-  return { subject, body };
+    summaryTitle: "Invoice summary",
+    summaryRows: [
+      { label: "Amount due on this invoice", value: balanceDue },
+      { label: "Invoice total", value: contractOrInvoiceTotal },
+      { label: "Paid to date", value: paidToDate },
+      { label: "Remaining balance", value: balanceDue }
+    ],
+    businessName
+  });
 }
 
 function json(statusCode, body) {
@@ -384,30 +445,19 @@ function buildStandardEmailCopy({
   balanceDue,
   businessName
 }) {
-  const subject = `Invoice ready — ${projectName}`;
-  const body = [
-    `Hi ${customerName},`,
-    "",
-    "I hope you're doing well.",
-    "",
-    `Your invoice for the ${projectName} project is ready.`,
-    "",
-    "You can view it here:",
-    "",
+  return finishInvoiceEmailCopy({
+    subject: `Invoice ready — ${projectName}`,
+    customerName,
+    intro: `Your invoice for ${projectName} is ready for review. Please open the document and retain a copy for your records.`,
     publicUrl,
-    "",
-    "Here's a quick summary:",
-    `• Contract total: ${contractTotal}`,
-    `• Paid to date: ${paidToDate}`,
-    `• Remaining balance: ${balanceDue}`,
-    "",
-    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
-    "",
-    "Thank you again — I truly appreciate the opportunity to work on your project.",
-    "",
-    `— ${businessName}`
-  ].join("\n");
-  return { subject, body };
+    summaryTitle: "Invoice summary",
+    summaryRows: [
+      { label: "Contract total", value: contractTotal },
+      { label: "Paid to date", value: paidToDate },
+      { label: "Remaining balance", value: balanceDue }
+    ],
+    businessName
+  });
 }
 
 function emailBodyToHtml(bodyText) {
@@ -415,7 +465,27 @@ function emailBodyToHtml(bodyText) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">${esc}</div>`;
+  return `<div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:15px;line-height:1.65;white-space:pre-wrap;color:#111827;">${esc}</div>`;
+}
+
+function sanitizeInvoicePdfBase64(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  s = s.replace(/^data:application\/pdf;base64,/i, "").replace(/\s+/g, "");
+  if (s.length < 80 || s.length > 5000000) return "";
+  if (!/^[A-Za-z0-9+/=]+$/.test(s)) return "";
+  return s;
+}
+
+function sanitizeInvoicePdfFileName(raw, fallback) {
+  const fallbackName = String(fallback || "Invoice.pdf").trim() || "Invoice.pdf";
+  let s = String(raw || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/\s+/g, " ");
+  if (!s) s = fallbackName;
+  s = s.replace(/\.pdf$/i, "").slice(0, 80).trim() || "Invoice";
+  return s + ".pdf";
 }
 
 function moneyLooksZero(value) {
@@ -477,7 +547,7 @@ function buildCanonicalInvoiceEmail({
       invoice_copy_variant,
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
-      email_html: emailBodyToHtml(emailCopy.body),
+      email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -535,7 +605,7 @@ function buildCanonicalInvoiceEmail({
       invoice_label: invoiceLabel,
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
-      email_html: emailBodyToHtml(emailCopy.body),
+      email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -586,7 +656,7 @@ function buildCanonicalInvoiceEmail({
       invoice_copy_variant,
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
-      email_html: emailBodyToHtml(emailCopy.body),
+      email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
       invoice_amount,
       balance_due,
       amount_due_on_this_invoice: balance_due,
@@ -629,7 +699,7 @@ function buildCanonicalInvoiceEmail({
     invoice_copy_variant: "standard",
     email_subject: emailCopy.subject,
     email_body: emailCopy.body,
-    email_html: emailBodyToHtml(emailCopy.body),
+    email_html: emailCopy.html || emailBodyToHtml(emailCopy.body),
     invoice_amount,
     balance_due,
     amount_due_on_this_invoice: balance_due,
@@ -756,6 +826,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     "Email Subject": canonical.email_subject,
     "Email Body": canonical.email_body,
     "Email Html": canonical.email_html,
+    "Html Body": canonical.email_html,
     "Invoice Copy Variant": canonical.invoice_copy_variant,
     "Invoice Label": canonical.invoice_label,
     "Invoice Amount": canonical.invoice_amount,
@@ -779,6 +850,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     email_subject: canonical.email_subject,
     email_body: canonical.email_body,
     email_html: canonical.email_html,
+    html_body: canonical.email_html,
     summary_line_1_label: canonical.summary_line_1_label,
     summary_line_1_value: canonical.summary_line_1_value,
     summary_line_2_label: canonical.summary_line_2_label,
@@ -1069,6 +1141,11 @@ exports.handler = async (event) => {
       idempotency_key
     };
     const payload = applyCanonicalToZapierPayload(basePayload, canonical);
+    const pdfBase64 = sanitizeInvoicePdfBase64(pickFirstStr(body.pdfBase64, body.pdf_base64, body.pdfContentBase64));
+    const pdfFileName = sanitizeInvoicePdfFileName(
+      pickFirstStr(body.pdfFileName, body.pdf_filename, body.fileName),
+      invoice.invoice_no ? `Invoice-${invoice.invoice_no}.pdf` : "Invoice.pdf"
+    );
 
     const wantsDryRun = !!(body.dry_run || body.email_preview || body.debug_preview);
     if (wantsDryRun) {
@@ -1091,7 +1168,8 @@ exports.handler = async (event) => {
         forwarded: false,
         validation: { ok: true },
         canonical,
-        payload
+        payload,
+        pdf_attached: !!pdfBase64
       });
     }
 
@@ -1102,6 +1180,16 @@ exports.handler = async (event) => {
         "webhook_not_configured",
         "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
       );
+    }
+
+    if (pdfBase64) {
+      payload.pdf_base64 = pdfBase64;
+      payload.pdf_filename = pdfFileName;
+      payload["Pdf Base64"] = pdfBase64;
+      payload["Pdf Filename"] = pdfFileName;
+      payload.file = pdfBase64;
+      payload["Attachment"] = pdfBase64;
+      payload["Attachment Filename"] = pdfFileName;
     }
 
     console.log("[zapier-signature] running...");

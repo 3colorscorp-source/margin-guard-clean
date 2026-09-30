@@ -14821,6 +14821,62 @@ window.renderSupervisor = renderSupervisor;
     saveProjectInvoiceState(projectId, next, { skipTenantDraftSync: true });
   }
 
+  async function buildHubInvoicePdfForSend(row) {
+    const api = window.MgInvoicePdf;
+    if (!api || typeof api.buildInvoicePdfPayload !== "function") return null;
+    const settings = loadSettings();
+    const branding = readStore(LS_BRANDING, {});
+    const notes = String(row?.hubInvoiceNotes || row?.project?.invoice?.notes || "").trim();
+    const workApi = window.MgInvoiceClientWorkDetails;
+    let workDetails = "";
+    let laborAmount = "";
+    let materialsAmount = "";
+    if (workApi && typeof workApi.formatClientFacingWorkDetails === "function") {
+      workDetails = String(workApi.formatClientFacingWorkDetails(notes) || "").trim();
+    }
+    if (workApi && typeof workApi.parseNotes === "function") {
+      const parsed = workApi.parseNotes(notes) || {};
+      laborAmount = String(parsed.laborAmount || "").trim();
+      materialsAmount = String(parsed.materialsAmount || "").trim();
+    }
+    try {
+      return await api.buildInvoicePdfPayload({
+        businessName: nonEmptyString(settings.bizName, settings.businessName, branding.businessName),
+        serviceLine: nonEmptyString(settings.serviceLine, branding.serviceLine),
+        licenseNumber: nonEmptyString(
+          settings.contractorLicenseNumber,
+          settings.contractor_license_number,
+          settings.legalLicenseNumber
+        ),
+        phone: nonEmptyString(settings.businessPhone, branding.businessPhone),
+        email: nonEmptyString(settings.businessEmail, branding.businessEmail),
+        address: nonEmptyString(
+          settings.businessServiceArea,
+          settings.businessAddress,
+          branding.businessServiceArea,
+          branding.businessAddress
+        ),
+        customerName: nonEmptyString(row?.customer, row?.project?.clientName),
+        customerEmail: hubInvoiceSendCustomerEmail(row),
+        projectName: nonEmptyString(row?.title, row?.project?.projectName),
+        invoiceNo: nonEmptyString(row?.invoiceNo, row?.project?.invoice?.invoiceNo),
+        issueDate: nonEmptyString(row?.invoiceDate, row?.project?.invoice?.invoiceDate),
+        dueDate: nonEmptyString(row?.dueDate, row?.project?.dueDate),
+        workDetails,
+        laborAmount,
+        materialsAmount,
+        currency: nonEmptyString(settings.currency, row?.currency),
+        contractTotal: finiteNumber(row?.projectContractTotal, finiteNumber(row?.salePrice, 0)),
+        contractTotalLabel: "Contract total",
+        invoiceAmount: finiteNumber(row?.amount, finiteNumber(row?.project?.invoice?.baseAmount, 0)),
+        paidToDate: finiteNumber(row?.paid, finiteNumber(row?.project?.invoice?.receivedApplied, 0)),
+        remainingBalance: finiteNumber(row?.balance, 0)
+      });
+    } catch (_err) {
+      return null;
+    }
+  }
+
   async function sendHubInvoice(projectId) {
     const project = getProjectById(projectId);
     if (!project) return;
@@ -14857,9 +14913,25 @@ window.renderSupervisor = renderSupervisor;
     } else {
       body.public_token = token;
     }
+    const localPdf = await buildHubInvoicePdfForSend({
+      customer: project.clientName || "",
+      title: project.projectName || "",
+      project,
+      invoiceNo: cur.invoiceNo,
+      invoiceDate: cur.invoiceDate,
+      dueDate: cur.dueDate,
+      amount: cur.baseAmount,
+      paid: cur.receivedApplied,
+      balance: 0,
+      hubInvoiceNotes: cur.notes || ""
+    });
+    if (localPdf && localPdf.contentBase64) {
+      body.pdfBase64 = localPdf.contentBase64;
+      body.pdfFileName = localPdf.fileName || "";
+    }
 
     try {
-      console.info("[InvoiceHub] Send invoice payload", body);
+      console.info("[InvoiceHub] Send invoice payload", { ...body, pdfBase64: body.pdfBase64 ? "[pdf]" : "" });
       const res = await fetch("/.netlify/functions/send-invoice-zapier", {
         method: "POST",
         credentials: "same-origin",
@@ -14949,8 +15021,13 @@ window.renderSupervisor = renderSupervisor;
     } else {
       body.public_token = token;
     }
+    const pdfDoc = await buildHubInvoicePdfForSend(row);
+    if (pdfDoc && pdfDoc.contentBase64) {
+      body.pdfBase64 = pdfDoc.contentBase64;
+      body.pdfFileName = pdfDoc.fileName || "";
+    }
     try {
-      console.info("[InvoiceHub] Send invoice payload", body);
+      console.info("[InvoiceHub] Send invoice payload", { ...body, pdfBase64: body.pdfBase64 ? "[pdf]" : "" });
       const res = await fetch("/.netlify/functions/send-invoice-zapier", {
         method: "POST",
         credentials: "same-origin",
@@ -15084,6 +15161,11 @@ window.renderSupervisor = renderSupervisor;
     }
     if (!payload.id && !payload.public_token) {
       return { ok: false, message: "Missing invoice_id/public_token for server send." };
+    }
+    const pdfDoc = await buildHubInvoicePdfForSend(row);
+    if (pdfDoc && pdfDoc.contentBase64) {
+      payload.pdfBase64 = pdfDoc.contentBase64;
+      payload.pdfFileName = pdfDoc.fileName || "";
     }
     try {
       const res = await fetch("/.netlify/functions/send-invoice-zapier", {
@@ -20300,8 +20382,16 @@ window.renderSupervisor = renderSupervisor;
             if (hubRowIsProjectPaymentInvoice(activeRow)) {
               Object.assign(body, await hubRowRemainingBalanceSendFields(activeRow));
             }
+            const pdfDoc = await buildHubInvoicePdfForSend(activeRow);
+            if (pdfDoc && pdfDoc.contentBase64) {
+              body.pdfBase64 = pdfDoc.contentBase64;
+              body.pdfFileName = pdfDoc.fileName || "";
+            }
 
-            hubDebugLog("[Invoice Hub] Send Invoice payload", body);
+            hubDebugLog("[Invoice Hub] Send Invoice payload", {
+              ...body,
+              pdfBase64: body.pdfBase64 ? "[pdf]" : ""
+            });
 
             const res = await fetch("/.netlify/functions/send-invoice-zapier", {
               method: "POST",
