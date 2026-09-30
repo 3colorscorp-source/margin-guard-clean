@@ -12462,7 +12462,8 @@ window.renderSupervisor = renderSupervisor;
       balance_due: invoice.balance_due,
       status: invoice.status || "draft",
       due_date: invoice.due_date,
-      invoice_label: invoice.invoice_label
+      invoice_label: invoice.invoice_label,
+      notes: invoice.notes
     });
     if (!norm?.invoiceId) return;
     const prev = Array.isArray(hubServerNormalizedInvoicesCache) ? hubServerNormalizedInvoicesCache.slice() : [];
@@ -13441,6 +13442,7 @@ window.renderSupervisor = renderSupervisor;
     row.hubQuoteStatus = srv.hubQuoteStatus;
     row.hubInvoicePaymentStatus = srv.hubInvoicePaymentStatus;
     row.serverInvoiceId = srv.serverInvoiceId;
+    row.hubInvoiceNotes = srv.hubInvoiceNotes || row.hubInvoiceNotes || "";
     row.nextAction = getHubRowCollectNextActionLabel(row);
     const pr = getHubPriority(row);
     row.priorityScore = pr.score;
@@ -16105,6 +16107,44 @@ window.renderSupervisor = renderSupervisor;
     return String(row?.hubInvoiceNotes || inv.notes || "").trim();
   }
 
+  function parseHubManualInvoiceNotes(raw) {
+    const text = String(raw || "")
+      .replace(/\r\n/g, "\n")
+      .replace(HUB_SOURCE_INVOICE_MARKER_RE, "")
+      .replace(HUB_INVOICE_TYPE_UNEXPECTED_MATERIAL_RE, "")
+      .trim();
+    if (!text) return { description: "", billedWork: "" };
+    let description = "";
+    let billedWork = "";
+    const service = text.match(/^Service details:\n([\s\S]*?)(?=\n\nBilling:|\n\nMaterials:|\n\nInvoice total:|$)/);
+    if (service) description = String(service[1] || "").trim();
+    const billing = text.match(/(?:^|\n)Billing:\n([\s\S]*?)(?=\n\nLabor subtotal:|\n\nMaterials:|\n\nInvoice total:|$)/);
+    if (billing) billedWork = String(billing[1] || "").trim();
+    if (!description && !billedWork) description = text;
+    return { description, billedWork };
+  }
+
+  function hubDrawerRenderWorkDetails(row) {
+    const wrap = $("hubDrawerWorkDetailsWrap");
+    const descEl = $("hubDrawerWorkDescription");
+    const billEl = $("hubDrawerWorkBilling");
+    const billWrap = $("hubDrawerWorkBillingWrap");
+    if (!wrap || !descEl) return;
+    const parsed = parseHubManualInvoiceNotes(hubRowNotesText(row));
+    const description = String(parsed.description || "").trim();
+    const billedWork = String(parsed.billedWork || "").trim();
+    if (!description && !billedWork) {
+      wrap.style.display = "none";
+      descEl.textContent = "";
+      if (billEl) billEl.textContent = "";
+      return;
+    }
+    wrap.style.display = "";
+    descEl.textContent = description || "No description on this invoice.";
+    if (billWrap) billWrap.style.display = billedWork ? "" : "none";
+    if (billEl) billEl.textContent = billedWork;
+  }
+
   function hubRowSourceInvoiceIdFromNotes(row) {
     const m = hubRowNotesText(row).match(HUB_SOURCE_INVOICE_ID_RE);
     return m && m[1] ? String(m[1]).trim().toLowerCase() : "";
@@ -16773,6 +16813,7 @@ window.renderSupervisor = renderSupervisor;
 
     hubDrawerRenderDeliveryEmail(row);
     hubDrawerRenderLastReminder(row);
+    hubDrawerRenderWorkDetails(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
     let contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
@@ -16952,6 +16993,7 @@ window.renderSupervisor = renderSupervisor;
       const payCtx = $("hubDrawerPaymentContext");
       if (payCtx) payCtx.style.display = "";
     }
+    hubDrawerRenderWorkDetails(row);
   }
 
   function renderHubTableSection(config) {

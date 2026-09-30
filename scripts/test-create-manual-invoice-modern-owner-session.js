@@ -272,6 +272,11 @@ async function main() {
       (66 * Number(rates.system_hourly_rate) + 80 * Number(rates.system_helper_hourly_rate) + 496) * 100
     ) / 100;
     eq("worker invoice amount uses pro and assistant hours", createBody.invoice.amount, expected);
+    ok(
+      "create response includes interpreted description in notes",
+      String(createBody.invoice.notes || "").includes("Service details:\n208 sqf membrane installation")
+    );
+    ok("create response notes include billed work", /Billing:\nHourly service/.test(String(createBody.invoice.notes || "")));
 
     const byDay = await handler.handler(
       eventFor(modern, {
@@ -304,6 +309,10 @@ async function main() {
     eq("work-day invoice amount sums hours per day", byDayBody.invoice.amount, expectedDays);
     ok("work-day notes include first billed date", /Sep 28, 2026/.test(String(byDayBody.debug_notes_preview || "")));
     ok("work-day notes include two-day billing length", Number(byDayBody.debug_notes_length) >= 280);
+    ok(
+      "work-day create response notes keep the description",
+      String(byDayBody.invoice.notes || "").includes("Service details:\n208 sqf membrane installation")
+    );
   });
 
   console.log("\n" + passed + " passed");
