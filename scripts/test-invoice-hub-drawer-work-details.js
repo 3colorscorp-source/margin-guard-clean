@@ -311,11 +311,13 @@ function main() {
   ok("public work details show Assistant hours", clientText.includes("Assistant: 34 hours"));
   ok("public work details compress days", clientText.includes("Days: Sep 16, 23, 28–30"));
   ok("public work details keep materials copy", clientText.includes("4 bags of thinset"));
+  ok("public work details show materials amount", clientText.includes("Materials: $512.00"));
+  ok("public work details show labor amount", clientText.includes("Labor: $4536.32"));
   ok("public work details hide hourly calendar", !/Hourly service/.test(clientText));
-  ok("public work details hide rates", !clientText.includes("$"));
-  ok("public work details hide labor subtotal", !/Labor subtotal/i.test(clientText));
+  ok("public work details hide hourly rates", !/\/hr/.test(clientText) && !/ at \$/.test(clientText));
+  ok("public work details hide labor subtotal label", !/Labor subtotal/i.test(clientText));
   ok("public work details hide invoice total", !/Invoice total/i.test(clientText));
-  ok("public work details hide materials subtotal", !/Materials subtotal/i.test(clientText));
+  ok("public work details hide materials subtotal label", !/Materials subtotal/i.test(clientText));
 
   console.log("\n" + passed + " passed");
 }

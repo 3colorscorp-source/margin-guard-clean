@@ -21,28 +21,34 @@
 
   function parseNotes(raw) {
     const text = stripInternalMarkers(raw);
-    if (!text) return { description: "", billedWork: "", materials: "" };
+    if (!text) return { description: "", billedWork: "", materials: "", laborAmount: "", materialsAmount: "" };
     let description = "";
     let billedWork = "";
     let materials = "";
+    let laborAmount = "";
+    let materialsAmount = "";
     const service = text.match(/^Service details:\n([\s\S]*?)(?=\n\nBilling:|\n\nMaterials:|\n\nLabor subtotal:|\n\nInvoice total:|$)/);
     if (service) description = String(service[1] || "").trim();
     const billing = text.match(/(?:^|\n)Billing:\n([\s\S]*?)(?=\n\nLabor subtotal:|\n\nMaterials:|\n\nInvoice total:|$)/);
     if (billing) billedWork = String(billing[1] || "").trim();
+    const labor = text.match(/(?:^|\n)Labor subtotal:\s*(\$[0-9][0-9,]*(?:\.[0-9]{2})?)/i);
+    if (labor) laborAmount = String(labor[1] || "").trim();
     const mats = text.match(/(?:^|\n)Materials:\n([\s\S]*?)(?=\n\nInvoice total:|$)/);
     if (mats) {
-      materials = String(mats[1] || "")
+      const matLines = String(mats[1] || "")
         .split("\n")
         .map((line) => String(line || "").trim())
-        .filter((line) => line && !/^Materials subtotal:/i.test(line))
-        .join("\n")
-        .trim();
+        .filter(Boolean);
+      const subtotal = matLines.find((line) => /^Materials subtotal:/i.test(line)) || "";
+      const money = subtotal.match(/(\$[0-9][0-9,]*(?:\.[0-9]{2})?)/);
+      if (money) materialsAmount = String(money[1] || "").trim();
+      materials = matLines.filter((line) => !/^Materials subtotal:/i.test(line)).join("\n").trim();
     }
     if (!description && !billedWork && !materials) {
       const looksTechnical = /(?:^|\n)(?:Billing:|Labor subtotal:|Invoice total:)/.test(text) || / at \$/.test(text);
       if (!looksTechnical) description = text;
     }
-    return { description, billedWork, materials };
+    return { description, billedWork, materials, laborAmount, materialsAmount };
   }
 
   function parseBilledWorkDate(line) {
@@ -178,8 +184,14 @@
     const billed = summarizeBilledWork(parsed.billedWork);
     const parts = [];
     if (parsed.description) parts.push(parsed.description);
-    if (billed && !billedLooksTechnical(billed)) parts.push(billed);
-    if (parsed.materials) parts.push("Materials\n" + parsed.materials);
+    const laborLines = [];
+    if (parsed.laborAmount) laborLines.push("Labor: " + parsed.laborAmount);
+    if (billed && !billedLooksTechnical(billed)) laborLines.push(billed);
+    if (laborLines.length) parts.push(laborLines.join("\n"));
+    if (parsed.materialsAmount || parsed.materials) {
+      const head = parsed.materialsAmount ? "Materials: " + parsed.materialsAmount : "Materials";
+      parts.push(parsed.materials ? head + "\n" + parsed.materials : head);
+    }
     return parts.join("\n\n");
   }
 
