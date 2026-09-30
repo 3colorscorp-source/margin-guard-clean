@@ -8,6 +8,10 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
+const {
+  uploadInvoicePdf,
+  buildInvoicePdfAccessUrl
+} = require("./_lib/invoice-pdf-access");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -140,6 +144,8 @@ function buildInvoiceEmailHtml({
   );
 }
 
+const INVOICE_EMAIL_CLOSING = "If you have questions about this invoice, we are here to help.";
+
 function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, summaryRows, closing, businessName }) {
   const brand = String(businessName || "").trim();
   const lines = [];
@@ -154,7 +160,34 @@ function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, 
   return lines.join("\n");
 }
 
-const INVOICE_EMAIL_CLOSING = "If you have questions about this invoice, we are here to help.";
+function insertPdfLinkPlain(body, pdfUrl) {
+  const url = String(pdfUrl || "").trim();
+  const text = String(body || "");
+  if (!url || !text) return text;
+  if (text.includes(url)) return text;
+  const block = "Invoice PDF\n" + url + "\n\n";
+  if (text.includes(INVOICE_EMAIL_CLOSING)) {
+    return text.replace(INVOICE_EMAIL_CLOSING, block + INVOICE_EMAIL_CLOSING);
+  }
+  return text.replace(/\nView invoice\n([^\n]+)\n/, "\nView invoice\n$1\n\nInvoice PDF\n" + url + "\n");
+}
+
+function insertPdfLinkHtml(html, pdfUrl) {
+  const url = String(pdfUrl || "").trim();
+  const src = String(html || "");
+  if (!url || !src) return src;
+  if (src.includes(url)) return src;
+  const href = escapeEmailHtml(url);
+  const block =
+    '<p style="margin:0 0 26px;font-size:12px;line-height:1.5;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">' +
+    '<a href="' +
+    href +
+    '" style="color:#0f8a5f;text-decoration:underline;">Download invoice PDF</a>.</p>';
+  if (src.includes("open the invoice here</a>.</p>")) {
+    return src.replace("open the invoice here</a>.</p>", "open the invoice here</a>.</p>" + block);
+  }
+  return src;
+}
 
 function finishInvoiceEmailCopy({ subject, customerName, intro, publicUrl, summaryTitle, summaryRows, businessName, ctaLabel }) {
   const payload = {
@@ -1172,6 +1205,38 @@ exports.handler = async (event) => {
       pickFirstStr(body.pdfFileName, body.pdf_filename, body.fileName),
       invoice.invoice_no ? `Invoice-${invoice.invoice_no}.pdf` : "Invoice.pdf"
     );
+    let pdfUrl = "";
+    if (pdfBase64) {
+      try {
+        const uploaded = await uploadInvoicePdf({
+          base64: pdfBase64,
+          fileName: pdfFileName,
+          invoiceNumber: invoice.invoice_no,
+          tenantId
+        });
+        if (uploaded && uploaded.objectPath) {
+          pdfUrl = buildInvoicePdfAccessUrl(origin, token, uploaded.objectPath);
+        }
+      } catch (_pdfErr) {
+        pdfUrl = "";
+      }
+    }
+    if (pdfUrl) {
+      payload.email_body = insertPdfLinkPlain(payload.email_body, pdfUrl);
+      payload["Email Body"] = payload.email_body;
+      payload.email_html = insertPdfLinkHtml(payload.email_html, pdfUrl);
+      payload.html_body = payload.email_html;
+      payload.messageText = payload.email_html;
+      payload["Email Html"] = payload.email_html;
+      payload["Html Body"] = payload.email_html;
+      payload["Message Text"] = payload.email_html;
+      payload.pdf_url = pdfUrl;
+      payload.pdfUrl = pdfUrl;
+      payload["Pdf Url"] = pdfUrl;
+      payload["PDF Url"] = pdfUrl;
+      payload.pdf_filename = pdfFileName;
+      payload["Pdf Filename"] = pdfFileName;
+    }
 
     const wantsDryRun = !!(body.dry_run || body.email_preview || body.debug_preview);
     if (wantsDryRun) {
