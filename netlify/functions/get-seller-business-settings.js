@@ -116,6 +116,17 @@ exports.handler = async (event) => {
       });
     }
 
+    try {
+      const legalRows = await supabaseRequest(
+        `tenant_legal_profiles?tenant_id=eq.${encodeURIComponent(String(tenant.id))}&select=contractor_license_number&limit=1`
+      );
+      const legalRow = Array.isArray(legalRows) && legalRows[0] ? legalRows[0] : null;
+      const licenseNumber = String(legalRow?.contractor_license_number || "").trim();
+      if (licenseNumber) settings.contractorLicenseNumber = licenseNumber;
+    } catch (_legalErr) {
+      /* license is optional for quoting; PDF omits L# if missing */
+    }
+
     return json(200, {
       ok: true,
       settings,

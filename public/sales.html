@@ -10615,6 +10615,22 @@
   if (preparedBy) {
     bizLines.push(`Prepared by: ${preparedBy}`);
   }
+  const licenseLine = (function formatPdfLicenseLine(raw) {
+    const n = String(raw || '').trim();
+    if (!n) return '';
+    if (/^l#/i.test(n) || /^lic(ense)?\.?\s*#/i.test(n)) return n;
+    return 'L# ' + n;
+  })(pickTenantString(
+    settings?.contractorLicenseNumber,
+    settings?.contractor_license_number,
+    data.contractorLicenseNumber,
+    data.contractor_license_number,
+    branding?.contractorLicenseNumber,
+    branding?.contractor_license_number
+  ));
+  if (licenseLine) {
+    bizLines.push(licenseLine);
+  }
   if (businessPhone) {
     bizLines.push(`Phone: ${businessPhone}`);
   }
@@ -11031,6 +11047,15 @@
       e.signatureLine
     );
 
+    const contractorLicenseNumber = pickFirstNonEmpty(
+      s.contractorLicenseNumber,
+      s.contractor_license_number,
+      b.contractorLicenseNumber,
+      b.contractor_license_number,
+      e.contractorLicenseNumber,
+      e.contractor_license_number
+    );
+
     const accentHex =
       pickFirstNonEmpty(
         b.accentHex,
@@ -11051,6 +11076,7 @@
       preparedBy,
       serviceLine: serviceLine || '',
       signatureLine: signatureLine || '',
+      contractorLicenseNumber: contractorLicenseNumber || '',
       accentHex,
       accentRgb
     };

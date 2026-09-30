@@ -214,6 +214,22 @@
       src.signatureLine,
       src.signature_line
     );
+    const legal =
+      src.legalProfile && typeof src.legalProfile === "object"
+        ? src.legalProfile
+        : branding.legalProfile && typeof branding.legalProfile === "object"
+          ? branding.legalProfile
+          : {};
+    const contractorLicenseNumber = pickFirstNonEmpty(
+      settings.contractorLicenseNumber,
+      settings.contractor_license_number,
+      legal.contractor_license_number,
+      legal.contractorLicenseNumber,
+      branding.contractorLicenseNumber,
+      branding.contractor_license_number,
+      src.contractorLicenseNumber,
+      src.contractor_license_number
+    );
 
     return {
       businessName,
@@ -223,8 +239,16 @@
       businessServiceArea,
       preparedBy,
       serviceLine,
-      signatureLine
+      signatureLine,
+      contractorLicenseNumber
     };
+  }
+
+  function formatPdfLicenseLine(raw) {
+    const n = safeTrim(raw);
+    if (!n) return "";
+    if (/^l#/i.test(n) || /^lic(ense)?\.?\s*#/i.test(n)) return n;
+    return "L# " + n;
   }
 
   async function buildEstimatePdfPayload(data) {
@@ -257,6 +281,7 @@
   const businessEmail = identity.businessEmail;
   const businessServiceArea = identity.businessServiceArea;
   const businessAddress = identity.businessAddress;
+  const contractorLicenseNumber = identity.contractorLicenseNumber;
 
   const clientName = String(
     data.clientName ||
@@ -493,6 +518,10 @@
   const bizLines = [];
   if (preparedBy) {
     bizLines.push(`Prepared by: ${preparedBy}`);
+  }
+  const licenseLine = formatPdfLicenseLine(contractorLicenseNumber);
+  if (licenseLine) {
+    bizLines.push(licenseLine);
   }
   if (businessPhone) {
     bizLines.push(`Phone: ${businessPhone}`);
@@ -809,6 +838,7 @@
       preparedBy: identity.preparedBy,
       serviceLine: identity.serviceLine,
       signatureLine: identity.signatureLine,
+      contractorLicenseNumber: identity.contractorLicenseNumber,
       accentHex,
       accentRgb
     };
@@ -820,6 +850,7 @@
     formatUsd,
     resolvePublishBusinessName,
     resolvePdfBusinessIdentity,
+    formatPdfLicenseLine,
     hexToRgbTuple,
     isInvalidPublishBusinessNameCandidate,
     resolvePublicPdfScopeItems
