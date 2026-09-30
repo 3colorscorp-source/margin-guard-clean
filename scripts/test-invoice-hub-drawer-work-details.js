@@ -187,6 +187,8 @@ function main() {
   ok("app extracts Service details", app.includes("Service details:\\n"));
   ok("app extracts Billing block", app.includes("Billing:\\n"));
   ok("app renders work details in the drawer", /function hubDrawerRenderWorkDetails\(row\)/.test(app));
+  ok("drawer Download PDF uses the send PDF builder", /async function hubDrawerDownloadPdf[\s\S]{0,1200}buildHubInvoicePdfForSend/.test(app));
+  ok("drawer Download PDF saves a file", /function downloadGeneratedInvoicePdf[\s\S]{0,900}a\.download/.test(app));
   ok("drawer summarizes billed work", /function summarizeHubBilledWork\(raw\)/.test(app));
   ok("drawer render uses billed-work summary", /summarizeHubBilledWork\(parsed\.billedWork\)/.test(app));
   ok("drawer render calls work details", /hubDrawerRenderWorkDetails\(row\)/.test(app));
