@@ -227,6 +227,45 @@ async function main() {
   ok("send-quote-zapier does not log ZAPIER_WEBHOOK_SECRET", sendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok("resend-tenant-quote does not log ZAPIER_WEBHOOK_SECRET", resendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok("helper does not console.log signature", helperSrc.indexOf("console.log") < 0 && helperSrc.indexOf("console.info") < 0);
+  ok(
+    "send-quote-zapier assigns messageText onto zapierBody",
+    sendSrc.indexOf("zapierBody.messageText = resolveEstimateMessageText") >= 0
+  );
+
+  const sendQuote = require("../netlify/functions/send-quote-zapier");
+  const publicUrl = "https://example.test/estimate-public.html?token=abc";
+  const fromClient = sendQuote._test.resolveEstimateMessageText(
+    {
+      messageText: "Hello Erin Thomson,\n\nPlease review:\n\n[PUBLIC_QUOTE_URL]\n",
+      toName: "Erin Thomson",
+    },
+    publicUrl
+  );
+  ok("client letter keeps greeting", fromClient.indexOf("Hello Erin Thomson") === 0);
+  ok("client letter replaces public URL placeholder", fromClient.indexOf(publicUrl) >= 0);
+  ok("client letter has no leftover placeholder", fromClient.indexOf("[PUBLIC_QUOTE_URL]") < 0);
+
+  const fallbackLetter = sendQuote._test.resolveEstimateMessageText({ toName: "Erin Thomson" }, publicUrl);
+  ok("empty client letter still greets", fallbackLetter.indexOf("Hello Erin Thomson") >= 0);
+  ok("empty client letter still includes review link", fallbackLetter.indexOf(publicUrl) >= 0);
+  ok("empty client letter is not name-url-company dump", fallbackLetter.indexOf("Thank you for the opportunity") >= 0);
+
+  const letterUnsigned = Object.assign({}, UNSIGNED, {
+    messageText: fromClient,
+    subject: "Estimate - Erin Master bathroom",
+  });
+  const letterBody = Object.assign({}, letterUnsigned);
+  hmac.attachZapierSignature(letterBody, {
+    secret: SECRET,
+    timestamp: "2026-09-10T17:00:00.000Z",
+    nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  });
+  const letterCatch = hmac.verifyEstimatesCatchHook(
+    Object.assign({}, letterBody, { hmac_secret: SECRET }),
+    { nowMs: Date.parse("2026-09-10T17:00:00.000Z") }
+  );
+  ok("HMAC final_body uses the client letter", letterCatch.final_body.indexOf("Hello Erin Thomson") >= 0);
+  ok("HMAC final_body is not the three-field dump", letterCatch.final_body.indexOf("Demo Co") < 0);
 
   const publicJs = ["public/js/app.js", "public/js/estimate-public-send.js"]
     .map(read)

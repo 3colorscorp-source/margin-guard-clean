@@ -52,6 +52,55 @@ function resolvePublicQuoteUrl(data, siteUrl) {
   return String(out).trim();
 }
 
+function fillPublicQuotePlaceholders(text, publicQuoteUrl) {
+  const url = String(publicQuoteUrl || "").trim();
+  const raw = String(text == null ? "" : text);
+  if (!url) return raw;
+  return raw.replace(/\[PUBLIC_QUOTE_URL\]/gi, url);
+}
+
+function buildDefaultEstimateMessage({ toName, publicQuoteUrl }) {
+  const name = pickFirst(toName) || "there";
+  const url = String(publicQuoteUrl || "").trim();
+  return [
+    `Hello ${name},`,
+    "",
+    "Thank you for the opportunity to work with you.",
+    "",
+    "Your project estimate is attached and ready for review.",
+    "",
+    "When you're ready to move forward, please review and approve your estimate using the link below:",
+    "",
+    url,
+    "",
+    "Please review the scope of work and let us know if you would like to move forward."
+  ]
+    .join("\n")
+    .trim();
+}
+
+/** Letter for Zapier HMAC final_body. Never fall back to name+url+company. */
+function resolveEstimateMessageText(data, publicQuoteUrl) {
+  const incoming = pickFirst(
+    data && data.messageText,
+    data && data.message_text,
+    data && data.email_body,
+    data && data.emailBody,
+    data && data.message
+  );
+  const filled = fillPublicQuotePlaceholders(incoming, publicQuoteUrl).trim();
+  if (filled) return filled;
+  return buildDefaultEstimateMessage({
+    toName: pickFirst(
+      data && data.toName,
+      data && data.to_name,
+      data && data.clientName,
+      data && data.client_name
+    ),
+    publicQuoteUrl
+  });
+}
+
 const OPS_FN = "send-quote-zapier";
 
 function normQuoteStatus(s) {
@@ -325,6 +374,7 @@ exports.handler = async (event) => {
     if (!String(zapierBody.public_quote_url || "").trim()) {
       zapierBody.public_quote_url = resolvePublicQuoteUrl(data, siteUrl);
     }
+    zapierBody.messageText = resolveEstimateMessageText(data, zapierBody.public_quote_url);
 
     const webhookUrl = pickFirst(
       process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
@@ -453,4 +503,10 @@ exports.handler = async (event) => {
     });
     return { statusCode: 500, body: JSON.stringify({ error: "Server error: " + err.message }) };
   }
+};
+
+exports._test = {
+  fillPublicQuotePlaceholders,
+  buildDefaultEstimateMessage,
+  resolveEstimateMessageText
 };
