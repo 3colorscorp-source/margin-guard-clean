@@ -875,6 +875,11 @@
       box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
       color: #e8eefc;
     }
+    #hubFormModal.is-manual-create .hub-invoice-form-card {
+      width: min(92vw, 760px);
+      background: #141413;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
     .hub-invoice-form-card .modal-header {
       flex: 0 0 auto;
       padding: 16px 20px 12px;
@@ -1360,6 +1365,31 @@
         padding: 6px 12px;
         font-size: 0.8125rem;
         border-radius: 8px;
+      }
+
+      #hubFormModal.is-manual-create.hub-invoice-form-modal .hub-invoice-form-card {
+        width: min(92vw, 760px);
+        max-height: min(90vh, 100dvh);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        background: #141413;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      #hubFormModal.is-manual-create .modal-body {
+        overflow-y: auto;
+        max-height: min(68vh, 720px);
+        scrollbar-width: thin;
+      }
+      #hubFormModal.is-manual-create .modal-body::-webkit-scrollbar {
+        display: block;
+        width: 8px;
+        height: 8px;
+      }
+      #hubFormModal.is-manual-create #btnHubFormSubmit {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: #fff;
       }
 
       /* Record Payment */

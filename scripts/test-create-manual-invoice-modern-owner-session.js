@@ -133,9 +133,10 @@ async function withDb(fn) {
     ],
   };
 
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     const restPath = extractPath(url);
     const table = restPath.split("?")[0];
+    const method = String((init && init.method) || "GET").toUpperCase();
     if (table === "profiles") {
       const email = qp(restPath, "email");
       const tenantId = qp(restPath, "tenant_id");
@@ -173,6 +174,32 @@ async function withDb(fn) {
       const tenantId = qp(restPath, "tenant_id");
       return jsonRes(200, snapshots[tenantId] || []);
     }
+    if (table === "invoices") {
+      if (method === "POST") {
+        let payload = {};
+        try {
+          payload = JSON.parse((init && init.body) || "{}");
+        } catch (_err) {
+          payload = {};
+        }
+        const row = {
+          id: "inv-manual-1",
+          tenant_id: TENANT_A,
+          invoice_no: payload.invoice_no || "INV-1",
+          customer_name: payload.customer_name || "",
+          customer_email: payload.customer_email || "",
+          project_name: payload.project_name || "",
+          amount: payload.amount,
+          balance_due: payload.balance_due,
+          status: payload.status || "draft",
+          due_date: payload.due_date || null,
+          notes: payload.notes || "",
+        };
+        snapshots._invoice = row;
+        return jsonRes(201, [row]);
+      }
+      return jsonRes(200, snapshots._invoice ? [snapshots._invoice] : []);
+    }
     return jsonRes(404, { message: "unmocked " + restPath });
   };
 
@@ -204,7 +231,43 @@ async function main() {
     ok("preview ok", body.ok === true);
     ok("hourly rate is a positive number", Number(body.system_hourly_rate) > 0);
     ok("daily rate is a positive number", Number(body.system_daily_rate) > 0);
+    ok("helper hourly rate is a positive number", Number(body.system_helper_hourly_rate) > 0);
+    ok("helper daily rate is a positive number", Number(body.system_helper_daily_rate) > 0);
+    ok("helper hourly is not the pro hourly", Number(body.system_helper_hourly_rate) !== Number(body.system_hourly_rate));
     ok("preview does not return an invoice row", body.invoice == null);
+  });
+
+  ok("modal has addable workers", /hubManualAddWorker/.test(appSrc) && /hubManualWorkersList/.test(appSrc));
+  ok("modal can charge by hour or day", /Charge by/.test(appSrc) && /data-hub-charge="hourly"/.test(appSrc) && /data-hub-charge="daily"/.test(appSrc));
+  ok("manual create uses ultra-pro calendar", /hub-mini-cal/.test(appSrc) && /today_plus/.test(appSrc) && /is-manual-create/.test(appSrc) && /cancelLabel: "Cancel"/.test(appSrc));
+  ok("submit sends workers array", /workers: billing_type === "flat_amount" \? \[\] : crew/.test(appSrc));
+  ok("server parses workers", /parseManualInvoiceWorkers/.test(src));
+
+  await withDb(async (handler) => {
+    const modern = { e: OWNER_A, t: TENANT_A, u: USER_A, c: "" };
+    const preview = await handler.handler(eventFor(modern, { preview_system_rates: true }));
+    const rates = parse(preview);
+    const created = await handler.handler(
+      eventFor(modern, {
+        client_name: "Matthew",
+        client_email: "maloney58@icloud.com",
+        project_title: "Pepper",
+        description: "208 sqf membrane installation",
+        billing_type: "hourly",
+        workers: [
+          { role: "installer", quantity: 66 },
+          { role: "assistant", quantity: 80 },
+        ],
+        materials_cost: 496,
+      })
+    );
+    const createBody = parse(created);
+    eq("worker invoice is 200", created.statusCode, 200);
+    ok("worker invoice ok", createBody.ok === true);
+    const expected = Math.round(
+      (66 * Number(rates.system_hourly_rate) + 80 * Number(rates.system_helper_hourly_rate) + 496) * 100
+    ) / 100;
+    eq("worker invoice amount uses pro and assistant hours", createBody.invoice.amount, expected);
   });
 
   console.log("\n" + passed + " passed");

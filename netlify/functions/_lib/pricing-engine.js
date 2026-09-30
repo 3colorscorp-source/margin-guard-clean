@@ -351,9 +351,27 @@ function computeManualInvoiceSystemSellRates(tenantSettings) {
     },
     settings
   );
+  const helperHourlyFin = calculateQuotePublishFinancials(
+    {
+      workers: [{ type: "helper", days: 1 / hoursPerDay }],
+      price: "",
+      _manualPriceTouched: false
+    },
+    settings
+  );
+  const helperDailyFin = calculateQuotePublishFinancials(
+    {
+      workers: [{ type: "helper", days: 1 }],
+      price: "",
+      _manualPriceTouched: false
+    },
+    settings
+  );
   return {
     system_hourly_rate: hourlyFin.total,
-    system_daily_rate: dailyFin.total
+    system_daily_rate: dailyFin.total,
+    system_helper_hourly_rate: helperHourlyFin.total,
+    system_helper_daily_rate: helperDailyFin.total
   };
 }
 
