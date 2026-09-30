@@ -17250,7 +17250,13 @@ window.renderSupervisor = renderSupervisor;
       let systemHelperHourly = 0;
       let systemHelperDaily = 0;
       let pricingPreviewOk = false;
-      let workers = [{ role: "installer", quantity: 1 }];
+      let workDays = [
+        {
+          date: hubQuickDateResolveValue("today"),
+          workers: [{ role: "installer", quantity: 8 }],
+        },
+      ];
+      let workCalView = parseLocalDateOnly(hubQuickDateResolveValue("today")) || new Date();
 
       const workerRateFor = (role, billingType) => {
         if (billingType === "daily") {
@@ -17259,17 +17265,13 @@ window.renderSupervisor = renderSupervisor;
         return role === "helper" ? systemHelperHourly : systemHourly;
       };
 
-      const readWorkersFromDom = () => {
-        const list = $("hubManualWorkersList");
-        if (!list) return workers;
-        const next = [];
-        list.querySelectorAll(".hub-manual-worker-row").forEach((row) => {
-          const role = normalizeManualWorkerRoleDom(row.querySelector(".hub-manual-worker-role")?.value);
-          const quantity = Math.max(finiteNumber(row.querySelector(".hub-manual-worker-qty")?.value, 0), 0);
-          next.push({ role, quantity });
-        });
-        if (next.length) workers = next;
-        return workers;
+      const defaultWorkerQty = () =>
+        String(val("hubManualBillingType") || "").trim() === "daily" ? 1 : 8;
+
+      const formatWorkDayChip = (iso) => {
+        const d = parseLocalDateOnly(iso);
+        if (!d) return iso;
+        return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
       };
 
       const normalizeManualWorkerRoleDom = (raw) => {
@@ -17278,35 +17280,147 @@ window.renderSupervisor = renderSupervisor;
         return "installer";
       };
 
+      const flattenCrew = () => {
+        const crew = [];
+        workDays.forEach((day) => {
+          (day.workers || []).forEach((worker) => {
+            const quantity = Math.max(finiteNumber(worker.quantity, 0), 0);
+            if (!(quantity > 0) || !day.date) return;
+            crew.push({ role: worker.role, quantity, date: day.date });
+          });
+        });
+        return crew;
+      };
+
+      const readWorkDaysFromDom = () => {
+        const list = $("hubManualWorkersList");
+        if (!list) return workDays;
+        const next = [];
+        list.querySelectorAll(".hub-manual-work-day").forEach((card) => {
+          const date = String(card.getAttribute("data-work-date") || "").trim();
+          if (!date) return;
+          const workers = [];
+          card.querySelectorAll(".hub-manual-worker-row").forEach((row) => {
+            const role = normalizeManualWorkerRoleDom(row.querySelector(".hub-manual-worker-role")?.value);
+            const quantity = Math.max(finiteNumber(row.querySelector(".hub-manual-worker-qty")?.value, 0), 0);
+            workers.push({ role, quantity });
+          });
+          next.push({ date, workers: workers.length ? workers : [{ role: "installer", quantity: defaultWorkerQty() }] });
+        });
+        if (next.length) {
+          next.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          workDays = next;
+        }
+        return workDays;
+      };
+
+      const toggleWorkDay = (iso) => {
+        const date = String(iso || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+        readWorkDaysFromDom();
+        const idx = workDays.findIndex((day) => day.date === date);
+        if (idx >= 0) {
+          if (workDays.length <= 1) {
+            setNotice("hubFormFeedback", "Keep at least one billed day, or switch to Flat.", "warn");
+            return;
+          }
+          workDays.splice(idx, 1);
+        } else {
+          if (workDays.length >= 31) {
+            setNotice("hubFormFeedback", "You can bill up to 31 days on one invoice.", "warn");
+            return;
+          }
+          workDays.push({ date, workers: [{ role: "installer", quantity: defaultWorkerQty() }] });
+          workDays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        }
+        renderWorkers();
+        recalcTotal();
+      };
+
+      const renderWorkCal = () => {
+        const root = $("hubManualWorkCal");
+        if (!root) return;
+        const year = workCalView.getFullYear();
+        const month = workCalView.getMonth();
+        const first = new Date(year, month, 1);
+        const firstDow = first.getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const selected = new Set(workDays.map((day) => day.date));
+        const today = hubQuickDateResolveValue("today");
+        const monthLabel = first.toLocaleString("en-US", { month: "long", year: "numeric" });
+        let cells = "";
+        for (let i = 0; i < firstDow; i += 1) cells += `<span class="hub-mini-cal-pad"></span>`;
+        for (let day = 1; day <= daysInMonth; day += 1) {
+          const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const cls = ["hub-mini-cal-day"];
+          if (selected.has(iso)) cls.push("is-selected");
+          if (iso === today) cls.push("is-today");
+          cells += `<button type="button" class="${cls.join(" ")}" data-hub-work-day="${iso}">${day}</button>`;
+        }
+        root.innerHTML = `<div class="hub-mini-cal-nav">
+          <button type="button" class="hub-mini-cal-nav-btn" data-hub-work-cal-shift="-1" aria-label="Previous month">‹</button>
+          <div class="hub-mini-cal-month">${escapeHtml(monthLabel)}</div>
+          <button type="button" class="hub-mini-cal-nav-btn" data-hub-work-cal-shift="1" aria-label="Next month">›</button>
+        </div>
+        <div class="hub-mini-cal-dow">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
+        <div class="hub-mini-cal-grid">${cells}</div>`;
+        root.querySelectorAll("[data-hub-work-cal-shift]").forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.preventDefault();
+            workCalView = new Date(year, month + Number(btn.getAttribute("data-hub-work-cal-shift") || 0), 1);
+            renderWorkCal();
+          };
+        });
+        root.querySelectorAll("[data-hub-work-day]").forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.preventDefault();
+            toggleWorkDay(btn.getAttribute("data-hub-work-day"));
+          };
+        });
+      };
+
       const renderWorkers = () => {
         const list = $("hubManualWorkersList");
         if (!list) return;
         const billingType = String(val("hubManualBillingType") || "").trim();
         const unit = billingType === "daily" ? "Days" : "Hours";
-        list.innerHTML = workers
-          .map((worker, index) => {
-            const rate = workerRateFor(worker.role, billingType);
-            return `<div class="hub-manual-worker-row" data-worker-index="${index}">
-              <select class="hub-manual-worker-role" aria-label="Worker role">
-                <option value="installer"${worker.role === "installer" ? " selected" : ""}>Pro</option>
-                <option value="helper"${worker.role === "helper" ? " selected" : ""}>Assistant</option>
-              </select>
-              <label class="hub-manual-worker-qty-wrap">
-                <span class="hub-manual-worker-unit">${unit}</span>
-                <input class="hub-manual-worker-qty" type="number" min="0" step="0.01" value="${escapeHtml(String(worker.quantity || ""))}" aria-label="${unit}" />
-              </label>
-              <span class="hub-manual-worker-rate" translate="no">${escapeHtml(money(rate))}</span>
-              <button type="button" class="btn ghost hub-manual-worker-remove"${workers.length <= 1 ? " disabled" : ""}>Remove</button>
-            </div>`;
+        workDays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        list.innerHTML = workDays
+          .map((day, dayIndex) => {
+            const workerRows = (day.workers || [])
+              .map((worker, index) => {
+                const rate = workerRateFor(worker.role, billingType);
+                return `<div class="hub-manual-worker-row" data-day-index="${dayIndex}" data-worker-index="${index}">
+                  <select class="hub-manual-worker-role" aria-label="Worker role">
+                    <option value="installer"${worker.role === "installer" ? " selected" : ""}>Pro</option>
+                    <option value="helper"${worker.role === "helper" ? " selected" : ""}>Assistant</option>
+                  </select>
+                  <label class="hub-manual-worker-qty-wrap">
+                    <span class="hub-manual-worker-unit">${unit}</span>
+                    <input class="hub-manual-worker-qty" type="number" min="0" step="0.01" value="${escapeHtml(String(worker.quantity || ""))}" aria-label="${unit}" />
+                  </label>
+                  <span class="hub-manual-worker-rate" translate="no">${escapeHtml(money(rate))}</span>
+                  <button type="button" class="btn ghost hub-manual-worker-remove"${(day.workers || []).length <= 1 ? " disabled" : ""}>Remove</button>
+                </div>`;
+              })
+              .join("");
+            return `<section class="hub-manual-work-day" data-work-date="${escapeHtml(day.date)}" data-day-index="${dayIndex}">
+              <div class="hub-manual-work-day-head">
+                <strong>${escapeHtml(formatWorkDayChip(day.date))}</strong>
+                <button type="button" class="btn ghost hub-manual-work-day-remove"${workDays.length <= 1 ? " disabled" : ""}>Remove day</button>
+              </div>
+              ${workerRows}
+              <button type="button" class="btn btn-secondary hub-manual-add-day-worker">+ Add worker this day</button>
+            </section>`;
           })
           .join("");
         list.querySelectorAll(".hub-manual-worker-role, .hub-manual-worker-qty").forEach((node) => {
           node.oninput = () => {
-            readWorkersFromDom();
+            readWorkDaysFromDom();
             recalcTotal();
           };
           node.onchange = () => {
-            readWorkersFromDom();
+            readWorkDaysFromDom();
             if (node.classList.contains("hub-manual-worker-role")) renderWorkers();
             recalcTotal();
           };
@@ -17314,16 +17428,56 @@ window.renderSupervisor = renderSupervisor;
         list.querySelectorAll(".hub-manual-worker-remove").forEach((btn) => {
           btn.onclick = (ev) => {
             ev.preventDefault();
-            readWorkersFromDom();
-            if (workers.length <= 1) return;
+            readWorkDaysFromDom();
             const row = btn.closest(".hub-manual-worker-row");
+            const dayIdx = Number(row && row.getAttribute("data-day-index"));
             const idx = Number(row && row.getAttribute("data-worker-index"));
-            if (!Number.isFinite(idx)) return;
-            workers.splice(idx, 1);
+            if (!Number.isFinite(dayIdx) || !workDays[dayIdx] || !Number.isFinite(idx)) return;
+            if ((workDays[dayIdx].workers || []).length <= 1) return;
+            workDays[dayIdx].workers.splice(idx, 1);
             renderWorkers();
             recalcTotal();
           };
         });
+        list.querySelectorAll(".hub-manual-add-day-worker").forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.preventDefault();
+            readWorkDaysFromDom();
+            const card = btn.closest(".hub-manual-work-day");
+            const dayIdx = Number(card && card.getAttribute("data-day-index"));
+            if (!Number.isFinite(dayIdx) || !workDays[dayIdx]) return;
+            if ((workDays[dayIdx].workers || []).length >= 12) {
+              setNotice("hubFormFeedback", "You can add up to 12 workers on one day.", "warn");
+              return;
+            }
+            workDays[dayIdx].workers.push({ role: "installer", quantity: defaultWorkerQty() });
+            renderWorkers();
+            recalcTotal();
+          };
+        });
+        list.querySelectorAll(".hub-manual-work-day-remove").forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.preventDefault();
+            const card = btn.closest(".hub-manual-work-day");
+            toggleWorkDay(card && card.getAttribute("data-work-date"));
+          };
+        });
+        const chips = $("hubManualWorkDayChips");
+        if (chips) {
+          chips.innerHTML = workDays
+            .map(
+              (day) =>
+                `<button type="button" class="hub-form-quick-date is-on" data-hub-work-chip="${escapeHtml(day.date)}">${escapeHtml(formatWorkDayChip(day.date))}</button>`
+            )
+            .join("");
+          chips.querySelectorAll("[data-hub-work-chip]").forEach((btn) => {
+            btn.onclick = (ev) => {
+              ev.preventDefault();
+              toggleWorkDay(btn.getAttribute("data-hub-work-chip"));
+            };
+          });
+        }
+        renderWorkCal();
       };
 
       const recalcTotal = () => {
@@ -17348,7 +17502,8 @@ window.renderSupervisor = renderSupervisor;
           if (rateField) rateField.style.display = "";
           if (workersWrap) workersWrap.style.display = "none";
         } else {
-          readWorkersFromDom();
+          readWorkDaysFromDom();
+          const crew = flattenCrew();
           if (rateInput) rateInput.readOnly = true;
           if (qtyInput) qtyInput.disabled = false;
           if (qtyLabel) qtyLabel.textContent = billingType === "daily" ? "Days" : "Hours";
@@ -17359,19 +17514,18 @@ window.renderSupervisor = renderSupervisor;
           if (qtyField) qtyField.style.display = "none";
           if (rateField) rateField.style.display = "none";
           if (workersWrap) workersWrap.style.display = "";
-          const unitEls = document.querySelectorAll(".hub-manual-worker-unit");
-          unitEls.forEach((el) => {
+          document.querySelectorAll(".hub-manual-worker-unit").forEach((el) => {
             el.textContent = billingType === "daily" ? "Days" : "Hours";
           });
           let labor = 0;
-          workers.forEach((worker) => {
+          crew.forEach((worker) => {
             labor += Math.max(worker.quantity, 0) * workerRateFor(worker.role, billingType);
           });
           total = labor + mat;
-          const qtySum = workers.reduce((sum, worker) => sum + Math.max(worker.quantity, 0), 0);
+          const qtySum = crew.reduce((sum, worker) => sum + Math.max(worker.quantity, 0), 0);
           if (qtyInput) setVal("hubManualQuantity", String(qtySum || ""));
           if (rateInput) {
-            const firstRate = workerRateFor(workers[0] ? workers[0].role : "installer", billingType);
+            const firstRate = workerRateFor(crew[0] ? crew[0].role : "installer", billingType);
             setVal("hubManualRate", round2(firstRate).toFixed(2));
           }
         }
@@ -17655,11 +17809,14 @@ window.renderSupervisor = renderSupervisor;
             </div>
             <div id="hubManualWorkersWrap" class="hub-manual-workers-wrap">
               <div class="hub-manual-workers-head">
-                <label>Workers</label>
-                <p class="hint" style="justify-content:flex-start;margin:0;">Add each person. Example: Pro 66 hours, Assistant 80 hours.</p>
+                <label>Days billed</label>
+                <p class="hint" style="justify-content:flex-start;margin:0;">Tap the days you are charging. Then enter who worked and how many hours that day.</p>
+              </div>
+              <div class="hub-manual-work-cal-wrap">
+                <div id="hubManualWorkCal" class="hub-mini-cal" aria-label="Days billed calendar"></div>
+                <div id="hubManualWorkDayChips" class="hub-manual-work-day-chips"></div>
               </div>
               <div id="hubManualWorkersList" class="hub-manual-workers-list"></div>
-              <button type="button" class="btn btn-secondary" id="hubManualAddWorker">+ Add worker</button>
             </div>`,
           },
           { id: "hubManualQuantity", label: "Quantity", type: "number", step: "0.01", value: "1" },
@@ -17879,12 +18036,14 @@ window.renderSupervisor = renderSupervisor;
           if (addWorkerBtn) {
             addWorkerBtn.onclick = (ev) => {
               ev.preventDefault();
-              readWorkersFromDom();
-              if (workers.length >= 12) {
-                setNotice("hubFormFeedback", "You can add up to 12 workers on one invoice.", "warn");
+              readWorkDaysFromDom();
+              const last = workDays[workDays.length - 1];
+              if (!last) return;
+              if ((last.workers || []).length >= 12) {
+                setNotice("hubFormFeedback", "You can add up to 12 workers on one day.", "warn");
                 return;
               }
-              workers.push({ role: "installer", quantity: 1 });
+              last.workers.push({ role: "installer", quantity: defaultWorkerQty() });
               renderWorkers();
               recalcTotal();
             };
@@ -17909,12 +18068,8 @@ window.renderSupervisor = renderSupervisor;
           const total = finiteNumber(val("hubManualTotal"), 0);
           const material_description = String(val("hubManualMaterialDescription") || "").trim();
           const materials_cost = finiteNumber(val("hubManualMaterialCost"), 0);
-          const crew = readWorkersFromDom()
-            .map((worker) => ({
-              role: worker.role,
-              quantity: Math.max(finiteNumber(worker.quantity, 0), 0)
-            }))
-            .filter((worker) => worker.quantity > 0);
+          readWorkDaysFromDom();
+          const crew = flattenCrew();
 
           if (!client_name) {
             setNotice("hubFormFeedback", "Client name is required.", "err");
@@ -17938,7 +18093,7 @@ window.renderSupervisor = renderSupervisor;
           }
           if (billing_type === "hourly" || billing_type === "daily") {
             if (!crew.length) {
-              setNotice("hubFormFeedback", "Add at least one worker with hours or days greater than zero.", "err");
+              setNotice("hubFormFeedback", "Select at least one billed day and enter hours or days greater than zero.", "err");
               return false;
             }
             const missingRate = crew.some((worker) => !(workerRateFor(worker.role, billing_type) > 0));
@@ -17971,7 +18126,18 @@ window.renderSupervisor = renderSupervisor;
               notes: description,
               billing_type,
               quantity: billing_type === "flat_amount" ? 0 : crew.reduce((sum, worker) => sum + worker.quantity, 0),
-              workers: billing_type === "flat_amount" ? [] : crew,
+              workers: billing_type === "flat_amount" ? [] : crew.map((worker) => ({ role: worker.role, quantity: worker.quantity })),
+              work_days: billing_type === "flat_amount" ? [] : workDays
+                .map((day) => ({
+                  date: day.date,
+                  workers: (day.workers || [])
+                    .map((worker) => ({
+                      role: worker.role,
+                      quantity: Math.max(finiteNumber(worker.quantity, 0), 0)
+                    }))
+                    .filter((worker) => worker.quantity > 0)
+                }))
+                .filter((day) => day.date && day.workers.length),
               flat_amount: billing_type === "flat_amount" ? flat_amount : undefined,
               material_description,
               materials_description: material_description,

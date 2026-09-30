@@ -237,13 +237,15 @@ async function main() {
     ok("preview does not return an invoice row", body.invoice == null);
   });
 
-  ok("modal has addable workers", /hubManualAddWorker/.test(appSrc) && /hubManualWorkersList/.test(appSrc));
+  ok("modal has addable workers", /hub-manual-add-day-worker/.test(appSrc) && /hubManualWorkersList/.test(appSrc));
   ok("modal can charge by hour or day", /Charge by/.test(appSrc) && /data-hub-charge="hourly"/.test(appSrc) && /data-hub-charge="daily"/.test(appSrc));
   ok("manual create uses ultra-pro calendar", /hub-mini-cal/.test(appSrc) && /today_plus/.test(appSrc) && /is-manual-create/.test(appSrc) && /cancelLabel: "Cancel"/.test(appSrc));
   ok("description has dictation and interpret review", /hubManualDescMicNew/.test(appSrc) && /Interpret and review/.test(appSrc) && /Confirm and apply/.test(appSrc));
   ok("description interpret does not create the invoice", /interpret-manual-invoice-description/.test(appSrc) && /Create Invoice is still required to save/.test(appSrc));
-  ok("submit sends workers array", /workers: billing_type === "flat_amount" \? \[\] : crew/.test(appSrc));
+  ok("workers are billed by selected days", /hubManualWorkCal/.test(appSrc) && /Days billed/.test(appSrc) && /work_days:/.test(appSrc));
+  ok("submit still sends workers array", /workers: billing_type === "flat_amount" \? \[\] : crew\.map/.test(appSrc));
   ok("server parses workers", /parseManualInvoiceWorkers/.test(src));
+  ok("server parses work days", /parseManualInvoiceWorkDays/.test(src));
 
   await withDb(async (handler) => {
     const modern = { e: OWNER_A, t: TENANT_A, u: USER_A, c: "" };
@@ -270,6 +272,38 @@ async function main() {
       (66 * Number(rates.system_hourly_rate) + 80 * Number(rates.system_helper_hourly_rate) + 496) * 100
     ) / 100;
     eq("worker invoice amount uses pro and assistant hours", createBody.invoice.amount, expected);
+
+    const byDay = await handler.handler(
+      eventFor(modern, {
+        client_name: "Matthew",
+        client_email: "maloney58@icloud.com",
+        project_title: "Pepper",
+        description: "208 sqf membrane installation",
+        billing_type: "hourly",
+        work_days: [
+          {
+            date: "2026-09-28",
+            workers: [
+              { role: "installer", quantity: 8 },
+              { role: "assistant", quantity: 8 },
+            ],
+          },
+          {
+            date: "2026-09-29",
+            workers: [{ role: "installer", quantity: 6 }],
+          },
+        ],
+        materials_cost: 496,
+      })
+    );
+    const byDayBody = parse(byDay);
+    eq("work-day invoice is 200", byDay.statusCode, 200);
+    const expectedDays = Math.round(
+      ((8 + 6) * Number(rates.system_hourly_rate) + 8 * Number(rates.system_helper_hourly_rate) + 496) * 100
+    ) / 100;
+    eq("work-day invoice amount sums hours per day", byDayBody.invoice.amount, expectedDays);
+    ok("work-day notes include first billed date", /Sep 28, 2026/.test(String(byDayBody.debug_notes_preview || "")));
+    ok("work-day notes include two-day billing length", Number(byDayBody.debug_notes_length) >= 280);
   });
 
   console.log("\n" + passed + " passed");

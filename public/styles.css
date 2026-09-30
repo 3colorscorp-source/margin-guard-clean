@@ -5408,6 +5408,37 @@ body[data-role="estimates-hub"] #hubFormModal .hub-manual-workers-head .hint{
   font-size:12px;
   line-height:1.4;
 }
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-work-cal-wrap{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(11,11,10,.55);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-work-day-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-work-day{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-work-day-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+}
+body[data-role="estimates-hub"] #hubFormModal.is-manual-create .hub-manual-work-day-head strong{
+  font-size:13px;
+  letter-spacing:.01em;
+}
 body[data-role="estimates-hub"] #hubFormModal .hub-manual-workers-list{
   display:grid;
   gap:8px;

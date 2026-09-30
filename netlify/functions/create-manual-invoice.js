@@ -110,6 +110,64 @@ function parseManualInvoiceWorkers(body) {
   return out;
 }
 
+function isWorkDayIso(raw) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(raw || "").trim());
+}
+
+function formatWorkDayLabel(iso) {
+  const text = String(iso || "").trim();
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return text;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime())) return text;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+function parseManualInvoiceWorkDays(body) {
+  const raw = body && Array.isArray(body.work_days)
+    ? body.work_days
+    : body && Array.isArray(body.workDays)
+      ? body.workDays
+      : [];
+  const byDate = new Map();
+  for (const row of raw.slice(0, 31)) {
+    const obj = row && typeof row === "object" ? row : {};
+    const date = str(obj.date || obj.work_date || obj.day, 10);
+    if (!isWorkDayIso(date)) continue;
+    const workers = [];
+    const list = Array.isArray(obj.workers) ? obj.workers : [];
+    for (const item of list.slice(0, 12)) {
+      const wo = item && typeof item === "object" ? item : {};
+      const quantity = money(wo.quantity ?? wo.hours ?? wo.days ?? wo.qty);
+      if (!(quantity > 0)) continue;
+      workers.push({
+        role: normalizeManualWorkerRole(wo.role || wo.type || wo.worker_type),
+        quantity,
+      });
+    }
+    if (!workers.length) continue;
+    const existing = byDate.get(date) || [];
+    byDate.set(date, existing.concat(workers).slice(0, 12));
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, workers]) => ({ date, workers }));
+}
+
+function flattenWorkDaysToCrew(days) {
+  const out = [];
+  for (const day of Array.isArray(days) ? days : []) {
+    for (const worker of Array.isArray(day.workers) ? day.workers : []) {
+      out.push({
+        role: worker.role,
+        quantity: worker.quantity,
+        date: day.date,
+      });
+    }
+  }
+  return out;
+}
+
 function workerRoleLabel(role) {
   return role === "helper" ? "Assistant" : "Pro";
 }
@@ -244,7 +302,8 @@ exports.handler = async (event) => {
       systemRateUsed = flatAmount;
       laborSubtotal = flatAmount;
     } else {
-      const crew = parseManualInvoiceWorkers(body);
+      const workDays = parseManualInvoiceWorkDays(body);
+      const crew = workDays.length ? flattenWorkDaysToCrew(workDays) : parseManualInvoiceWorkers(body);
       const unitWorkers =
         crew.length > 0
           ? crew
@@ -280,6 +339,7 @@ exports.handler = async (event) => {
           quantity: worker.quantity,
           rate,
           lineTotal,
+          date: isWorkDayIso(worker.date) ? worker.date : "",
         });
       }
       systemRateUsed = workerLines.length === 1 ? workerLines[0].rate : systemHourly;
@@ -307,12 +367,27 @@ exports.handler = async (event) => {
     }
     notesParts.push(
       workerLines.length
-        ? `Billing:\n${billingTypeLabel}\n${workerLines
-            .map(
-              (line) =>
-                `- ${workerRoleLabel(line.role)}: ${line.quantity} ${quantityLabel} at ${formatMoney(line.rate)}/${rateLabel}`
-            )
-            .join("\n")}`
+        ? `Billing:\n${billingTypeLabel}\n${
+            workerLines.some((line) => line.date)
+              ? [...new Set(workerLines.map((line) => line.date).filter(Boolean))]
+                  .sort()
+                  .map((date) => {
+                    const rows = workerLines.filter((line) => line.date === date);
+                    return `${formatWorkDayLabel(date)}\n${rows
+                      .map(
+                        (line) =>
+                          `- ${workerRoleLabel(line.role)}: ${line.quantity} ${quantityLabel} at ${formatMoney(line.rate)}/${rateLabel}`
+                      )
+                      .join("\n")}`;
+                  })
+                  .join("\n")
+              : workerLines
+                  .map(
+                    (line) =>
+                      `- ${workerRoleLabel(line.role)}: ${line.quantity} ${quantityLabel} at ${formatMoney(line.rate)}/${rateLabel}`
+                  )
+                  .join("\n")
+          }`
         : `Billing:\n${billingTypeLabel} — ${quantity} ${quantityLabel} at ${formatMoney(systemRateUsed)}/${rateLabel}`
     );
     notesParts.push(`Labor subtotal: ${formatMoney(laborSubtotal)}`);
