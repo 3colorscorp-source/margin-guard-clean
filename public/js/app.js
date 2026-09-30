@@ -6736,7 +6736,34 @@ Thank you.`
     return false;
   }
 
-  function hubDrawerDownloadPdf(row, settings) {
+  function downloadGeneratedInvoicePdf(pdfDoc) {
+    const b64 = pdfDoc && typeof pdfDoc.contentBase64 === "string" ? String(pdfDoc.contentBase64).trim() : "";
+    if (!b64) return false;
+    try {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: pdfDoc.mimeType || "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = pdfDoc.fileName || "Invoice.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  async function hubDrawerDownloadPdf(row, settings) {
+    const pdfDoc = await buildHubInvoicePdfForSend(row);
+    if (downloadGeneratedInvoicePdf(pdfDoc)) {
+      setHubFeedback("Invoice PDF downloaded.", "ok");
+      return;
+    }
     if (row?.hubRowSource === "server_invoice") {
       const url = hubRowPublicUrl(row);
       if (!url) {
@@ -18578,7 +18605,7 @@ window.renderSupervisor = renderSupervisor;
         return;
       }
       if (action === "download-pdf") {
-        hubDrawerDownloadPdf(row, settings);
+        void hubDrawerDownloadPdf(row, settings);
         return;
       }
       if (action === "print") {
@@ -20240,17 +20267,7 @@ window.renderSupervisor = renderSupervisor;
     if ($("btnHubDrawerPdf")) {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
-        if (selectedRow?.hubRowSource === "server_invoice") {
-          const invoice = getProjectInvoiceState(selectedRow.project);
-          const publicUrl = invoice.publicUrl || (invoice.publicToken ? `/invoice-public.html?token=${invoice.publicToken}` : "");
-          if (!publicUrl) {
-            setHubFeedback("Primero publica el invoice para generar el link publico.", "warn");
-            return;
-          }
-          window.open(publicUrl, "_blank", "noopener");
-          return;
-        }
-        void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
+        void hubDrawerDownloadPdf(selectedRow, settings);
       };
     }
     if ($("btnHubDrawerInvoiceSetup")) {

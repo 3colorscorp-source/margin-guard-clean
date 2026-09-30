@@ -302,6 +302,8 @@ async function main() {
   ok("estimate PDF helpers were not rewritten for invoices", /ESTIMATE_PDF_BUCKET = "estimate-pdfs"/.test(estimateAccess));
   ok("get-estimate-pdf still uses quotes", /quotes\?public_token=/.test(getEstimate));
   ok("hub still generates the invoice PDF at send", /buildHubInvoicePdfForSend/.test(appSrc));
+  ok("hub Download PDF uses the same send builder", /async function hubDrawerDownloadPdf[\s\S]{0,1200}buildHubInvoicePdfForSend/.test(appSrc));
+  ok("hub Download PDF saves a file", /function downloadGeneratedInvoicePdf[\s\S]{0,900}a\.download/.test(appSrc));
 
   const parsed = parseInvoicePdfObjectPath(OBJECT_PATH);
   ok("invoice pdf path parses", !!(parsed && parsed.objectPath === OBJECT_PATH && parsed.tenantId === TENANT_A));
