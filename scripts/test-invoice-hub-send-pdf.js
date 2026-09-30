@@ -267,8 +267,9 @@ async function main() {
   const getEstimate = read("netlify/functions/get-estimate-pdf.js");
 
   ok("send uploads invoice PDF", /uploadInvoicePdf/.test(sendSrc) && /buildInvoicePdfAccessUrl/.test(sendSrc));
-  ok("send puts View / Download PDF in Email Body", /View \/ Download PDF/.test(sendSrc) && /insertPdfLinkPlain/.test(sendSrc));
-  ok("send Email Body stays plaintext", /body: text/.test(sendSrc) && !/body: html/.test(sendSrc));
+  ok("send uses View Invoice button letter", /applyClientFacingZapierEmail/.test(sendSrc) && /buildInvoiceClientHtml/.test(sendSrc));
+  ok("send attaches pdf as file url like quotes", /attachInvoicePdfFile/.test(sendSrc) && /payload\.file = fileUrl/.test(sendSrc));
+  ok("send does not ship pdf_base64 to Zapier", !/payload\.pdf_base64 = pdfBase64/.test(sendSrc));
   ok("send does not reuse estimate PDF access", !/estimate-pdf-access/.test(sendSrc) && !/get-estimate-pdf/.test(sendSrc));
   ok("invoice PDF bucket is invoice-pdfs", /INVOICE_PDF_BUCKET = "invoice-pdfs"/.test(accessSrc));
   ok("invoice PDF HMAC is invoice-pdf-v1", /invoice-pdf-v1/.test(accessSrc));
@@ -311,10 +312,13 @@ async function main() {
     const pdfUrl = String(payload.pdf_url || payload.pdfUrl || "");
     ok("payload has pdf_url", /get-invoice-pdf/.test(pdfUrl) && pdfUrl.includes("token=" + PUBLIC_TOKEN));
     ok("payload pdf_url is the raw file", /raw=1/.test(pdfUrl));
-    ok("Email Body includes View / Download PDF", emailBody.includes("View / Download PDF") && emailBody.includes("get-invoice-pdf"));
-    ok("Email Body is still plaintext", !emailBody.includes("<!DOCTYPE") && !emailBody.includes("<a href="));
-    ok("Email Body still has amounts", emailBody.includes("Contract total") && /\$100\.00/.test(emailBody));
-    ok("Email Html has View PDF button", html.includes("View PDF") && /bgcolor="#0f8a5f"/.test(html));
+    ok("payload file is the pdf url not base64", String(payload.file || "") === pdfUrl);
+    ok("payload does not include pdf_base64", !payload.pdf_base64);
+    ok("Email Body is View Invoice button", emailBody.includes("View Invoice") && emailBody.includes("<a href="));
+    ok("Email Body does not include invoice summary", !/Invoice summary/.test(emailBody) && !/Contract total/.test(emailBody));
+    ok("Email Body does not include pdf function url", !/get-invoice-pdf/.test(emailBody));
+    ok("Email Html has View Invoice button", html.includes("View Invoice") && /bgcolor="#0f8a5f"/.test(html));
+    ok("Email Html does not add a second pdf button", !html.includes("View PDF"));
     ok("canonical amounts were not converted", body.canonical && body.canonical.contract_total === 100);
     ok("storage received invoice-pdfs upload", storagePosts.some((p) => p.kind === "object"));
     eq("dry-run did not call Zapier", zapierCalls.length, 0);
@@ -337,7 +341,7 @@ async function main() {
     const body = parse(res);
     const emailBody = String((body.payload && body.payload["Email Body"]) || "");
     ok("upload failure omits pdf_url", !String(body.payload && body.payload.pdf_url || "").trim());
-    ok("upload failure still has readable letter", emailBody.includes("View invoice") && emailBody.includes("Contract total"));
+    ok("upload failure still has View Invoice button", emailBody.includes("View Invoice") && emailBody.includes("invoice-public.html"));
     ok("failed upload attempted invoice-pdfs", storagePosts.some((p) => p.kind === "object"));
   }, { failUpload: true });
 
