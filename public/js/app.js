@@ -5949,7 +5949,12 @@ Thank you.`
 
   function closeHubFormModal() {
     hubFormState = null;
-    if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "true");
+    const modal = $("hubFormModal");
+    if (modal) {
+      modal.classList.remove("is-manual-create");
+      modal.setAttribute("aria-hidden", "true");
+    }
+    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = "Cancelar";
     if ($("hubFormFields")) $("hubFormFields").innerHTML = "";
     setNotice("hubFormFeedback", "", "");
     clearHubFeedbackOkIfShown();
@@ -5957,9 +5962,14 @@ Thank you.`
 
   function openHubFormModal(config) {
     hubFormState = config;
+    const modal = $("hubFormModal");
+    if (modal) {
+      modal.classList.toggle("is-manual-create", config.modalClass === "is-manual-create");
+    }
     if ($("hubFormTitle")) $("hubFormTitle").textContent = config.title || "Actualizar";
     if ($("hubFormSubtitle")) $("hubFormSubtitle").textContent = config.subtitle || "Completa los datos para continuar.";
     if ($("hubFormSubmit")) $("hubFormSubmit").textContent = config.submitLabel || "Guardar";
+    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = config.cancelLabel || "Cancelar";
     if ($("hubFormFields")) {
       $("hubFormFields").className = "hub-form-grid";
       $("hubFormFields").innerHTML = (Array.isArray(config.fields) ? config.fields : []).map((field) => {
@@ -17232,15 +17242,94 @@ window.renderSupervisor = renderSupervisor;
     const openCreateManualInvoiceForm = () => {
       let systemHourly = 0;
       let systemDaily = 0;
+      let systemHelperHourly = 0;
+      let systemHelperDaily = 0;
       let pricingPreviewOk = false;
+      let workers = [{ role: "installer", quantity: 1 }];
+
+      const workerRateFor = (role, billingType) => {
+        if (billingType === "daily") {
+          return role === "helper" ? systemHelperDaily : systemDaily;
+        }
+        return role === "helper" ? systemHelperHourly : systemHourly;
+      };
+
+      const readWorkersFromDom = () => {
+        const list = $("hubManualWorkersList");
+        if (!list) return workers;
+        const next = [];
+        list.querySelectorAll(".hub-manual-worker-row").forEach((row) => {
+          const role = normalizeManualWorkerRoleDom(row.querySelector(".hub-manual-worker-role")?.value);
+          const quantity = Math.max(finiteNumber(row.querySelector(".hub-manual-worker-qty")?.value, 0), 0);
+          next.push({ role, quantity });
+        });
+        if (next.length) workers = next;
+        return workers;
+      };
+
+      const normalizeManualWorkerRoleDom = (raw) => {
+        const s = String(raw || "").trim().toLowerCase();
+        if (s === "helper" || s === "assistant") return "helper";
+        return "installer";
+      };
+
+      const renderWorkers = () => {
+        const list = $("hubManualWorkersList");
+        if (!list) return;
+        const billingType = String(val("hubManualBillingType") || "").trim();
+        const unit = billingType === "daily" ? "Days" : "Hours";
+        list.innerHTML = workers
+          .map((worker, index) => {
+            const rate = workerRateFor(worker.role, billingType);
+            return `<div class="hub-manual-worker-row" data-worker-index="${index}">
+              <select class="hub-manual-worker-role" aria-label="Worker role">
+                <option value="installer"${worker.role === "installer" ? " selected" : ""}>Pro</option>
+                <option value="helper"${worker.role === "helper" ? " selected" : ""}>Assistant</option>
+              </select>
+              <label class="hub-manual-worker-qty-wrap">
+                <span class="hub-manual-worker-unit">${unit}</span>
+                <input class="hub-manual-worker-qty" type="number" min="0" step="0.01" value="${escapeHtml(String(worker.quantity || ""))}" aria-label="${unit}" />
+              </label>
+              <span class="hub-manual-worker-rate" translate="no">${escapeHtml(money(rate))}</span>
+              <button type="button" class="btn ghost hub-manual-worker-remove"${workers.length <= 1 ? " disabled" : ""}>Remove</button>
+            </div>`;
+          })
+          .join("");
+        list.querySelectorAll(".hub-manual-worker-role, .hub-manual-worker-qty").forEach((node) => {
+          node.oninput = () => {
+            readWorkersFromDom();
+            recalcTotal();
+          };
+          node.onchange = () => {
+            readWorkersFromDom();
+            if (node.classList.contains("hub-manual-worker-role")) renderWorkers();
+            recalcTotal();
+          };
+        });
+        list.querySelectorAll(".hub-manual-worker-remove").forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.preventDefault();
+            readWorkersFromDom();
+            if (workers.length <= 1) return;
+            const row = btn.closest(".hub-manual-worker-row");
+            const idx = Number(row && row.getAttribute("data-worker-index"));
+            if (!Number.isFinite(idx)) return;
+            workers.splice(idx, 1);
+            renderWorkers();
+            recalcTotal();
+          };
+        });
+      };
 
       const recalcTotal = () => {
         const billingType = String(val("hubManualBillingType") || "").trim();
+        const qtyField = $("hubManualQuantity")?.closest(".field");
+        const rateField = $("hubManualRate")?.closest(".field");
+        const workersWrap = $("hubManualWorkersWrap");
         const qtyInput = $("hubManualQuantity");
         const qtyLabel = $("hubManualQuantityLabel");
         const rateLabel = $("hubManualRateLabel");
         const rateInput = $("hubManualRate");
-        const q = Math.max(finiteNumber(val("hubManualQuantity"), 0), 0);
         const mat = Math.max(finiteNumber(val("hubManualMaterialCost"), 0), 0);
         let total = 0;
         if (billingType === "flat_amount") {
@@ -17250,54 +17339,88 @@ window.renderSupervisor = renderSupervisor;
           if (qtyLabel) qtyLabel.textContent = "Quantity";
           if (rateLabel) rateLabel.textContent = "Flat service amount (before materials)";
           if (rateInput) rateInput.readOnly = false;
+          if (qtyField) qtyField.style.display = "none";
+          if (rateField) rateField.style.display = "";
+          if (workersWrap) workersWrap.style.display = "none";
         } else {
-          const sys = billingType === "daily" ? systemDaily : systemHourly;
-          if (rateInput) {
-            rateInput.readOnly = true;
-            setVal("hubManualRate", round2(sys).toFixed(2));
-          }
-          total = q * sys + mat;
+          readWorkersFromDom();
+          if (rateInput) rateInput.readOnly = true;
           if (qtyInput) qtyInput.disabled = false;
           if (qtyLabel) qtyLabel.textContent = billingType === "daily" ? "Days" : "Hours";
           if (rateLabel) {
             rateLabel.textContent =
               billingType === "daily" ? "System daily rate (read-only)" : "System hourly rate (read-only)";
           }
+          if (qtyField) qtyField.style.display = "none";
+          if (rateField) rateField.style.display = "none";
+          if (workersWrap) workersWrap.style.display = "";
+          const unitEls = document.querySelectorAll(".hub-manual-worker-unit");
+          unitEls.forEach((el) => {
+            el.textContent = billingType === "daily" ? "Days" : "Hours";
+          });
+          let labor = 0;
+          workers.forEach((worker) => {
+            labor += Math.max(worker.quantity, 0) * workerRateFor(worker.role, billingType);
+          });
+          total = labor + mat;
+          const qtySum = workers.reduce((sum, worker) => sum + Math.max(worker.quantity, 0), 0);
+          if (qtyInput) setVal("hubManualQuantity", String(qtySum || ""));
+          if (rateInput) {
+            const firstRate = workerRateFor(workers[0] ? workers[0].role : "installer", billingType);
+            setVal("hubManualRate", round2(firstRate).toFixed(2));
+          }
         }
         setVal("hubManualTotal", round2(total).toFixed(2));
+        const totalDisplay = $("hubManualTotalDisplay");
+        if (totalDisplay) totalDisplay.textContent = money(total);
       };
 
       showHubActionForm({
         title: "Create Invoice",
-        subtitle: "Uses Margin Guard system sell rates from Business Settings (latest snapshot).",
+        subtitle: "Client, crew, materials, and due date.",
         submitLabel: "Create Invoice",
+        cancelLabel: "Cancel",
         successMessage: "Invoice created",
+        modalClass: "is-manual-create",
         fields: [
-          { id: "hubManualClientName", label: "Client name", type: "text", value: "" },
-          { id: "hubManualClientEmail", label: "Client email", type: "email", value: "" },
-          { id: "hubManualTitle", label: "Project / invoice title", type: "text", value: "" },
-          { id: "hubManualDescription", label: "Description / scope", type: "textarea", rows: 3, value: "" },
-          {
-            id: "hubManualBillingType",
-            label: "Billing type",
-            type: "select",
-            value: "hourly",
-            options: [
-              { value: "hourly", label: "Hourly" },
-              { value: "daily", label: "Daily" },
-              { value: "flat_amount", label: "Flat amount" },
-            ],
-          },
-          { id: "hubManualQuantity", label: "Quantity", type: "number", step: "0.01", value: "1" },
-          { id: "hubManualRate", label: "System rate", type: "number", step: "0.01", value: "0" },
+          { id: "hubManualClientName", label: "Client", type: "text", value: "", placeholder: "" },
+          { id: "hubManualClientEmail", label: "Email", type: "email", value: "", placeholder: "" },
+          { id: "hubManualTitle", label: "Project / invoice title", type: "text", value: "", placeholder: "" },
+          { id: "hubManualDescription", label: "Description", type: "textarea", rows: 2, value: "", placeholder: "" },
           {
             type: "static",
-            html: `<div class="field hub-form-static hub-manual-materials-wrap">
-              <button type="button" class="btn btn-secondary" id="hubManualMaterialsBtn" style="margin-bottom:0.5rem;">+ Materials</button>
-              <div id="hubManualMaterialsPanel" style="display:none;">
+            html: `<div class="hub-manual-charge-wrap">
+              <label>Charge by</label>
+              <div class="hub-manual-charge" role="radiogroup" aria-label="Charge by">
+                <button type="button" class="hub-manual-charge-btn is-on" data-hub-charge="hourly">Hour</button>
+                <button type="button" class="hub-manual-charge-btn" data-hub-charge="daily">Day</button>
+                <button type="button" class="hub-manual-charge-btn" data-hub-charge="flat_amount">Flat</button>
+              </div>
+              <select id="hubManualBillingType" class="hub-manual-billing-select" aria-hidden="true" tabindex="-1">
+                <option value="hourly" selected>Hour</option>
+                <option value="daily">Day</option>
+                <option value="flat_amount">Flat amount</option>
+              </select>
+            </div>
+            <div id="hubManualWorkersWrap" class="hub-manual-workers-wrap">
+              <div class="hub-manual-workers-head">
+                <label>Workers</label>
+                <p class="hint" style="justify-content:flex-start;margin:0;">Add each person. Example: Pro 66 hours, Assistant 80 hours.</p>
+              </div>
+              <div id="hubManualWorkersList" class="hub-manual-workers-list"></div>
+              <button type="button" class="btn btn-secondary" id="hubManualAddWorker">+ Add worker</button>
+            </div>`,
+          },
+          { id: "hubManualQuantity", label: "Quantity", type: "number", step: "0.01", value: "1" },
+          { id: "hubManualRate", label: "Flat amount", type: "number", step: "0.01", value: "0" },
+          {
+            type: "static",
+            html: `<div class="hub-manual-materials-wrap">
+              <button type="button" class="btn btn-secondary" id="hubManualMaterialsBtn">+ Materials</button>
+              <div id="hubManualMaterialsPanel" hidden>
                 <div class="field" style="margin-top:0.5rem;">
                   <label for="hubManualMaterialDescription">Material description</label>
-                  <textarea id="hubManualMaterialDescription" rows="2" placeholder="Optional"></textarea>
+                  <textarea id="hubManualMaterialDescription" rows="2"></textarea>
                 </div>
                 <div class="field">
                   <label for="hubManualMaterialCost">Material cost</label>
@@ -17306,8 +17429,30 @@ window.renderSupervisor = renderSupervisor;
               </div>
             </div>`,
           },
-          { id: "hubManualTotal", label: "Total (auto-calculated)", type: "number", step: "0.01", value: "0.00" },
-          { id: "hubManualDueDate", label: "Due date", type: "date", value: "" },
+          {
+            type: "static",
+            html: `<div class="hub-manual-bottom">
+              <div class="hub-manual-due">
+                <div class="hub-manual-due-head">
+                  <label for="hubManualDueDate">Due date</label>
+                  <span id="hubManualDueSelected" class="hub-manual-due-selected"></span>
+                </div>
+                <div class="hub-manual-due-quick" id="hubManualDueQuick">
+                  <button type="button" class="hub-form-quick-date" data-hub-quick-kind="today">Today</button>
+                  <button type="button" class="hub-form-quick-date" data-hub-quick-kind="today_plus" data-hub-quick-days="7">+7</button>
+                  <button type="button" class="hub-form-quick-date" data-hub-quick-kind="today_plus" data-hub-quick-days="14">+14</button>
+                  <button type="button" class="hub-form-quick-date" data-hub-quick-kind="today_plus" data-hub-quick-days="30">+30</button>
+                </div>
+                <input id="hubManualDueDate" type="hidden" value="" />
+                <div id="hubManualDueCal" class="hub-mini-cal" aria-label="Due date calendar"></div>
+              </div>
+              <div class="hub-manual-total-card">
+                <span>Total</span>
+                <strong id="hubManualTotalDisplay" translate="no">$0.00</strong>
+                <input id="hubManualTotal" type="hidden" value="0.00" />
+              </div>
+            </div>`,
+          },
         ],
         afterRender: async () => {
           const totalInput = $("hubManualTotal");
@@ -17318,6 +17463,108 @@ window.renderSupervisor = renderSupervisor;
           const rateLabelNode = rateInput?.closest(".field")?.querySelector("label");
           if (qtyLabelNode) qtyLabelNode.id = "hubManualQuantityLabel";
           if (rateLabelNode) rateLabelNode.id = "hubManualRateLabel";
+
+          let dueView = parseLocalDateOnly(hubQuickDateResolveValue("today_plus", 14)) || new Date();
+          const formatDueLabel = (iso) => {
+            const d = parseLocalDateOnly(iso);
+            if (!d) return "Not set";
+            return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+          };
+          const syncDueQuick = (iso) => {
+            const wrap = $("hubManualDueQuick");
+            if (!wrap) return;
+            wrap.querySelectorAll("[data-hub-quick-kind]").forEach((btn) => {
+              const kind = btn.getAttribute("data-hub-quick-kind") || "today";
+              const daysRaw = btn.getAttribute("data-hub-quick-days");
+              const offsetDays = daysRaw !== null && daysRaw !== "" ? Number.parseInt(daysRaw, 10) : NaN;
+              const value = hubQuickDateResolveValue(kind, offsetDays);
+              btn.classList.toggle("is-on", value === iso);
+            });
+          };
+          const setDueDate = (iso) => {
+            const next = String(iso || "").trim();
+            setVal("hubManualDueDate", next);
+            const parsed = parseLocalDateOnly(next);
+            if (parsed) dueView = parsed;
+            const selected = $("hubManualDueSelected");
+            if (selected) selected.textContent = formatDueLabel(next);
+            syncDueQuick(next);
+            renderDueCal();
+          };
+          const renderDueCal = () => {
+            const root = $("hubManualDueCal");
+            if (!root) return;
+            const year = dueView.getFullYear();
+            const month = dueView.getMonth();
+            const first = new Date(year, month, 1);
+            const firstDow = first.getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const selected = String(val("hubManualDueDate") || "").trim();
+            const today = hubQuickDateResolveValue("today");
+            const monthLabel = first.toLocaleString("en-US", { month: "long", year: "numeric" });
+            let cells = "";
+            for (let i = 0; i < firstDow; i += 1) cells += `<span class="hub-mini-cal-pad"></span>`;
+            for (let day = 1; day <= daysInMonth; day += 1) {
+              const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const cls = ["hub-mini-cal-day"];
+              if (iso === selected) cls.push("is-selected");
+              if (iso === today) cls.push("is-today");
+              cells += `<button type="button" class="${cls.join(" ")}" data-hub-due="${iso}">${day}</button>`;
+            }
+            root.innerHTML = `<div class="hub-mini-cal-nav">
+              <button type="button" class="hub-mini-cal-nav-btn" data-hub-cal-shift="-1" aria-label="Previous month">‹</button>
+              <div class="hub-mini-cal-month">${escapeHtml(monthLabel)}</div>
+              <button type="button" class="hub-mini-cal-nav-btn" data-hub-cal-shift="1" aria-label="Next month">›</button>
+            </div>
+            <div class="hub-mini-cal-dow">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
+            <div class="hub-mini-cal-grid">${cells}</div>`;
+            root.querySelectorAll("[data-hub-cal-shift]").forEach((btn) => {
+              btn.onclick = (ev) => {
+                ev.preventDefault();
+                dueView = new Date(year, month + Number(btn.getAttribute("data-hub-cal-shift") || 0), 1);
+                renderDueCal();
+              };
+            });
+            root.querySelectorAll("[data-hub-due]").forEach((btn) => {
+              btn.onclick = (ev) => {
+                ev.preventDefault();
+                setDueDate(btn.getAttribute("data-hub-due"));
+              };
+            });
+          };
+          setDueDate(hubQuickDateResolveValue("today_plus", 14));
+
+          const chargeWrap = document.querySelector(".hub-manual-charge");
+          if (chargeWrap) {
+            chargeWrap.querySelectorAll("[data-hub-charge]").forEach((btn) => {
+              btn.onclick = (ev) => {
+                ev.preventDefault();
+                const next = String(btn.getAttribute("data-hub-charge") || "hourly");
+                setVal("hubManualBillingType", next);
+                chargeWrap.querySelectorAll("[data-hub-charge]").forEach((node) => {
+                  node.classList.toggle("is-on", node === btn);
+                });
+                renderWorkers();
+                recalcTotal();
+              };
+            });
+          }
+
+          const dueQuick = $("hubManualDueQuick");
+          if (dueQuick) {
+            dueQuick.addEventListener("click", (ev) => {
+              const btn = ev.target && ev.target.closest ? ev.target.closest("[data-hub-quick-kind]") : null;
+              if (!btn) return;
+              ev.preventDefault();
+              const kind = btn.getAttribute("data-hub-quick-kind") || "today";
+              const daysRaw = btn.getAttribute("data-hub-quick-days");
+              const offsetDays = daysRaw !== null && daysRaw !== "" ? Number.parseInt(daysRaw, 10) : NaN;
+              setDueDate(hubQuickDateResolveValue(kind, offsetDays));
+            });
+          }
+
+          renderWorkers();
+          recalcTotal();
 
           pricingPreviewOk = false;
           setNotice("hubFormFeedback", "Loading system rates…", "warn");
@@ -17338,12 +17585,17 @@ window.renderSupervisor = renderSupervisor;
               setNotice("hubFormFeedback", errMsg, "warn");
               systemHourly = 0;
               systemDaily = 0;
+              systemHelperHourly = 0;
+              systemHelperDaily = 0;
               pricingPreviewOk = false;
+              renderWorkers();
               recalcTotal();
               return;
             }
             systemHourly = finiteNumber(pdata.system_hourly_rate, 0);
             systemDaily = finiteNumber(pdata.system_daily_rate, 0);
+            systemHelperHourly = finiteNumber(pdata.system_helper_hourly_rate, 0);
+            systemHelperDaily = finiteNumber(pdata.system_helper_daily_rate, 0);
             pricingPreviewOk = true;
             setNotice("hubFormFeedback", "", "");
           } catch (_e) {
@@ -17356,8 +17608,9 @@ window.renderSupervisor = renderSupervisor;
           if (matBtn && matPanel) {
             matBtn.onclick = (ev) => {
               ev.preventDefault();
-              const open = matPanel.style.display !== "none";
-              matPanel.style.display = open ? "none" : "block";
+              const open = !matPanel.hasAttribute("hidden");
+              if (open) matPanel.setAttribute("hidden", "");
+              else matPanel.removeAttribute("hidden");
               matBtn.textContent = open ? "+ Materials" : "Hide materials";
             };
           }
@@ -17366,8 +17619,26 @@ window.renderSupervisor = renderSupervisor;
             const node = $(id);
             if (!node) return;
             node.oninput = recalcTotal;
-            node.onchange = recalcTotal;
+            node.onchange = () => {
+              if (id === "hubManualBillingType") renderWorkers();
+              recalcTotal();
+            };
           });
+          const addWorkerBtn = $("hubManualAddWorker");
+          if (addWorkerBtn) {
+            addWorkerBtn.onclick = (ev) => {
+              ev.preventDefault();
+              readWorkersFromDom();
+              if (workers.length >= 12) {
+                setNotice("hubFormFeedback", "You can add up to 12 workers on one invoice.", "warn");
+                return;
+              }
+              workers.push({ role: "installer", quantity: 1 });
+              renderWorkers();
+              recalcTotal();
+            };
+          }
+          renderWorkers();
           recalcTotal();
         },
         onSubmit: async () => {
@@ -17386,6 +17657,12 @@ window.renderSupervisor = renderSupervisor;
           const total = finiteNumber(val("hubManualTotal"), 0);
           const material_description = String(val("hubManualMaterialDescription") || "").trim();
           const materials_cost = finiteNumber(val("hubManualMaterialCost"), 0);
+          const crew = readWorkersFromDom()
+            .map((worker) => ({
+              role: worker.role,
+              quantity: Math.max(finiteNumber(worker.quantity, 0), 0)
+            }))
+            .filter((worker) => worker.quantity > 0);
 
           if (!client_name) {
             setNotice("hubFormFeedback", "Client name is required.", "err");
@@ -17408,12 +17685,12 @@ window.renderSupervisor = renderSupervisor;
             return false;
           }
           if (billing_type === "hourly" || billing_type === "daily") {
-            if (!(quantity > 0)) {
-              setNotice("hubFormFeedback", "Enter a quantity greater than zero.", "err");
+            if (!crew.length) {
+              setNotice("hubFormFeedback", "Add at least one worker with hours or days greater than zero.", "err");
               return false;
             }
-            const sys = billing_type === "daily" ? systemDaily : systemHourly;
-            if (!(sys > 0)) {
+            const missingRate = crew.some((worker) => !(workerRateFor(worker.role, billing_type) > 0));
+            if (missingRate) {
               setNotice("hubFormFeedback", "System rate is invalid. Check Business Settings.", "err");
               return false;
             }
@@ -17441,7 +17718,8 @@ window.renderSupervisor = renderSupervisor;
               scopeOfWork: description,
               notes: description,
               billing_type,
-              quantity: billing_type === "flat_amount" ? 0 : quantity,
+              quantity: billing_type === "flat_amount" ? 0 : crew.reduce((sum, worker) => sum + worker.quantity, 0),
+              workers: billing_type === "flat_amount" ? [] : crew,
               flat_amount: billing_type === "flat_amount" ? flat_amount : undefined,
               material_description,
               materials_description: material_description,

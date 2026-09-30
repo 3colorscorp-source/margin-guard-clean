@@ -89,6 +89,31 @@ function buildManualInvoiceClientNotes({
   return sections.join("\n\n").slice(0, 8000);
 }
 
+function normalizeManualWorkerRole(raw) {
+  const s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (s === "helper" || s === "assistant" || s === "asistente") return "helper";
+  return "installer";
+}
+
+function parseManualInvoiceWorkers(body) {
+  const raw = body && Array.isArray(body.workers) ? body.workers : [];
+  const out = [];
+  for (const row of raw.slice(0, 12)) {
+    const obj = row && typeof row === "object" ? row : {};
+    const quantity = money(obj.quantity ?? obj.hours ?? obj.days ?? obj.qty);
+    if (!(quantity > 0)) continue;
+    out.push({
+      role: normalizeManualWorkerRole(obj.role || obj.type || obj.worker_type),
+      quantity,
+    });
+  }
+  return out;
+}
+
+function workerRoleLabel(role) {
+  return role === "helper" ? "Assistant" : "Pro";
+}
+
 function snapshotPricingOk(mg) {
   if (!mg || typeof mg !== "object") return false;
   const bi = Number(mg.baseInstaller);
@@ -149,6 +174,8 @@ exports.handler = async (event) => {
         ok: true,
         system_hourly_rate: rates.system_hourly_rate,
         system_daily_rate: rates.system_daily_rate,
+        system_helper_hourly_rate: rates.system_helper_hourly_rate,
+        system_helper_daily_rate: rates.system_helper_daily_rate,
       });
     }
     console.log("[CREATE MANUAL INVOICE EXECUTED]");
@@ -201,10 +228,13 @@ exports.handler = async (event) => {
     const rates = computeManualInvoiceSystemSellRates(settings);
     const systemHourly = money(rates.system_hourly_rate);
     const systemDaily = money(rates.system_daily_rate);
+    const systemHelperHourly = money(rates.system_helper_hourly_rate);
+    const systemHelperDaily = money(rates.system_helper_daily_rate);
 
     let quantity = 0;
     let systemRateUsed = 0;
     let laborSubtotal = 0;
+    let workerLines = [];
 
     if (billingType === "flat_amount") {
       const flatRaw = body.flat_amount != null ? body.flat_amount : body.rate;
@@ -214,16 +244,47 @@ exports.handler = async (event) => {
       systemRateUsed = flatAmount;
       laborSubtotal = flatAmount;
     } else {
-      quantity = Math.max(quantityRaw, 0);
-      if (!(quantity > 0)) return json(400, { error: "quantity_required" });
-      if (billingType === "hourly") {
-        systemRateUsed = systemHourly;
-        if (!(systemRateUsed > 0)) return json(400, { error: "system_hourly_rate_invalid" });
-        laborSubtotal = money(quantity * systemRateUsed);
-      } else {
+      const crew = parseManualInvoiceWorkers(body);
+      const unitWorkers =
+        crew.length > 0
+          ? crew
+          : money(quantityRaw) > 0
+            ? [{ role: "installer", quantity: money(quantityRaw) }]
+            : [];
+      if (!unitWorkers.length) return json(400, { error: "quantity_required" });
+
+      for (const worker of unitWorkers) {
+        const rate =
+          worker.role === "helper"
+            ? billingType === "daily"
+              ? systemHelperDaily
+              : systemHelperHourly
+            : billingType === "daily"
+              ? systemDaily
+              : systemHourly;
+        if (!(rate > 0)) {
+          return json(400, {
+            error:
+              worker.role === "helper"
+                ? "system_helper_rate_invalid"
+                : billingType === "daily"
+                  ? "system_daily_rate_invalid"
+                  : "system_hourly_rate_invalid",
+          });
+        }
+        const lineTotal = money(worker.quantity * rate);
+        laborSubtotal = money(laborSubtotal + lineTotal);
+        quantity = money(quantity + worker.quantity);
+        workerLines.push({
+          role: worker.role,
+          quantity: worker.quantity,
+          rate,
+          lineTotal,
+        });
+      }
+      systemRateUsed = workerLines.length === 1 ? workerLines[0].rate : systemHourly;
+      if (billingType === "daily" && workerLines.length !== 1) {
         systemRateUsed = systemDaily;
-        if (!(systemRateUsed > 0)) return json(400, { error: "system_daily_rate_invalid" });
-        laborSubtotal = money(quantity * systemRateUsed);
       }
     }
 
@@ -245,7 +306,14 @@ exports.handler = async (event) => {
       notesParts.push(`Service details:\n${safeDescription}`);
     }
     notesParts.push(
-      `Billing:\n${billingTypeLabel} — ${quantity} ${quantityLabel} at ${formatMoney(systemRateUsed)}/${rateLabel}`
+      workerLines.length
+        ? `Billing:\n${billingTypeLabel}\n${workerLines
+            .map(
+              (line) =>
+                `- ${workerRoleLabel(line.role)}: ${line.quantity} ${quantityLabel} at ${formatMoney(line.rate)}/${rateLabel}`
+            )
+            .join("\n")}`
+        : `Billing:\n${billingTypeLabel} — ${quantity} ${quantityLabel} at ${formatMoney(systemRateUsed)}/${rateLabel}`
     );
     notesParts.push(`Labor subtotal: ${formatMoney(laborSubtotal)}`);
     if (safeMaterialDescription || Number(materialsCost || 0) > 0) {
