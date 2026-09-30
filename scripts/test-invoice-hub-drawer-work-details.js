@@ -337,6 +337,11 @@ function main() {
   ok("public invoice header does not print Manual Invoice", !/invoiceTitleBlock/.test(publicHtml));
   ok("public invoice letterhead overlay can use stored service area", /loadTenantLetterheadAddressFromSnapshot/.test(publicFn));
   ok("public invoice does not invent Prepared by", !/Prepared by/.test(publicHtml));
+  ok("public invoice has View PDF button", publicHtml.includes("btnPublicInvoiceViewPdf") && publicHtml.includes("View PDF"));
+  ok("public invoice has Download PDF button", publicHtml.includes("btnPublicInvoiceDownloadPdf") && publicHtml.includes("Download PDF"));
+  ok("public invoice loads invoice pdf helper", publicHtml.includes("/js/invoice-pdf.js"));
+  ok("public invoice loads jspdf", publicHtml.includes("jspdf@2.5.1"));
+  ok("public invoice pdf does not invent license copy", !/1083733/.test(publicHtml));
 
   console.log("\n" + passed + " passed");
 }

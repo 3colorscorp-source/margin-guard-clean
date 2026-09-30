@@ -741,7 +741,9 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="/js/invoice-client-work-details.js"></script>
+  <script src="/js/invoice-pdf.js"></script>
   <script>
 (function () {
   const TENANT_NAME_FALLBACK = "Invoice";
@@ -1456,14 +1458,113 @@
             "</div>" +
           "</div>" +
           '<div class="actions print-actions">' +
+          '<button class="btn btn-primary" type="button" id="btnPublicInvoiceViewPdf">View PDF</button>' +
+          '<button class="btn btn-secondary" type="button" id="btnPublicInvoiceDownloadPdf">Download PDF</button>' +
           '<button class="btn btn-secondary print-button" type="button" onclick="window.print()">Print</button>' +
           "</div>" +
           paymentSectionHtml +
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
 
+      publicInvoicePdfPayload = mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts);
+      bindPublicInvoicePdfButtons();
     } catch (err) {
       showError(err && err.message ? err.message : "Unexpected error loading invoice.");
+    }
+  }
+
+  let publicInvoicePdfPayload = null;
+
+  function mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts) {
+    return {
+      businessName: String((data && data.business_name) || "").trim(),
+      serviceLine: String((data && (data.service_line || data.serviceLine)) || "").trim(),
+      licenseNumber: String((data && (data.contractor_license_number || data.contractorLicenseNumber)) || "").trim(),
+      phone: String((data && data.business_phone) || "").trim(),
+      email: String((data && data.business_email) || "").trim(),
+      address: String((data && data.business_address) || "").trim(),
+      customerName: String((data && data.customer_name) || "").trim(),
+      customerEmail: String((data && data.customer_email) || "").trim(),
+      projectName: String((data && data.project_name) || "").trim(),
+      invoiceNo: String((data && data.invoice_no) || "").trim(),
+      issueDate: String((data && data.issue_date) || "").trim(),
+      dueDate: String((data && data.due_date) || "").trim(),
+      workDetails: String(notesClient || "").trim(),
+      laborAmount: String((parsedWork && parsedWork.laborAmount) || "").trim(),
+      materialsAmount: String((parsedWork && parsedWork.materialsAmount) || "").trim(),
+      currency: String((data && data.currency) || "").trim(),
+      contractTotal: facts && facts.contractTotal,
+      invoiceAmount: facts && facts.invoiceAmount,
+      paidToDate: facts && facts.paid,
+      remainingBalance: facts && facts.balance
+    };
+  }
+
+  async function buildPublicInvoicePdfBlob() {
+    const api = window.MgInvoicePdf;
+    if (!api || typeof api.buildInvoicePdfPayload !== "function") {
+      throw new Error("PDF generator is not available. Refresh and try again.");
+    }
+    if (!publicInvoicePdfPayload) {
+      throw new Error("The invoice is still loading.");
+    }
+    const rebuilt = await api.buildInvoicePdfPayload(publicInvoicePdfPayload);
+    const b64 = rebuilt && rebuilt.contentBase64 ? String(rebuilt.contentBase64) : "";
+    if (!b64) throw new Error("PDF generation failed.");
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return {
+      blob: new Blob([bytes], { type: "application/pdf" }),
+      fileName: rebuilt.fileName || "Invoice.pdf"
+    };
+  }
+
+  function bindPublicInvoicePdfButtons() {
+    const viewBtn = document.getElementById("btnPublicInvoiceViewPdf");
+    const dlBtn = document.getElementById("btnPublicInvoiceDownloadPdf");
+    async function run(mode, btn) {
+      const original = btn ? String(btn.textContent || "") : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Preparing PDF...";
+      }
+      try {
+        const file = await buildPublicInvoicePdfBlob();
+        const url = URL.createObjectURL(file.blob);
+        if (mode === "view") {
+          window.open(url, "_blank", "noopener");
+        } else {
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 15000);
+      } catch (err) {
+        window.alert(err && err.message ? err.message : "Unable to open the invoice PDF.");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      }
+    }
+    if (viewBtn && viewBtn.dataset.mgBound !== "1") {
+      viewBtn.dataset.mgBound = "1";
+      viewBtn.addEventListener("click", function () {
+        run("view", viewBtn);
+      });
+    }
+    if (dlBtn && dlBtn.dataset.mgBound !== "1") {
+      dlBtn.dataset.mgBound = "1";
+      dlBtn.addEventListener("click", function () {
+        run("download", dlBtn);
+      });
     }
   }
 

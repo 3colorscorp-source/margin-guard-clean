@@ -169,9 +169,24 @@ async function withDb(fn, opts) {
       storagePosts.push({ kind: "bucket", method, url: urlStr });
       return jsonRes(200, { name: "invoice-pdfs" });
     }
-    if (/\/storage\/v1\/object\/sign\/invoice-pdfs\//.test(urlStr)) {
+    if (/\/storage\/v1\/object\/sign\/invoice-pdfs\//.test(urlStr) && method === "POST") {
       storagePosts.push({ kind: "sign", method, url: urlStr });
-      return jsonRes(200, { signedURL: "/object/sign/invoice-pdfs/signed-test" });
+      return jsonRes(200, {
+        signedURL: "https://example.supabase.co/storage/v1/object/sign/invoice-pdfs/signed-test.pdf",
+      });
+    }
+    if (/signed-test\.pdf/.test(urlStr)) {
+      const bytes = Buffer.from("%PDF-1.4 test-invoice-pdf");
+      return {
+        ok: true,
+        status: 200,
+        async arrayBuffer() {
+          return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        },
+        async text() {
+          return bytes.toString("utf8");
+        },
+      };
     }
     if (/\/storage\/v1\/object\/invoice-pdfs\//.test(urlStr)) {
       storagePosts.push({ kind: "object", method, url: urlStr });
@@ -252,7 +267,7 @@ async function main() {
   const getEstimate = read("netlify/functions/get-estimate-pdf.js");
 
   ok("send uploads invoice PDF", /uploadInvoicePdf/.test(sendSrc) && /buildInvoicePdfAccessUrl/.test(sendSrc));
-  ok("send puts Invoice PDF in Email Body", /Invoice PDF/.test(sendSrc) && /insertPdfLinkPlain/.test(sendSrc));
+  ok("send puts View / Download PDF in Email Body", /View \/ Download PDF/.test(sendSrc) && /insertPdfLinkPlain/.test(sendSrc));
   ok("send Email Body stays plaintext", /body: text/.test(sendSrc) && !/body: html/.test(sendSrc));
   ok("send does not reuse estimate PDF access", !/estimate-pdf-access/.test(sendSrc) && !/get-estimate-pdf/.test(sendSrc));
   ok("invoice PDF bucket is invoice-pdfs", /INVOICE_PDF_BUCKET = "invoice-pdfs"/.test(accessSrc));
@@ -295,10 +310,11 @@ async function main() {
     const html = String(payload["Email Html"] || payload.email_html || "");
     const pdfUrl = String(payload.pdf_url || payload.pdfUrl || "");
     ok("payload has pdf_url", /get-invoice-pdf/.test(pdfUrl) && pdfUrl.includes("token=" + PUBLIC_TOKEN));
-    ok("Email Body includes Invoice PDF line", emailBody.includes("Invoice PDF") && emailBody.includes(pdfUrl));
+    ok("payload pdf_url is the raw file", /raw=1/.test(pdfUrl));
+    ok("Email Body includes View / Download PDF", emailBody.includes("View / Download PDF") && emailBody.includes("get-invoice-pdf"));
     ok("Email Body is still plaintext", !emailBody.includes("<!DOCTYPE") && !emailBody.includes("<a href="));
     ok("Email Body still has amounts", emailBody.includes("Contract total") && /\$100\.00/.test(emailBody));
-    ok("Email Html has download PDF", html.includes("Download invoice PDF") && html.includes("get-invoice-pdf"));
+    ok("Email Html has View PDF button", html.includes("View PDF") && /bgcolor="#0f8a5f"/.test(html));
     ok("canonical amounts were not converted", body.canonical && body.canonical.contract_total === 100);
     ok("storage received invoice-pdfs upload", storagePosts.some((p) => p.kind === "object"));
     eq("dry-run did not call Zapier", zapierCalls.length, 0);
@@ -336,10 +352,48 @@ async function main() {
       httpMethod: "GET",
       queryStringParameters: qs,
     });
-    eq("valid invoice pdf redirects", res.statusCode, 302);
-    ok("redirect goes to signed storage url", /signed-test/.test(String(res.headers && res.headers.Location || "")));
+    eq("valid invoice pdf streams the file", res.statusCode, 200);
+    ok("streams application/pdf", String(res.headers && res.headers["Content-Type"] || "").includes("application/pdf"));
+    ok("inline disposition for view", /inline/i.test(String(res.headers && res.headers["Content-Disposition"] || "")));
+    ok("pdf body is base64", res.isBase64Encoded === true && String(res.body || "").length > 8);
     ok("get-invoice-pdf queried invoices not quotes", restGets.some((g) => g.table === "invoices"));
     ok("get-invoice-pdf never queried quotes", !restGets.some((g) => g.table === "quotes"));
+  });
+
+  await withDb(async () => {
+    const handler = loadGetPdfHandler();
+    const url = new URL(buildInvoicePdfAccessUrl("https://marginguardsystem.netlify.app", PUBLIC_TOKEN, OBJECT_PATH));
+    const qs = {};
+    url.searchParams.forEach((value, key) => {
+      qs[key] = value;
+    });
+    const res = await handler.handler({
+      httpMethod: "GET",
+      headers: { accept: "text/html,application/xhtml+xml" },
+      queryStringParameters: qs,
+    });
+    eq("browser click gets the viewer page", res.statusCode, 200);
+    const page = String(res.body || "");
+    ok("viewer is HTML", String(res.headers && res.headers["Content-Type"] || "").includes("text/html"));
+    ok("viewer has View PDF button", page.includes("View PDF") && page.includes("btn-primary"));
+    ok("viewer has Download PDF button", page.includes("Download PDF") && page.includes("dl=1"));
+    ok("viewer embeds the PDF", /<embed /i.test(page) && /raw=1/.test(page));
+  });
+
+  await withDb(async () => {
+    const handler = loadGetPdfHandler();
+    const url = new URL(buildInvoicePdfAccessUrl("https://marginguardsystem.netlify.app", PUBLIC_TOKEN, OBJECT_PATH));
+    const qs = {};
+    url.searchParams.forEach((value, key) => {
+      qs[key] = value;
+    });
+    qs.dl = "1";
+    const res = await handler.handler({
+      httpMethod: "GET",
+      queryStringParameters: qs,
+    });
+    eq("download mode is 200", res.statusCode, 200);
+    ok("download disposition is attachment", /attachment/i.test(String(res.headers && res.headers["Content-Disposition"] || "")));
   });
 
   await withDb(async () => {
