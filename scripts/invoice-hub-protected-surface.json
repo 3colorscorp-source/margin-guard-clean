@@ -11,6 +11,7 @@
     "public/estimates-invoices.html",
     "public/invoice-public.html",
     "netlify/functions/create-manual-invoice.js",
+    "netlify/functions/interpret-manual-invoice-description.js",
     "netlify/functions/list-tenant-invoices.js",
     "netlify/functions/send-invoice-zapier.js",
     "netlify/functions/cancel-tenant-invoice.js",
@@ -89,6 +90,7 @@
   },
   "requiredRegressionTests": [
     "scripts/test-create-manual-invoice-modern-owner-session.js",
+    "scripts/test-interpret-manual-invoice-description.js",
     "scripts/test-list-tenant-invoices-modern-owner-session.js",
     "scripts/test-send-invoice-zapier-modern-owner-session.js",
     "scripts/test-cancel-tenant-invoice-modern-owner-session.js",
