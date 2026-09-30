@@ -250,12 +250,14 @@ async function main() {
 
     const html = String(modernBody.canonical && modernBody.canonical.email_html || "");
     const bodyText = String(modernBody.canonical && modernBody.canonical.email_body || "");
-    ok("dry_run html has View Invoice button", html.includes("View Invoice") && /background:#0f8a5f/.test(html));
+    ok("dry_run html has View Invoice button", html.includes("View Invoice") && /bgcolor="#0f8a5f"/.test(html));
     ok("dry_run html links the public invoice", html.includes("invoice-public.html?token="));
-    ok("dry_run body is document copy", bodyText.includes("ready for review"));
+    ok("Zapier Email Body is the HTML letter", bodyText.includes("View Invoice") && bodyText.includes("<a href="));
+    ok("dry_run body is document copy", bodyText.includes("work details") && bodyText.includes("remaining balance"));
     ok("dry_run body still has amounts", bodyText.includes("Contract total") && /\$100\.00/.test(bodyText));
     ok("dry_run body does not use casual greeting", !/I hope you're doing well/.test(bodyText) && !/they're doing well/.test(bodyText));
     ok("dry_run body does not dump You can view it here", !/You can view it here:/.test(bodyText));
+    ok("payload Email Body is HTML", String(modernBody.payload && modernBody.payload["Email Body"] || "").includes("<a href="));
   });
 
   const hubHtml = read("public/estimates-invoices.html");

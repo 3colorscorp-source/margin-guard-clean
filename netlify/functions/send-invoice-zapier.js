@@ -75,15 +75,21 @@ function buildInvoiceEmailHtml({
 }) {
   const href = escapeEmailHtml(String(publicUrl || "").trim());
   const cta = escapeEmailHtml(ctaLabel || "View Invoice");
+  const brand = escapeEmailHtml(businessName || "Invoice");
   const rows = (Array.isArray(summaryRows) ? summaryRows : [])
     .filter((row) => row && row.label && row.value)
-    .map((row) => {
+    .map((row, idx, list) => {
+      const last = idx === list.length - 1;
       return (
         "<tr>" +
-        '<td style="padding:7px 0;border-bottom:1px solid #eceff3;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif;">' +
+        '<td style="padding:10px 0;border-bottom:' +
+        (last ? "2px solid #111827" : "1px solid #eceff3") +
+        ';color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif;">' +
         escapeEmailHtml(row.label) +
         "</td>" +
-        '<td style="padding:7px 0;border-bottom:1px solid #eceff3;text-align:right;font-weight:700;color:#111827;font-size:13px;font-variant-numeric:tabular-nums;font-family:Arial,Helvetica,sans-serif;">' +
+        '<td style="padding:10px 0;border-bottom:' +
+        (last ? "2px solid #111827" : "1px solid #eceff3") +
+        ';text-align:right;font-weight:700;color:#111827;font-size:13px;font-variant-numeric:tabular-nums;font-family:Arial,Helvetica,sans-serif;">' +
         escapeEmailHtml(row.value) +
         "</td>" +
         "</tr>"
@@ -91,34 +97,46 @@ function buildInvoiceEmailHtml({
     })
     .join("");
   return (
-    '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:15px;line-height:1.65;color:#111827;max-width:560px;">' +
+    '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#eef2f6;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f6;padding:24px 12px;">' +
+    "<tr><td align=\"center\">" +
+    '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;">' +
+    "<tr><td style=\"padding:28px 32px 18px;border-bottom:1px solid #e5e7eb;\">" +
+    '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:22px;line-height:1.2;color:#111827;font-weight:700;">' +
+    brand +
+    "</div>" +
+    '<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;">Invoice</div>' +
+    "</td></tr>" +
+    "<tr><td style=\"padding:28px 32px 32px;font-family:Georgia,\'Times New Roman\',Times,serif;font-size:15px;line-height:1.65;color:#111827;\">" +
     '<p style="margin:0 0 16px;">' +
     escapeEmailHtml(customerName) +
     ",</p>" +
-    '<p style="margin:0 0 24px;">' +
+    '<p style="margin:0 0 26px;">' +
     escapeEmailHtml(intro) +
     "</p>" +
-    '<p style="margin:0 0 10px;"><a href="' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;"><tr>' +
+    '<td bgcolor="#0f8a5f" style="border-radius:4px;">' +
+    '<a href="' +
     href +
-    '" style="background:#0f8a5f;color:#ffffff;padding:12px 22px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:700;letter-spacing:.02em;font-family:Arial,Helvetica,sans-serif;">' +
+    '" style="display:inline-block;padding:14px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:.03em;font-family:Arial,Helvetica,sans-serif;">' +
     cta +
-    "</a></p>" +
-    '<p style="margin:0 0 24px;font-size:12px;line-height:1.5;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">If the button does not open, use this link:<br>' +
+    "</a></td></tr></table>" +
+    '<p style="margin:0 0 26px;font-size:12px;line-height:1.5;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">If the button does not open, <a href="' +
     href +
-    "</p>" +
+    '" style="color:#0f8a5f;text-decoration:underline;">open the invoice here</a>.</p>' +
     (summaryTitle
       ? '<p style="margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;font-family:Arial,Helvetica,sans-serif;">' +
         escapeEmailHtml(summaryTitle) +
         "</p>"
       : "") +
-    (rows ? '<table style="width:100%;border-collapse:collapse;margin:0 0 24px;">' + rows + "</table>" : "") +
-    '<p style="margin:0 0 24px;">' +
+    (rows ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 26px;">' + rows + "</table>" : "") +
+    '<p style="margin:0 0 22px;">' +
     escapeEmailHtml(closing) +
     "</p>" +
-    '<p style="margin:0;">' +
-    escapeEmailHtml(businessName) +
+    '<p style="margin:0;font-family:Georgia,\'Times New Roman\',Times,serif;">' +
+    brand +
     "</p>" +
-    "</div>"
+    "</td></tr></table></td></tr></table></body></html>"
   );
 }
 
@@ -146,10 +164,12 @@ function finishInvoiceEmailCopy({ subject, customerName, intro, publicUrl, summa
     businessName,
     ctaLabel: ctaLabel || "View Invoice"
   };
+  const html = buildInvoiceEmailHtml(payload);
   return {
     subject,
-    body: buildInvoiceEmailPlain(payload),
-    html: buildInvoiceEmailHtml(payload)
+    body: html,
+    html,
+    text: buildInvoiceEmailPlain(payload)
   };
 }
 
@@ -448,7 +468,7 @@ function buildStandardEmailCopy({
   return finishInvoiceEmailCopy({
     subject: `Invoice ready — ${projectName}`,
     customerName,
-    intro: `Your invoice for ${projectName} is ready for review. Please open the document and retain a copy for your records.`,
+    intro: `Your invoice for ${projectName} is ready. Open it to review the work details, amounts, and remaining balance.`,
     publicUrl,
     summaryTitle: "Invoice summary",
     summaryRows: [
@@ -827,6 +847,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     "Email Body": canonical.email_body,
     "Email Html": canonical.email_html,
     "Html Body": canonical.email_html,
+    "Message Text": canonical.email_html,
     "Invoice Copy Variant": canonical.invoice_copy_variant,
     "Invoice Label": canonical.invoice_label,
     "Invoice Amount": canonical.invoice_amount,
@@ -851,6 +872,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     email_body: canonical.email_body,
     email_html: canonical.email_html,
     html_body: canonical.email_html,
+    messageText: canonical.email_html,
     summary_line_1_label: canonical.summary_line_1_label,
     summary_line_1_value: canonical.summary_line_1_value,
     summary_line_2_label: canonical.summary_line_2_label,
