@@ -65,6 +65,168 @@
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(amount || 0));
   }
 
+  function pickFirstNonEmpty(...candidates) {
+    for (let i = 0; i < candidates.length; i += 1) {
+      const v = candidates[i];
+      if (v !== undefined && v !== null && String(v).trim() !== "") {
+        return String(v).trim();
+      }
+    }
+    return "";
+  }
+
+  /**
+   * PDF business identity from Business Settings / tenant branding only.
+   * Empty fields stay empty — never invent placeholders.
+   */
+  function resolvePdfBusinessIdentity(data) {
+    const src = data && typeof data === "object" ? data : {};
+    const branding = src.branding && typeof src.branding === "object" ? src.branding : {};
+    const settings = src.settings && typeof src.settings === "object" ? src.settings : {};
+    const blockedGenericBusinessNames = new Set([
+      "gmail",
+      "yahoo",
+      "outlook",
+      "hotmail",
+      "icloud",
+      "mail",
+      "business",
+      "business name"
+    ]);
+
+    function pickBusinessName() {
+      const candidates = [
+        settings.bizName,
+        settings.businessName,
+        settings.business_name,
+        settings.companyName,
+        settings.company_name,
+        branding.businessName,
+        branding.business_name,
+        branding.bizName,
+        branding.biz_name,
+        branding.companyName,
+        branding.company_name,
+        src.businessName,
+        src.business_name,
+        src.bizName,
+        src.biz_name,
+        src.company_name,
+        src.companyName
+      ];
+      for (let i = 0; i < candidates.length; i += 1) {
+        const t = safeTrim(candidates[i]);
+        if (!t) continue;
+        if (blockedGenericBusinessNames.has(t.toLowerCase())) continue;
+        if (isInvalidPublishBusinessNameCandidate(t)) continue;
+        return t;
+      }
+      return "";
+    }
+
+    const businessName = pickBusinessName();
+    const businessPhone = pickFirstNonEmpty(
+      settings.businessPhone,
+      settings.business_phone,
+      settings.bizPhone,
+      settings.biz_phone,
+      branding.businessPhone,
+      branding.business_phone,
+      branding.bizPhone,
+      branding.biz_phone,
+      branding.phone,
+      branding.contact_phone,
+      src.businessPhone,
+      src.business_phone,
+      src.bizPhone,
+      src.biz_phone
+    );
+    const businessEmail = pickFirstNonEmpty(
+      settings.businessEmail,
+      settings.business_email,
+      settings.bizEmail,
+      settings.biz_email,
+      branding.businessEmail,
+      branding.business_email,
+      branding.bizEmail,
+      branding.biz_email,
+      branding.email,
+      branding.support_email,
+      branding.contact_email,
+      branding.reply_to_email,
+      src.businessEmail,
+      src.business_email,
+      src.bizEmail,
+      src.biz_email
+    );
+    const businessAddress = pickFirstNonEmpty(
+      settings.businessAddress,
+      settings.business_address,
+      settings.bizAddress,
+      settings.biz_address,
+      settings.address,
+      settings.companyAddress,
+      branding.businessAddress,
+      branding.business_address,
+      branding.bizAddress,
+      branding.biz_address,
+      branding.mailing_address,
+      branding.office_address,
+      src.businessAddress,
+      src.business_address,
+      src.bizAddress,
+      src.biz_address
+    );
+    const businessServiceArea = pickFirstNonEmpty(
+      settings.businessServiceArea,
+      settings.business_service_area,
+      settings.service_area,
+      branding.businessServiceArea,
+      branding.business_service_area,
+      branding.service_area,
+      src.businessServiceArea,
+      src.business_service_area,
+      businessAddress
+    );
+    const preparedBy = pickFirstNonEmpty(
+      settings.email_signature_name,
+      settings.preparedBy,
+      settings.prepared_by,
+      branding.email_signature_name,
+      branding.preparedBy,
+      branding.prepared_by,
+      src.preparedBy,
+      src.prepared_by
+    );
+    const serviceLine = pickFirstNonEmpty(
+      settings.serviceLine,
+      settings.service_line,
+      branding.serviceLine,
+      branding.service_line,
+      src.serviceLine,
+      src.service_line
+    );
+    const signatureLine = pickFirstNonEmpty(
+      settings.signatureLine,
+      settings.signature_line,
+      branding.signatureLine,
+      branding.signature_line,
+      src.signatureLine,
+      src.signature_line
+    );
+
+    return {
+      businessName,
+      businessPhone,
+      businessEmail,
+      businessAddress,
+      businessServiceArea,
+      preparedBy,
+      serviceLine,
+      signatureLine
+    };
+  }
+
   async function buildEstimatePdfPayload(data) {
   const jspdf = window.jspdf;
   if (!jspdf?.jsPDF) return null;
@@ -86,181 +248,15 @@
   const buttonFill = [37, 99, 235];
   const buttonFillGreen = [22, 163, 74];
 
-  /** Tenant / business identity only — never use generic data.email, data.phone, or data.address (client fields). */
-  function pickTenantString(...candidates) {
-    for (let i = 0; i < candidates.length; i += 1) {
-      const v = candidates[i];
-      if (v !== undefined && v !== null && String(v).trim() !== '') {
-        return String(v).trim();
-      }
-    }
-    return '';
-  }
-
-  const branding =
-    data.branding && typeof data.branding === 'object' ? data.branding : null;
-  const settings =
-    data.settings && typeof data.settings === 'object' ? data.settings : null;
-
-  const proposalSubtitle = pickTenantString(
-    data.serviceLine,
-    data.service_line,
-    branding?.serviceLine,
-    branding?.service_line,
-    settings?.serviceLine,
-    settings?.service_line,
-    'Professional Service Estimate'
-  );
-
-  const businessName = String(
-    data.businessName ||
-      data.business_name ||
-      data.bizName ||
-      data.biz_name ||
-      data.company_name ||
-      data.companyName ||
-      (data.branding &&
-        (data.branding.businessName ||
-          data.branding.business_name ||
-          data.branding.bizName ||
-          data.branding.biz_name ||
-          data.branding.company_name ||
-          data.branding.companyName)) ||
-      (data.settings &&
-        (data.settings.businessName ||
-          data.settings.business_name ||
-          data.settings.bizName ||
-          data.settings.biz_name ||
-          data.settings.company_name ||
-          data.settings.companyName)) ||
-      data.tenantName ||
-      data.tenant_name ||
-      'Business Name'
-  ).trim();
-
-  const blockedGenericBusinessNames = new Set([
-    'gmail',
-    'yahoo',
-    'outlook',
-    'hotmail',
-    'icloud',
-    'mail'
-  ]);
-
-  let safeBusinessName = String(businessName || '').trim();
-
-  if (blockedGenericBusinessNames.has(safeBusinessName.toLowerCase())) {
-    const fallbackBusinessName = String(
-      (data.settings &&
-        (data.settings.bizName ||
-          data.settings.biz_name ||
-          data.settings.businessName ||
-          data.settings.business_name ||
-          data.settings.companyName ||
-          data.settings.company_name)) ||
-        (data.branding &&
-          (data.branding.bizName ||
-            data.branding.biz_name ||
-            data.branding.businessName ||
-            data.branding.business_name ||
-            data.branding.companyName ||
-            data.branding.company_name)) ||
-        'Business Name'
-    ).trim();
-
-    if (fallbackBusinessName) {
-      safeBusinessName = fallbackBusinessName;
-    }
-  }
-
-  const preparedBy = pickTenantString(
-    data.preparedBy,
-    data.prepared_by,
-    branding?.email_signature_name,
-    branding?.preparedBy,
-    branding?.prepared_by,
-    settings?.email_signature_name,
-    settings?.preparedBy,
-    settings?.prepared_by
-  );
-
-  const businessPhone = pickTenantString(
-    data.businessPhone,
-    data.business_phone,
-    data.bizPhone,
-    data.biz_phone,
-    branding?.businessPhone,
-    branding?.business_phone,
-    branding?.bizPhone,
-    branding?.biz_phone,
-    branding?.phone,
-    branding?.contact_phone,
-    settings?.businessPhone,
-    settings?.business_phone,
-    settings?.bizPhone,
-    settings?.biz_phone,
-    settings?.phone
-  );
-
-  const businessEmail = pickTenantString(
-    data.businessEmail,
-    data.business_email,
-    data.bizEmail,
-    data.biz_email,
-    branding?.businessEmail,
-    branding?.business_email,
-    branding?.bizEmail,
-    branding?.biz_email,
-    branding?.email,
-    branding?.support_email,
-    branding?.contact_email,
-    branding?.reply_to_email,
-    settings?.businessEmail,
-    settings?.business_email,
-    settings?.bizEmail,
-    settings?.biz_email,
-    settings?.email
-  );
-
-  const businessServiceArea = pickTenantString(
-    data.businessServiceArea,
-    data.business_service_area,
-    data.businessAddress,
-    data.business_address,
-    data.bizAddress,
-    data.biz_address,
-    data.company_address,
-    branding?.businessAddress,
-    branding?.business_address,
-    branding?.bizAddress,
-    branding?.biz_address,
-    branding?.address,
-    branding?.mailing_address,
-    branding?.office_address,
-    settings?.businessAddress,
-    settings?.business_address,
-    settings?.bizAddress,
-    settings?.biz_address,
-    settings?.address,
-    settings?.companyAddress
-  );
-
-  const businessAddress = pickTenantString(
-    data.businessAddress,
-    data.business_address,
-    data.bizAddress,
-    data.biz_address,
-    branding?.businessAddress,
-    branding?.business_address,
-    branding?.bizAddress,
-    branding?.biz_address,
-    settings?.businessAddress,
-    settings?.business_address,
-    settings?.bizAddress,
-    settings?.biz_address,
-    settings?.address,
-    settings?.companyAddress
-  );
+  const identity = resolvePdfBusinessIdentity(data);
+  const proposalSubtitle = identity.serviceLine;
+  const businessName = identity.businessName;
+  const safeBusinessName = identity.businessName;
+  const preparedBy = identity.preparedBy;
+  const businessPhone = identity.businessPhone;
+  const businessEmail = identity.businessEmail;
+  const businessServiceArea = identity.businessServiceArea;
+  const businessAddress = identity.businessAddress;
 
   const clientName = String(
     data.clientName ||
@@ -477,16 +473,22 @@
   // =========================
   // PAGE 1 — QUOTE / PROPOSAL
   // =========================
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
+  const headerY = y;
   doc.setTextColor(...textDark);
-  doc.text(safeBusinessName || 'Business Name', left, y);
+  if (safeBusinessName) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text(safeBusinessName, left, headerY);
+    y = headerY + 24;
+  }
 
-  const subY = y + 24;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.setTextColor(...textMuted);
-  doc.text(proposalSubtitle || 'Professional Service Estimate', left, subY);
+  if (proposalSubtitle) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.setTextColor(...textMuted);
+    doc.text(proposalSubtitle, left, y);
+    y += 18;
+  }
 
   const bizLines = [];
   if (preparedBy) {
@@ -504,7 +506,7 @@
     bizLines.push(`Address: ${locationLine}`);
   }
 
-  let bizY = subY + 18;
+  let bizY = y;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(...textDark);
@@ -515,7 +517,7 @@
   });
 
   const rightX = pageWidth * 0.58;
-  let rightY = y + 6;
+  let rightY = headerY + 6;
 
   [
     clientName ? `Client: ${clientName}` : '',
@@ -778,152 +780,35 @@
     contentBase64: base64
   };
 }
-  function pickFirstNonEmpty(...candidates) {
-    for (let i = 0; i < candidates.length; i += 1) {
-      const v = candidates[i];
-      if (v !== undefined && v !== null && String(v).trim() !== '') {
-        return String(v).trim();
-      }
-    }
-    return '';
-  }
   function buildEstimateTenantPayload(branding, settings, base) {
-    const b = branding && typeof branding === 'object' ? branding : {};
-    const s = settings && typeof settings === 'object' ? settings : {};
-    const e = base && typeof base === 'object' ? base : {};
+    const identity = resolvePdfBusinessIdentity({
+      branding,
+      settings,
+      ...(base && typeof base === "object" ? base : {})
+    });
 
-    const businessName = pickFirstNonEmpty(
-      b.businessName,
-      b.business_name,
-      b.bizName,
-      b.biz_name,
-      b.companyName,
-      b.company_name,
-      s.businessName,
-      s.business_name,
-      s.bizName,
-      s.biz_name,
-      s.companyName,
-      s.company_name,
-      e.businessName,
-      e.business_name,
-      e.bizName,
-      e.companyName,
-      e.company_name,
-      ''
+    const b = branding && typeof branding === "object" ? branding : {};
+    const s = settings && typeof settings === "object" ? settings : {};
+    const e = base && typeof base === "object" ? base : {};
+
+    const accentHex = pickFirstNonEmpty(
+      s.publicAccentColor,
+      s.accentHex,
+      b.accentHex,
+      b.accent_color,
+      e.accentHex
     );
-
-    const businessPhone = pickFirstNonEmpty(
-      b.businessPhone,
-      b.business_phone,
-      b.bizPhone,
-      b.biz_phone,
-      b.phone,
-      b.contact_phone,
-      s.businessPhone,
-      s.business_phone,
-      s.bizPhone,
-      s.biz_phone,
-      s.phone,
-      e.businessPhone,
-      e.business_phone
-    );
-
-    const businessEmail = pickFirstNonEmpty(
-      b.businessEmail,
-      b.business_email,
-      b.bizEmail,
-      b.biz_email,
-      b.email,
-      b.support_email,
-      b.contact_email,
-      b.reply_to_email,
-      s.businessEmail,
-      s.business_email,
-      s.bizEmail,
-      s.biz_email,
-      s.email,
-      e.businessEmail,
-      e.business_email
-    );
-
-    const businessAddress = pickFirstNonEmpty(
-      b.businessAddress,
-      b.business_address,
-      b.bizAddress,
-      b.biz_address,
-      b.mailing_address,
-      b.office_address,
-      s.businessAddress,
-      s.business_address,
-      s.bizAddress,
-      s.biz_address,
-      s.address,
-      s.companyAddress,
-      e.businessAddress,
-      e.business_address
-    );
-
-    const businessServiceArea = pickFirstNonEmpty(
-      b.businessServiceArea,
-      b.business_service_area,
-      b.service_area,
-      s.businessServiceArea,
-      s.business_service_area,
-      s.service_area,
-      e.businessServiceArea,
-      businessAddress,
-      e.businessAddress
-    );
-
-    const preparedBy = pickFirstNonEmpty(
-      b.preparedBy,
-      b.prepared_by,
-      b.email_signature_name,
-      s.preparedBy,
-      s.prepared_by,
-      s.email_signature_name,
-      e.preparedBy,
-      e.prepared_by,
-      e.email_signature_name
-    );
-
-    const serviceLine = pickFirstNonEmpty(
-      b.serviceLine,
-      b.service_line,
-      s.serviceLine,
-      s.service_line,
-      e.serviceLine
-    );
-
-    const signatureLine = pickFirstNonEmpty(
-      b.signatureLine,
-      b.signature_line,
-      s.signatureLine,
-      s.signature_line,
-      e.signatureLine
-    );
-
-    const accentHex =
-      pickFirstNonEmpty(
-        b.accentHex,
-        b.accent_color,
-        s.publicAccentColor,
-        s.accentHex,
-        e.accentHex
-      ) || '#8f8a5f';
-
     const accentRgb = hexToRgbTuple(accentHex, [143, 138, 95]);
 
     return {
-      businessName,
-      businessPhone,
-      businessEmail,
-      businessAddress,
-      businessServiceArea,
-      preparedBy,
-      serviceLine: serviceLine || 'Professional Service Estimate',
-      signatureLine: signatureLine || 'Professional Estimate Delivery',
+      businessName: identity.businessName,
+      businessPhone: identity.businessPhone,
+      businessEmail: identity.businessEmail,
+      businessAddress: identity.businessAddress,
+      businessServiceArea: identity.businessServiceArea,
+      preparedBy: identity.preparedBy,
+      serviceLine: identity.serviceLine,
+      signatureLine: identity.signatureLine,
       accentHex,
       accentRgb
     };
@@ -934,6 +819,7 @@
     buildEstimateTenantPayload,
     formatUsd,
     resolvePublishBusinessName,
+    resolvePdfBusinessIdentity,
     hexToRgbTuple,
     isInvalidPublishBusinessNameCandidate,
     resolvePublicPdfScopeItems

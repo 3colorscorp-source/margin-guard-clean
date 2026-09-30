@@ -33,6 +33,14 @@ async function loadTenantSettingsFromLatestSnapshot(tenantId) {
 }
 
 const SELLER_SAFE_SETTING_KEYS = [
+  "bizName",
+  "businessEmail",
+  "businessPhone",
+  "businessAddress",
+  "publicLogoUrl",
+  "serviceLine",
+  "signatureLine",
+  "marketLine",
   "baseInstaller",
   "baseHelper",
   "hoursPerDay",
