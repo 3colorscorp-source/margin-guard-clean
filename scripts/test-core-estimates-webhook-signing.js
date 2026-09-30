@@ -228,9 +228,10 @@ async function main() {
   ok("resend-tenant-quote does not log ZAPIER_WEBHOOK_SECRET", resendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok("helper does not console.log signature", helperSrc.indexOf("console.log") < 0 && helperSrc.indexOf("console.info") < 0);
   ok(
-    "send-quote-zapier assigns messageText onto zapierBody",
-    sendSrc.indexOf("zapierBody.messageText = resolveEstimateMessageText") >= 0
+    "send-quote-zapier assigns canonical HTML onto zapierBody",
+    sendSrc.indexOf("zapierBody.messageText = buildEstimateSendHtml") >= 0
   );
+  ok("send-quote-zapier requires a PDF payload", sendSrc.indexOf("pdf_required") >= 0);
 
   const sendQuote = require("../netlify/functions/send-quote-zapier");
   const publicUrl = "https://example.test/estimate-public.html?token=abc";
@@ -266,6 +267,15 @@ async function main() {
   );
   ok("HMAC final_body uses the client letter", letterCatch.final_body.indexOf("Hello Erin Thomson") >= 0);
   ok("HMAC final_body is not the three-field dump", letterCatch.final_body.indexOf("Demo Co") < 0);
+
+  const sendHtml = sendQuote._test.buildEstimateSendHtml({
+    publicQuoteUrl: publicUrl,
+    pdfUrl: "https://example.test/.netlify/functions/get-estimate-pdf?token=abc",
+  });
+  ok("canonical HTML has the review button", sendHtml.indexOf("Review &amp; Approve Estimate") >= 0);
+  ok("canonical HTML has the public estimate URL", sendHtml.indexOf(publicUrl) >= 0);
+  ok("canonical HTML has the four client steps", sendHtml.indexOf("Confirm exclusions") >= 0);
+  ok("canonical HTML links the estimate PDF", sendHtml.indexOf("Download estimate PDF") >= 0);
 
   const publicJs = ["public/js/app.js", "public/js/estimate-public-send.js"]
     .map(read)

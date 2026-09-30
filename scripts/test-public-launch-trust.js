@@ -44,6 +44,13 @@ ok("Dashboard page language is English", dashboardHtml.includes('<html lang="en"
 ok("Dashboard placeholder is Active account", dashboardHtml.includes(">Active account<"));
 ok("public estimate page language is English", estimateHtml.includes('<html lang="en">'));
 ok("public estimate share copy is English", estimateHtml.includes("Share this link to review and approve."));
+ok("public estimate offers Download PDF", estimateHtml.includes('id="btnPublicEstimatePdf"') && estimateHtml.includes("Download PDF"));
+ok("public estimate PDF uses the shared generator", estimateHtml.includes("/js/estimate-send-helpers.js"));
+ok("public estimate PDF does not use public storage URLs", !estimateHtml.includes("object/public/estimate-pdfs"));
+const builderJs = read("public/js/estimate-builder.js");
+ok("public estimate builder generates PDF from loaded quote", builderJs.includes("function downloadPublicEstimatePdf"));
+ok("public estimate PDF uses canonical Scope", builderJs.includes("scope_of_work: next.scope_of_work"));
+ok("public estimate PDF does not send notes as scope", !/scope_of_work:\s*next\.notes/.test(builderJs));
 ok("Terms include a Refunds section", terms.includes("<h2>20. Refunds</h2>") && /non-refundable/.test(terms));
 
 console.log("Passed " + passed + " assertions.");

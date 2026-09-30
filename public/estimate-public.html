@@ -1554,6 +1554,7 @@
         </div>
 
         <div class="inline-actions estimate-public-actions" id="publicEstimateActions">
+          <button class="btn ghost" type="button" id="btnPublicEstimatePdf">Download PDF</button>
           <button class="btn primary" type="button" id="btnPublicEstimateApprove">Approve estimate</button>
           <button class="btn danger" type="button" id="btnPublicEstimateDecline">Decline</button>
         </div>
@@ -1781,6 +1782,8 @@
     </section>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="/js/estimate-send-helpers.js"></script>
   <script src="/js/contract-scope.js"></script>
   <script defer src="/js/estimate-builder.js"></script>
   <script>

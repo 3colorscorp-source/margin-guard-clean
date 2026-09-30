@@ -806,6 +806,99 @@
     if (declineBtn) declineBtn.style.display = "none";
   }
 
+  function publicEstimatePdfSlug(est) {
+    const raw = safe(est && (est.title || est.project_name)) || "Estimate";
+    const slug = raw.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+    return slug || "Estimate";
+  }
+
+  function mapPublicEstimateToPdfPayload(est) {
+    const next = est && typeof est === "object" ? est : {};
+    const token = getQueryParam("token") || "";
+    const publicQuoteUrl = token
+      ? `${window.location.origin}/estimate-public.html?token=${encodeURIComponent(token)}`
+      : "";
+    return {
+      businessName: resolvePublicBusinessDisplayName(next),
+      business_name: next.business_name,
+      company_name: next.company_name,
+      businessEmail: next.business_email,
+      businessPhone: next.business_phone,
+      businessAddress: next.business_address,
+      logoUrl: next.logo_url || next.logoUrl || next.public_logo_url,
+      clientName: next.client_name || next.customer_name,
+      clientEmail: next.client_email || next.customer_email,
+      clientPhone: next.client_phone || next.customer_phone,
+      projectName: safe(next.title || next.project_name) || "Estimate",
+      projectAddress: next.project_address || next.job_site,
+      scope_of_work: next.scope_of_work,
+      terms: next.terms,
+      total: next.total,
+      depositRequired: next.deposit_required,
+      issueDate: next.issue_date,
+      expirationDate: next.expiration_date,
+      preparedOn: next.issue_date,
+      validThrough: next.expiration_date,
+      publicQuoteUrl,
+      estimateNumber: publicEstimatePdfSlug(next)
+    };
+  }
+
+  async function downloadPublicEstimatePdf() {
+    const btn = $("btnPublicEstimatePdf");
+    const next = window.__mgPublicEstimateLast;
+    const helpers = window.__MG_ESTIMATE_SEND_HELPERS__;
+    if (!next) {
+      showFeedback("The estimate is still loading. Try Download PDF again in a moment.", "warning");
+      return;
+    }
+    if (!helpers || typeof helpers.buildEstimatePdfPayload !== "function") {
+      showFeedback("PDF generator is not available. Refresh and try again.", "error");
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Preparing PDF...";
+    }
+    try {
+      const rebuilt = await helpers.buildEstimatePdfPayload(mapPublicEstimateToPdfPayload(next));
+      const b64 = rebuilt && rebuilt.contentBase64 ? String(rebuilt.contentBase64) : "";
+      if (!b64) {
+        throw new Error("PDF generation failed.");
+      }
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = rebuilt.fileName || `Estimate-${publicEstimatePdfSlug(next)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 1500);
+    } catch (err) {
+      showFeedback(err.message || "Unable to generate the PDF.", "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Download PDF";
+      }
+    }
+  }
+
+  function bindPublicEstimatePdfButton() {
+    const btn = $("btnPublicEstimatePdf");
+    if (!btn || btn.dataset.mgPdfBound === "1") return;
+    btn.dataset.mgPdfBound = "1";
+    btn.addEventListener("click", function () {
+      downloadPublicEstimatePdf();
+    });
+  }
+
   async function updateEstimateStatus(token, status) {
     const response = await fetch("/.netlify/functions/update-public-estimate-status", {
       method: "POST",
@@ -1357,5 +1450,8 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", loadEstimatePublic);
+  document.addEventListener("DOMContentLoaded", function () {
+    bindPublicEstimatePdfButton();
+    loadEstimatePublic();
+  });
 })();
