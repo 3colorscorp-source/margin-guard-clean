@@ -10,6 +10,7 @@
   "exact": [
     "public/estimates-invoices.html",
     "public/invoice-public.html",
+    "public/js/invoice-client-work-details.js",
     "netlify/functions/create-manual-invoice.js",
     "netlify/functions/interpret-manual-invoice-description.js",
     "netlify/functions/list-tenant-invoices.js",
