@@ -344,6 +344,11 @@ function main() {
   ok("public invoice loads invoice pdf helper", publicHtml.includes("/js/invoice-pdf.js"));
   ok("public invoice loads jspdf", publicHtml.includes("jspdf@2.5.1"));
   ok("public invoice pdf does not invent license copy", !/1083733/.test(publicHtml));
+  const invoicePdf = read("public/js/invoice-pdf.js");
+  ok("invoice pdf has payment instructions", /Payment instructions/.test(invoicePdf) && /Make check payable to/.test(invoicePdf));
+  ok("invoice pdf payable uses tenant business name", /Make check payable to " \+ businessName/.test(invoicePdf));
+  ok("invoice pdf does not hardcode Three Colors Corp", !/Three Colors Corp/.test(invoicePdf));
+  ok("invoice pdf can mail to stored address", /Mail payment to:/.test(invoicePdf));
 
   console.log("\n" + passed + " passed");
 }
