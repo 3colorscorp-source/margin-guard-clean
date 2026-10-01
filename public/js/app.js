@@ -14871,6 +14871,11 @@ window.renderSupervisor = renderSupervisor;
       settings.payment_instructions,
       branding.payment_instructions
     );
+    let licenseNumber = nonEmptyString(
+      settings.contractorLicenseNumber,
+      settings.contractor_license_number,
+      settings.legalLicenseNumber
+    );
     try {
       const payRes = await fetch("/.netlify/functions/owner-settings-deposit-link", {
         method: "GET",
@@ -14888,14 +14893,16 @@ window.renderSupervisor = renderSupervisor;
       /* keep local copy if settings fetch fails */
     }
     try {
+      const legalNo = await loadOwnerContractorLicenseNumber();
+      if (legalNo) licenseNumber = legalNo;
+    } catch (_licErr) {
+      /* keep settings license rather than inventing one */
+    }
+    try {
       return await api.buildInvoicePdfPayload({
         businessName: nonEmptyString(settings.bizName, settings.businessName, branding.businessName),
         serviceLine: nonEmptyString(settings.serviceLine, branding.serviceLine),
-        licenseNumber: nonEmptyString(
-          settings.contractorLicenseNumber,
-          settings.contractor_license_number,
-          settings.legalLicenseNumber
-        ),
+        licenseNumber,
         phone: nonEmptyString(settings.businessPhone, branding.businessPhone),
         email: nonEmptyString(settings.businessEmail, branding.businessEmail),
         address: nonEmptyString(

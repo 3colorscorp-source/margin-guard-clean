@@ -367,6 +367,8 @@ function main() {
   ok("invoice pdf formats stored labor money", /formatMoneyOrText\(src\.laborAmount/.test(invoicePdf));
   ok("public invoice pdf payload carries payment instructions", /paymentInstructions: String\(paymentInstructions/.test(publicHtml));
   ok("hub pdf loads owner payment instructions", /owner-settings-deposit-link/.test(app) && /paymentInstructions/.test(app));
+  ok("hub pdf loads contractor L# from legal profile", /loadOwnerContractorLicenseNumber\(\)/.test(app) && /tenant-legal-profile/.test(app));
+  ok("invoice pdf prints L# in the letterhead before phone", /letterhead\.push\(license\)/.test(invoicePdf) && invoicePdf.indexOf("letterhead.push(license)") < invoicePdf.indexOf('letterhead.push("Phone:'));
 
   console.log("\n" + passed + " passed");
 }
