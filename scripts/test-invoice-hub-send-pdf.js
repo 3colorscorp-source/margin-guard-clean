@@ -174,7 +174,13 @@ async function withDb(fn, opts) {
       return jsonRes(200, { id: "re_test" });
     }
     if (/hooks\.zapier\.com/i.test(urlStr)) {
-      zapierCalls.push({ method, url: urlStr });
+      let parsed = {};
+      try {
+        parsed = JSON.parse((fetchOpts && fetchOpts.body) || "{}");
+      } catch (_err) {
+        parsed = {};
+      }
+      zapierCalls.push({ method, url: urlStr, parsed });
       return jsonRes(200, { ok: true });
     }
     if (/\/storage\/v1\/bucket/.test(urlStr)) {
@@ -302,6 +308,7 @@ async function main() {
   ok("estimate PDF helpers were not rewritten for invoices", /ESTIMATE_PDF_BUCKET = "estimate-pdfs"/.test(estimateAccess));
   ok("get-estimate-pdf still uses quotes", /quotes\?public_token=/.test(getEstimate));
   ok("hub still generates the invoice PDF at send", /buildHubInvoicePdfForSend/.test(appSrc));
+  ok("zapier catch hook payload is compact", /compactInvoiceZapierCatchHookPayload/.test(sendSrc));
   ok("hub Download PDF uses the same send builder", /async function hubDrawerDownloadPdf[\s\S]{0,1200}buildHubInvoicePdfForSend/.test(appSrc));
   ok("hub Download PDF saves a file", /function downloadGeneratedInvoicePdf[\s\S]{0,900}a\.download/.test(appSrc));
 
@@ -350,6 +357,48 @@ async function main() {
     eq("dry-run did not call Zapier", zapierCalls.length, 0);
     eq("dry-run did not PATCH invoice", writes.length, 0);
   });
+
+  const prevKeyLive = process.env.RESEND_API_KEY;
+  const prevFromLive = process.env.RESEND_FROM_EMAIL;
+  delete process.env.RESEND_API_KEY;
+  delete process.env.RESEND_FROM_EMAIL;
+  try {
+    await withDb(async ({ zapierCalls, writes }) => {
+      const handler = loadSendHandler();
+      const res = await handler.handler(
+        eventFor(
+          { e: OWNER_A, t: TENANT_A, u: USER_A, c: "" },
+          {
+            id: INV_A,
+            pdfBase64: SAMPLE_PDF_B64,
+            pdfFileName: "Invoice-INV-TEST-1.pdf",
+          }
+        )
+      );
+      eq("zapier send is 200", res.statusCode, 200);
+      const body = parse(res);
+      eq("zapier delivery", body.delivery, "zapier");
+      eq("zapier called once", zapierCalls.length, 1);
+      const hook = (zapierCalls[0] && zapierCalls[0].parsed) || {};
+      const hookKeys = Object.keys(hook);
+      const pdfUrl = String(hook.pdf_url || "");
+      const publicUrl = String(hook.public_invoice_url || "");
+      ok("catch hook has public invoice url", /invoice-public\.html/.test(publicUrl));
+      ok("catch hook has pdf_url next to public url", hookKeys.indexOf("pdf_url") === hookKeys.indexOf("public_invoice_url") + 2 || hookKeys.indexOf("pdf_url") > 0);
+      ok("catch hook pdf_url is the raw file", /get-invoice-pdf/.test(pdfUrl) && /raw=1/.test(pdfUrl));
+      ok("catch hook file is the pdf url", String(hook.file || "") === pdfUrl);
+      ok("catch hook has email_intro", String(hook.email_intro || "").includes("work details"));
+      ok("catch hook has email_subject", String(hook.email_subject || "").includes("Invoice ready"));
+      ok("catch hook does not send html copies", !hook.email_html && !hook["Email Html"] && !hook.messageText);
+      ok("catch hook does not send summary aliases", hook.summary_line_1_label == null);
+      ok("invoice marked sent after zapier", writes.some((w) => w.method === "PATCH" && w.table === "invoices"));
+    }, { allowInvoicePatch: true });
+  } finally {
+    if (prevKeyLive == null) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = prevKeyLive;
+    if (prevFromLive == null) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = prevFromLive;
+  }
 
   await withDb(async ({ storagePosts }) => {
     const handler = loadSendHandler();

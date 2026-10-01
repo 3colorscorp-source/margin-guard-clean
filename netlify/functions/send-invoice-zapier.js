@@ -265,6 +265,36 @@ function attachInvoicePdfFile(payload, pdfUrl, pdfFileName) {
   return payload;
 }
 
+/** Catch Hook keeps ~20 keys from the first sample and drops later aliases (Email Html, pdf_url). */
+function compactInvoiceZapierCatchHookPayload(payload, { pdfUrl, pdfFileName, emailIntro }) {
+  const src = payload && typeof payload === "object" ? payload : {};
+  const publicUrl = String(src.public_invoice_url || src["Public Invoice Url"] || "").trim();
+  const attached = attachInvoicePdfFile({}, pdfUrl, pdfFileName);
+  const fileUrl = String(attached.pdf_url || "").trim();
+  return {
+    client_name: String(src.client_name || "").trim(),
+    client_email: String(src.client_email || src["Client Email"] || "").trim(),
+    "Client Email": String(src.client_email || src["Client Email"] || "").trim(),
+    public_invoice_url: publicUrl,
+    "Public Invoice Url": publicUrl,
+    pdf_url: fileUrl,
+    "Pdf Url": fileUrl,
+    file: fileUrl,
+    email_subject: String(src.email_subject || src["Email Subject"] || "").trim(),
+    email_intro: String(emailIntro || src.email_intro || "").trim(),
+    business_name: String(src.business_name || "").trim(),
+    project_name: String(src.project_name || "").trim(),
+    invoice_id: String(src.invoice_id || "").trim(),
+    quote_id: String(src.quote_id || "").trim(),
+    tenant_id: String(src.tenant_id || "").trim(),
+    event_type: String(src.event_type || "").trim(),
+    schema_version: String(src.schema_version || "").trim(),
+    idempotency_key: String(src.idempotency_key || "").trim(),
+    paid_to_date: src.paid_to_date,
+    balance_due: src.balance_due
+  };
+}
+
 const INVOICE_EMAIL_CLOSING = "If you have questions about this invoice, we are here to help.";
 
 function buildInvoiceEmailPlain({ customerName, intro, publicUrl, summaryTitle, summaryRows, closing, businessName }) {
@@ -1409,28 +1439,31 @@ exports.handler = async (event) => {
         );
       }
 
+      const zapierPayload = compactInvoiceZapierCatchHookPayload(payload, {
+        pdfUrl,
+        pdfFileName,
+        emailIntro: canonical.email_intro
+      });
       console.log("[zapier-signature] running...");
       console.log(
         "[zapier-signature] secret exists:",
         !!process.env.ZAPIER_WEBHOOK_SECRET
       );
-      const signatureMeta = buildZapierSignatureMeta(payload);
+      const signatureMeta = buildZapierSignatureMeta(zapierPayload);
       console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
       if (signatureMeta) {
-        payload.zapier_signature = signatureMeta.signature;
-        payload.zapier_timestamp = signatureMeta.timestamp;
-        payload.zapier_nonce = signatureMeta.nonce;
-        payload.zapier_signature_version = signatureMeta.version;
+        zapierPayload.zapier_signature = signatureMeta.signature;
+        zapierPayload.zapier_timestamp = signatureMeta.timestamp;
+        zapierPayload.zapier_nonce = signatureMeta.nonce;
+        zapierPayload.zapier_signature_version = signatureMeta.version;
       }
       console.log("[send-invoice-zapier] payload fields", {
         project_name,
         invoice_copy_variant: canonical.invoice_copy_variant,
-        amount: payload.amount,
-        paid_to_date: payload.paid_to_date,
-        balance_due: payload.balance_due,
-        contract_total: payload.contract_total,
-        remaining_balance: payload.remaining_balance,
-        email_subject: payload.email_subject
+        pdf_url: zapierPayload.pdf_url ? "[pdf]" : "",
+        paid_to_date: zapierPayload.paid_to_date,
+        balance_due: zapierPayload.balance_due,
+        email_subject: zapierPayload.email_subject
       });
 
       console.log("[zapier-invoice]", {
@@ -1452,7 +1485,7 @@ exports.handler = async (event) => {
         zapRes = await fetch(webhookUrl, {
           method: "POST",
           headers,
-          body: JSON.stringify(payload)
+          body: JSON.stringify(zapierPayload)
         });
       } catch (error) {
         console.warn("[Invoice Send] Zapier request failed", error?.message || error);
