@@ -31,18 +31,29 @@
     }
   }
 
-  function wrapLines(doc, text, maxWidth) {
+  function wrapLines(doc, text, maxWidth, tight) {
     const raw = trimStr(text);
     if (!raw) return [];
     const paragraphs = raw.split(/\n+/);
     const out = [];
-    paragraphs.forEach((p) => {
+    paragraphs.forEach((p, idx) => {
       const wrapped = doc.splitTextToSize(p, maxWidth);
       wrapped.forEach((line) => out.push(line));
-      out.push("");
+      if (!tight && idx < paragraphs.length - 1) out.push("");
     });
     while (out.length && !out[out.length - 1]) out.pop();
     return out;
+  }
+
+  function storedHasAddress(stored, address) {
+    const s = trimStr(stored).toLowerCase();
+    const a = trimStr(address).toLowerCase();
+    if (!s || !a) return false;
+    if (s.indexOf(a) >= 0) return true;
+    const compact = (t) => t.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
+    if (compact(s).indexOf(compact(a)) >= 0) return true;
+    const street = a.match(/\d+\s+[a-z0-9]+/i);
+    return !!(street && s.indexOf(street[0].toLowerCase()) >= 0);
   }
 
   async function buildInvoicePdfPayload(data) {
@@ -54,9 +65,18 @@
     const left = 48;
     const right = pageWidth - 48;
     const width = right - left;
-    let y = 56;
+    const pageBottom = 756;
+    let y = 44;
     const dark = [17, 24, 39];
     const muted = [107, 114, 128];
+
+    function ensureLine(step) {
+      const next = y + (step || 12);
+      if (next > pageBottom) {
+        doc.addPage();
+        y = 44;
+      }
+    }
 
     const businessName = trimStr(src.businessName);
     const serviceLine = trimStr(src.serviceLine);
@@ -69,17 +89,17 @@
 
     if (businessName) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(18);
+      doc.setFontSize(16);
       doc.setTextColor(...dark);
       doc.text(businessName, left, y);
-      y += 20;
+      y += 16;
     }
     if (serviceLine) {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setTextColor(...muted);
       doc.text(serviceLine, left, y);
-      y += 16;
+      y += 13;
     }
     const letterhead = [];
     if (license) letterhead.push(license);
@@ -87,26 +107,26 @@
     if (email) letterhead.push("Email: " + email);
     if (address) letterhead.push("Address: " + address);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
+    doc.setFontSize(9);
     doc.setTextColor(...dark);
     letterhead.forEach((line) => {
       doc.text(line, left, y);
-      y += 13;
+      y += 11;
     });
-    y += 10;
+    y += 6;
     doc.setDrawColor(229, 231, 235);
     doc.setLineWidth(1);
     doc.line(left, y, right, y);
-    y += 22;
+    y += 14;
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setTextColor(...dark);
     doc.text("Invoice " + invoiceNo, left, y);
-    y += 20;
+    y += 15;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     const meta = [
       trimStr(src.customerName) ? "Customer: " + trimStr(src.customerName) : "",
       trimStr(src.customerEmail) ? "Email: " + trimStr(src.customerEmail) : "",
@@ -116,27 +136,24 @@
     ].filter(Boolean);
     meta.forEach((line) => {
       doc.text(line, left, y);
-      y += 14;
+      y += 11;
     });
-    y += 10;
+    y += 6;
 
     const work = trimStr(src.workDetails);
     if (work) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.text("Work details", left, y);
-      y += 14;
+      y += 12;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      wrapLines(doc, work, width).forEach((line) => {
-        if (y > 720) {
-          doc.addPage();
-          y = 56;
-        }
+      doc.setFontSize(9);
+      wrapLines(doc, work, width, true).forEach((line) => {
+        ensureLine(11);
         doc.text(line, left, y);
-        y += 13;
+        y += 11;
       });
-      y += 8;
+      y += 4;
     }
 
     const rows = [
@@ -151,21 +168,19 @@
     ].filter(Boolean);
 
     if (rows.length) {
-      if (y > 640) {
-        doc.addPage();
-        y = 56;
-      }
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
+      ensureLine(12);
       doc.text("Summary", left, y);
-      y += 16;
+      y += 13;
       rows.forEach((row, idx) => {
         const isLast = idx === rows.length - 1;
+        ensureLine(13);
         doc.setFont("helvetica", isLast ? "bold" : "normal");
-        doc.setFontSize(isLast ? 12 : 10);
+        doc.setFontSize(isLast ? 10 : 9);
         doc.text(String(row[0]), left, y);
         doc.text(String(row[1]), right, y, { align: "right" });
-        y += 16;
+        y += isLast ? 14 : 12;
       });
     }
 
@@ -173,35 +188,28 @@
     const payLine = businessName ? "Make check payable to " + businessName : "";
     const mailLine = address ? "Mail payment to: " + address : "";
     const instrHasPayable = /payable to/i.test(storedInstr);
-    const instrHasMail = /mail payment to/i.test(storedInstr) || (address && storedInstr.toLowerCase().indexOf(address.toLowerCase()) >= 0);
+    const instrHasMail = /mail payment to/i.test(storedInstr) || storedHasAddress(storedInstr, address);
     const instrParts = [];
     if (storedInstr) instrParts.push(storedInstr);
     if (payLine && !instrHasPayable) instrParts.push(payLine);
     if (mailLine && !instrHasMail) instrParts.push(mailLine);
 
     if (instrParts.length) {
-      if (y > 640) {
-        doc.addPage();
-        y = 56;
-      } else {
-        y += 12;
-      }
+      y += 6;
+      ensureLine(12);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(...dark);
       doc.text("Payment instructions", left, y);
-      y += 16;
+      y += 12;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       instrParts.forEach((part, partIdx) => {
-        if (partIdx > 0) y += 6;
-        wrapLines(doc, part, width).forEach((line) => {
-          if (y > 720) {
-            doc.addPage();
-            y = 56;
-          }
+        if (partIdx > 0) y += 3;
+        wrapLines(doc, part, width, true).forEach((line) => {
+          ensureLine(11);
           doc.text(line, left, y);
-          y += 13;
+          y += 11;
         });
       });
     }

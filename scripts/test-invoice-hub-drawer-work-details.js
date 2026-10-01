@@ -351,6 +351,10 @@ function main() {
   ok("invoice pdf skips duplicate payable line", /instrHasPayable/.test(invoicePdf));
   ok("invoice pdf does not hardcode Three Colors Corp", !/Three Colors Corp/.test(invoicePdf));
   ok("invoice pdf can mail to stored address", /Mail payment to:/.test(invoicePdf));
+  ok("invoice pdf wraps payment copy tightly", /wrapLines\(doc, part, width, true\)/.test(invoicePdf));
+  ok("invoice pdf skips duplicate street in stored instructions", /storedHasAddress/.test(invoicePdf));
+  ok("invoice pdf does not force a second page at 640pt", !/y > 640/.test(invoicePdf));
+  ok("invoice pdf paginates only at the letter bottom", /pageBottom = 756/.test(invoicePdf) && /ensureLine/.test(invoicePdf));
   ok("public invoice pdf payload carries payment instructions", /paymentInstructions: String\(paymentInstructions/.test(publicHtml));
   ok("hub pdf loads owner payment instructions", /owner-settings-deposit-link/.test(app) && /paymentInstructions/.test(app));
 
