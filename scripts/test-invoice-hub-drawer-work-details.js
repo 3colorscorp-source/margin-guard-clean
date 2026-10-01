@@ -354,7 +354,13 @@ function main() {
   ok("invoice pdf wraps payment copy tightly", /wrapLines\(doc, part, width, true\)/.test(invoicePdf));
   ok("invoice pdf skips duplicate street in stored instructions", /storedHasAddress/.test(invoicePdf));
   ok("invoice pdf does not force a second page at 640pt", !/y > 640/.test(invoicePdf));
-  ok("invoice pdf paginates only at the letter bottom", /pageBottom = 756/.test(invoicePdf) && /ensureLine/.test(invoicePdf));
+  ok("invoice pdf paginates only at the letter bottom", /pageBottom = 752/.test(invoicePdf) && /ensureLine/.test(invoicePdf));
+  ok("invoice pdf uses a Square-style INVOICE header", /doc\.text\("INVOICE"/.test(invoicePdf));
+  ok("invoice pdf shows Amount due from remaining balance", /Amount due/.test(invoicePdf) && /remainingBalance/.test(invoicePdf));
+  ok("invoice pdf has a Bill to block", /Bill to/.test(invoicePdf));
+  ok("invoice pdf keeps totals and payment together", /measureClosingHeight/.test(invoicePdf) && /currentSection = "closing"/.test(invoicePdf));
+  ok("invoice pdf continues long work details on the next page", /Work details \(continued\)/.test(invoicePdf));
+  ok("invoice pdf prints Page X of Y", /Page " \+ i \+ " of " \+ pageCount/.test(invoicePdf));
   ok("public invoice pdf payload carries payment instructions", /paymentInstructions: String\(paymentInstructions/.test(publicHtml));
   ok("hub pdf loads owner payment instructions", /owner-settings-deposit-link/.test(app) && /paymentInstructions/.test(app));
 
