@@ -1466,7 +1466,7 @@
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
 
-      publicInvoicePdfPayload = mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts);
+      publicInvoicePdfPayload = mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, instrClean);
       bindPublicInvoicePdfButtons();
     } catch (err) {
       showError(err && err.message ? err.message : "Unexpected error loading invoice.");
@@ -1475,7 +1475,7 @@
 
   let publicInvoicePdfPayload = null;
 
-  function mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts) {
+  function mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, paymentInstructions) {
     return {
       businessName: String((data && data.business_name) || "").trim(),
       serviceLine: String((data && (data.service_line || data.serviceLine)) || "").trim(),
@@ -1496,7 +1496,8 @@
       contractTotal: facts && facts.contractTotal,
       invoiceAmount: facts && facts.invoiceAmount,
       paidToDate: facts && facts.paid,
-      remainingBalance: facts && facts.balance
+      remainingBalance: facts && facts.balance,
+      paymentInstructions: String(paymentInstructions || "").trim()
     };
   }
 

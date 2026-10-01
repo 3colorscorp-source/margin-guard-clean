@@ -347,8 +347,12 @@ function main() {
   const invoicePdf = read("public/js/invoice-pdf.js");
   ok("invoice pdf has payment instructions", /Payment instructions/.test(invoicePdf) && /Make check payable to/.test(invoicePdf));
   ok("invoice pdf payable uses tenant business name", /Make check payable to " \+ businessName/.test(invoicePdf));
+  ok("invoice pdf uses stored tenant payment instructions", /src\.paymentInstructions/.test(invoicePdf));
+  ok("invoice pdf skips duplicate payable line", /instrHasPayable/.test(invoicePdf));
   ok("invoice pdf does not hardcode Three Colors Corp", !/Three Colors Corp/.test(invoicePdf));
   ok("invoice pdf can mail to stored address", /Mail payment to:/.test(invoicePdf));
+  ok("public invoice pdf payload carries payment instructions", /paymentInstructions: String\(paymentInstructions/.test(publicHtml));
+  ok("hub pdf loads owner payment instructions", /owner-settings-deposit-link/.test(app) && /paymentInstructions/.test(app));
 
   console.log("\n" + passed + " passed");
 }

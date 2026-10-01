@@ -169,7 +169,17 @@
       });
     }
 
-    if (businessName) {
+    const storedInstr = trimStr(src.paymentInstructions);
+    const payLine = businessName ? "Make check payable to " + businessName : "";
+    const mailLine = address ? "Mail payment to: " + address : "";
+    const instrHasPayable = /payable to/i.test(storedInstr);
+    const instrHasMail = /mail payment to/i.test(storedInstr) || (address && storedInstr.toLowerCase().indexOf(address.toLowerCase()) >= 0);
+    const instrParts = [];
+    if (storedInstr) instrParts.push(storedInstr);
+    if (payLine && !instrHasPayable) instrParts.push(payLine);
+    if (mailLine && !instrHasMail) instrParts.push(mailLine);
+
+    if (instrParts.length) {
       if (y > 640) {
         doc.addPage();
         y = 56;
@@ -183,17 +193,9 @@
       y += 16;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      wrapLines(doc, "Make check payable to " + businessName, width).forEach((line) => {
-        if (y > 720) {
-          doc.addPage();
-          y = 56;
-        }
-        doc.text(line, left, y);
-        y += 13;
-      });
-      if (address) {
-        y += 4;
-        wrapLines(doc, "Mail payment to: " + address, width).forEach((line) => {
+      instrParts.forEach((part, partIdx) => {
+        if (partIdx > 0) y += 6;
+        wrapLines(doc, part, width).forEach((line) => {
           if (y > 720) {
             doc.addPage();
             y = 56;
@@ -201,7 +203,7 @@
           doc.text(line, left, y);
           y += 13;
         });
-      }
+      });
     }
 
     const base64 = doc.output("datauristring").split(",")[1];

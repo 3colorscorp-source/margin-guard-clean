@@ -14866,6 +14866,27 @@ window.renderSupervisor = renderSupervisor;
       laborAmount = String(parsed.laborAmount || "").trim();
       materialsAmount = String(parsed.materialsAmount || "").trim();
     }
+    let paymentInstructions = nonEmptyString(
+      settings.paymentInstructions,
+      settings.payment_instructions,
+      branding.payment_instructions
+    );
+    try {
+      const payRes = await fetch("/.netlify/functions/owner-settings-deposit-link", {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+      if (payRes.ok) {
+        const payData = await payRes.json();
+        paymentInstructions = nonEmptyString(
+          payData && payData.payment_instructions,
+          paymentInstructions
+        );
+      }
+    } catch (_payErr) {
+      /* keep local copy if settings fetch fails */
+    }
     try {
       return await api.buildInvoicePdfPayload({
         businessName: nonEmptyString(settings.bizName, settings.businessName, branding.businessName),
@@ -14897,7 +14918,8 @@ window.renderSupervisor = renderSupervisor;
         contractTotalLabel: "Contract total",
         invoiceAmount: finiteNumber(row?.amount, finiteNumber(row?.project?.invoice?.baseAmount, 0)),
         paidToDate: finiteNumber(row?.paid, finiteNumber(row?.project?.invoice?.receivedApplied, 0)),
-        remainingBalance: finiteNumber(row?.balance, 0)
+        remainingBalance: finiteNumber(row?.balance, 0),
+        paymentInstructions
       });
     } catch (_err) {
       return null;
