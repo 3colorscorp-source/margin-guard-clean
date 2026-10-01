@@ -252,6 +252,50 @@
       }
     }
 
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card {
+      position: relative;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-send-success {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 28px 24px;
+      text-align: center;
+      background: rgba(8, 12, 18, 0.94);
+      border-radius: inherit;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-send-success[hidden] {
+      display: none !important;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-send-success__mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #059669;
+      color: #ecfdf5;
+      box-shadow: 0 0 0 8px rgba(5, 150, 105, 0.18);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-send-success__title {
+      margin: 6px 0 0;
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #f8fafc;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-send-success__msg {
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: rgba(226, 232, 240, 0.78);
+      max-width: 28rem;
+    }
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-work-details {
       margin-top: 12px;
       padding: 14px 16px;
@@ -1786,6 +1830,15 @@
             <button class="icon-btn" id="btnHubDrawerClose" aria-label="Close">X</button>
           </div>
         </div>
+      </div>
+      <div id="hubDrawerSendSuccess" class="hub-drawer-send-success" hidden aria-hidden="true" role="status">
+        <div class="hub-drawer-send-success__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="32" height="32" focusable="false">
+            <path fill="currentColor" d="M9.2 16.2 5.8 12.8l-1.4 1.4 4.8 4.8 10.6-10.6-1.4-1.4z"></path>
+          </svg>
+        </div>
+        <div class="hub-drawer-send-success__title">Invoice sent successfully</div>
+        <div class="hub-drawer-send-success__msg" id="hubDrawerSendSuccessMsg"></div>
       </div>
       <div class="modal-body">
         <div class="supervisor-summary-grid" id="hubDrawerStats"></div>

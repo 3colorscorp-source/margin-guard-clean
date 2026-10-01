@@ -15020,7 +15020,7 @@ window.renderSupervisor = renderSupervisor;
 
   /** Tenant invoice row from list-tenant-invoices (no local project id). */
   let hubInvoiceSendInFlight = false;
-  const HUB_INVOICE_SEND_SUCCESS_HOLD_MS = 1800;
+  const HUB_INVOICE_SEND_SUCCESS_HOLD_MS = 2500;
 
   function hubInvoiceSendCustomerEmail(row) {
     return String(
@@ -15056,8 +15056,36 @@ window.renderSupervisor = renderSupervisor;
 
   function hubInvoiceSendSuccessMessage(row, emailOverride) {
     const email = String(emailOverride || hubInvoiceSendCustomerEmail(row) || "").trim();
-    if (email) return `Invoice send request sent to ${email}.`;
-    return "Invoice send request sent.";
+    if (email) return "Invoice sent successfully to " + email + ".";
+    return "Invoice sent successfully.";
+  }
+
+  function hideHubDrawerInvoiceSentSuccess() {
+    const el = $("hubDrawerSendSuccess");
+    if (!el) return;
+    el.hidden = true;
+    el.setAttribute("aria-hidden", "true");
+  }
+
+  function showHubDrawerInvoiceSentSuccess(row, emailOverride) {
+    const el = $("hubDrawerSendSuccess");
+    const msgEl = $("hubDrawerSendSuccessMsg");
+    if (!el) return;
+    const email = String(emailOverride || hubInvoiceSendCustomerEmail(row) || "").trim();
+    if (msgEl) msgEl.textContent = email ? "Sent to " + email : "";
+    el.hidden = false;
+    el.setAttribute("aria-hidden", "false");
+  }
+
+  function closeHubInvoiceDrawerAfterSend() {
+    hideHubDrawerInvoiceSentSuccess();
+    if (typeof window.__mgCloseHubDrawer === "function") {
+      window.__mgCloseHubDrawer();
+      return;
+    }
+    const drawer = $("hubDrawer");
+    if (drawer) drawer.setAttribute("aria-hidden", "true");
+    closeHubDrawerActionsMenu();
   }
 
   async function sendHubServerInvoiceRow(row) {
@@ -15139,7 +15167,6 @@ window.renderSupervisor = renderSupervisor;
         hubInvoiceSendSetDrawerButtonBusy(false, row);
         return { ok: false };
       }
-      setHubFeedback(hubInvoiceSendSuccessMessage(row, result.email), "ok");
       if (typeof opts.afterSuccess === "function") {
         await opts.afterSuccess(result);
       } else {
@@ -15149,11 +15176,12 @@ window.renderSupervisor = renderSupervisor;
           void refreshHubServerInvoicesCacheQuietly();
         }
       }
-      // Refresh may re-render the drawer button; keep it locked through the success hold.
+      showHubDrawerInvoiceSentSuccess(row, result.email);
       hubInvoiceSendSetDrawerButtonBusy(true, window.__MG_ACTIVE_INVOICE_ROW__ || row);
       await new Promise((resolve) => setTimeout(resolve, HUB_INVOICE_SEND_SUCCESS_HOLD_MS));
-      const active = window.__MG_ACTIVE_INVOICE_ROW__ || row;
-      hubInvoiceSendSetDrawerButtonBusy(false, active);
+      const successMsg = hubInvoiceSendSuccessMessage(row, result.email);
+      closeHubInvoiceDrawerAfterSend();
+      setHubFeedback(successMsg, "ok");
       return { ok: true };
     } catch (err) {
       setHubFeedback(String(err?.message || err || "Could not send invoice."), "err");
@@ -17071,6 +17099,7 @@ window.renderSupervisor = renderSupervisor;
       }
     }
     window.__MG_ACTIVE_INVOICE_ROW__ = row;
+    hideHubDrawerInvoiceSentSuccess();
     hubDebugLog("[Invoice Hub] send invoice button rendered", row);
 
     hubDrawerRenderDeliveryEmail(row);
@@ -18511,6 +18540,7 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const closeHubDrawer = () => {
+      hideHubDrawerInvoiceSentSuccess();
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
       closeHubRecordPayPremiumMenus();
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
@@ -18537,7 +18567,6 @@ window.renderSupervisor = renderSupervisor;
             await runHubInvoiceSendWithFeedback(row, {
               afterSuccess: async () => {
                 refresh();
-                refreshSelectedRow();
               }
             });
           } else {
@@ -18548,7 +18577,6 @@ window.renderSupervisor = renderSupervisor;
               },
               afterSuccess: async () => {
                 refresh();
-                refreshSelectedRow();
               }
             });
           }
@@ -18569,7 +18597,6 @@ window.renderSupervisor = renderSupervisor;
           await runHubInvoiceSendWithFeedback(row, {
             afterSuccess: async () => {
               refresh();
-              refreshSelectedRow();
             }
           });
         } else {
@@ -18580,7 +18607,6 @@ window.renderSupervisor = renderSupervisor;
             },
             afterSuccess: async () => {
               refresh();
-              refreshSelectedRow();
             }
           });
         }
@@ -19932,6 +19958,7 @@ window.renderSupervisor = renderSupervisor;
     }
 
     if ($("btnHubDrawerClose")) $("btnHubDrawerClose").onclick = closeHubDrawer;
+    window.__mgCloseHubDrawer = closeHubDrawer;
     if ($("btnHubDrawerActionsMenu")) {
       $("btnHubDrawerActionsMenu").onclick = (ev) => {
         ev.preventDefault();
@@ -20471,7 +20498,6 @@ window.renderSupervisor = renderSupervisor;
           },
           afterSuccess: async () => {
             await refreshHubServerInvoicesCacheQuietly();
-            refreshSelectedRow();
           }
         });
       });

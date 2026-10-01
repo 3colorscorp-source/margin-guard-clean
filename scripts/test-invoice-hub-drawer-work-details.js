@@ -189,6 +189,11 @@ function main() {
   ok("app renders work details in the drawer", /function hubDrawerRenderWorkDetails\(row\)/.test(app));
   ok("drawer Download PDF uses the send PDF builder", /async function hubDrawerDownloadPdf[\s\S]{0,1200}buildHubInvoicePdfForSend/.test(app));
   ok("drawer Download PDF saves a file", /function downloadGeneratedInvoicePdf[\s\S]{0,900}a\.download/.test(app));
+  ok("drawer has send-success overlay", html.includes('id="hubDrawerSendSuccess"') && html.includes("Invoice sent successfully"));
+  ok("send success shows a checkmark overlay", /function showHubDrawerInvoiceSentSuccess/.test(app) && /hub-drawer-send-success__mark/.test(html));
+  ok("send success waits then closes the drawer", /HUB_INVOICE_SEND_SUCCESS_HOLD_MS = 2500/.test(app) && /closeHubInvoiceDrawerAfterSend/.test(app));
+  ok("send success copy is Invoice sent successfully", /Invoice sent successfully/.test(app));
+  ok("send invoice does not reopen the drawer after success", !/action === "send-invoice"[\s\S]{0,2200}refreshSelectedRow\(\);[\s\S]{0,200}action === "record-payment"/.test(app));
   ok("drawer summarizes billed work", /function summarizeHubBilledWork\(raw\)/.test(app));
   ok("drawer render uses billed-work summary", /summarizeHubBilledWork\(parsed\.billedWork\)/.test(app));
   ok("drawer render calls work details", /hubDrawerRenderWorkDetails\(row\)/.test(app));
