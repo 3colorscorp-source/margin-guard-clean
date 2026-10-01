@@ -31,6 +31,15 @@
     }
   }
 
+  function formatMoneyOrText(value, currency) {
+    const raw = trimStr(value);
+    if (!raw) return "";
+    const m = raw.match(/\$?([0-9][0-9,]*(?:\.[0-9]{2})?)/);
+    if (!m) return raw;
+    const n = Number(String(m[1]).replace(/,/g, ""));
+    return Number.isFinite(n) ? formatMoney(n, currency) : raw;
+  }
+
   function wrapLines(doc, text, maxWidth, tight) {
     const raw = trimStr(text);
     if (!raw) return [];
@@ -68,11 +77,21 @@
     const width = right - left;
     const pageBottom = 752;
     const headerTop = 44;
+    const padX = 10;
+    const sectionHeadH = 16;
+    const workRowH = 14;
+    const ledgerRowH = 16;
+    const ledgerLastH = 20;
     let y = headerTop;
     let currentSection = "header";
+    let frameY = 0;
     const dark = [17, 24, 39];
     const muted = [107, 114, 128];
-    const lineGray = [229, 231, 235];
+    const bodyText = [55, 65, 81];
+    const hair = [216, 221, 229];
+    const headBg = [247, 248, 250];
+    const lastBg = [251, 252, 253];
+    const ruleSoft = [238, 241, 245];
 
     const businessName = trimStr(src.businessName);
     const serviceLine = trimStr(src.serviceLine);
@@ -84,10 +103,39 @@
     const currency = trimStr(src.currency);
     const dueAmount = src.remainingBalance != null ? src.remainingBalance : src.invoiceAmount;
 
-    function drawRule(atY) {
-      doc.setDrawColor(...lineGray);
-      doc.setLineWidth(1);
+    function drawRule(atY, color) {
+      const c = color || hair;
+      doc.setDrawColor(...c);
+      doc.setLineWidth(0.7);
       doc.line(left, atY, right, atY);
+    }
+
+    function closeFrame() {
+      if (!frameY || y <= frameY) {
+        frameY = 0;
+        return;
+      }
+      doc.setDrawColor(...hair);
+      doc.setLineWidth(0.7);
+      doc.rect(left, frameY, width, y - frameY);
+      frameY = 0;
+    }
+
+    function beginFrame() {
+      frameY = y;
+    }
+
+    function drawSectionBar(title) {
+      ensureLine(sectionHeadH + 2);
+      doc.setFillColor(...headBg);
+      doc.setDrawColor(...hair);
+      doc.setLineWidth(0.7);
+      doc.rect(left, y, width, sectionHeadH, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text(String(title).toUpperCase(), left + padX, y + 11);
+      y += sectionHeadH;
     }
 
     function drawContinuationHeader() {
@@ -100,21 +148,18 @@
       doc.text("Invoice " + invoiceNo, right, y, { align: "right" });
       y += 10;
       drawRule(y);
-      y += 14;
-      if (currentSection === "work") {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.setTextColor(...muted);
-        doc.text("Work details (continued)", left, y);
-        y += 14;
-        doc.setTextColor(...dark);
-      }
+      y += 12;
     }
 
     function startNewPage() {
+      closeFrame();
       doc.addPage();
       y = headerTop;
       drawContinuationHeader();
+      if (currentSection === "work") {
+        drawSectionBar("Work details (continued)");
+        beginFrame();
+      }
     }
 
     function ensureLine(step) {
@@ -157,98 +202,125 @@
       });
     });
 
+    const metaW = 196;
+    const metaX = right - metaW;
     let rightY = headerTop;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.setTextColor(...dark);
     doc.text("INVOICE", right, rightY, { align: "right" });
-    rightY += 20;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Invoice #  " + invoiceNo, right, rightY, { align: "right" });
-    rightY += 12;
-    if (trimStr(src.issueDate)) {
-      doc.text("Issue date  " + trimStr(src.issueDate), right, rightY, { align: "right" });
-      rightY += 12;
-    }
-    if (trimStr(src.dueDate)) {
-      doc.text("Due date  " + trimStr(src.dueDate), right, rightY, { align: "right" });
-      rightY += 12;
-    }
-    if (dueAmount != null) {
-      rightY += 6;
+    rightY += 18;
+
+    const metaRows = [["Invoice #", invoiceNo]];
+    if (trimStr(src.issueDate)) metaRows.push(["Issue date", trimStr(src.issueDate)]);
+    if (trimStr(src.dueDate)) metaRows.push(["Due date", trimStr(src.dueDate)]);
+    const metaRowH = 15;
+    const metaBoxH = metaRows.length * metaRowH + (dueAmount != null ? 34 : 0);
+    doc.setDrawColor(...hair);
+    doc.setLineWidth(0.7);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(metaX, rightY, metaW, metaBoxH, "FD");
+    metaRows.forEach((row, idx) => {
+      const rowY = rightY + idx * metaRowH;
+      if (idx > 0) {
+        doc.setDrawColor(...ruleSoft);
+        doc.setLineWidth(0.5);
+        doc.line(metaX + 8, rowY, right - 8, rowY);
+      }
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(...muted);
-      doc.text("Amount due", right, rightY, { align: "right" });
-      rightY += 14;
+      doc.text(row[0], metaX + 8, rowY + 11);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(8);
       doc.setTextColor(...dark);
-      doc.text(formatMoney(dueAmount, currency), right, rightY, { align: "right" });
-      rightY += 8;
+      doc.text(row[1], right - 8, rowY + 11, { align: "right" });
+    });
+    rightY += metaRows.length * metaRowH;
+    if (dueAmount != null) {
+      doc.setFillColor(...headBg);
+      doc.rect(metaX, rightY, metaW, 34, "F");
+      doc.setDrawColor(...hair);
+      doc.setLineWidth(0.7);
+      doc.line(metaX, rightY, right, rightY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      doc.text("Amount due", right - 8, rightY + 12, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...dark);
+      doc.text(formatMoney(dueAmount, currency), right - 8, rightY + 26, { align: "right" });
+      rightY += 34;
     }
+    doc.setDrawColor(...hair);
+    doc.setLineWidth(0.7);
+    doc.rect(metaX, headerTop + 18, metaW, rightY - (headerTop + 18));
 
-    y = Math.max(leftY, rightY) + 10;
-    drawRule(y);
-    y += 16;
+    y = Math.max(leftY, rightY) + 12;
 
     const billName = trimStr(src.customerName);
     const billEmail = trimStr(src.customerEmail);
     const billProject = trimStr(src.projectName);
     if (billName || billEmail || billProject) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(...muted);
-      doc.text("Bill to", left, y);
-      y += 12;
-      doc.setTextColor(...dark);
-      if (billName) {
+      currentSection = "bill";
+      drawSectionBar("Bill to");
+      beginFrame();
+      const billRows = [];
+      if (billName) billRows.push(["Name", billName]);
+      if (billEmail) billRows.push(["Email", billEmail]);
+      if (billProject) billRows.push(["Project", billProject]);
+      billRows.forEach((row, idx) => {
+        const h = 16;
+        ensureLine(h);
+        if (idx > 0) {
+          doc.setDrawColor(...ruleSoft);
+          doc.setLineWidth(0.5);
+          doc.line(left + padX, y, right - padX, y);
+        }
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(...muted);
+        doc.text(row[0], left + padX, y + 11);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text(billName, left, y);
-        y += 12;
-      }
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      if (billEmail) {
-        doc.text(billEmail, left, y);
-        y += 11;
-      }
-      if (billProject) {
-        doc.text(billProject, left, y);
-        y += 11;
-      }
+        doc.setFontSize(9);
+        doc.setTextColor(...dark);
+        doc.text(row[1], left + 72, y + 11);
+        y += h;
+      });
+      closeFrame();
       y += 8;
     }
 
     const work = trimStr(src.workDetails);
+    const workInnerW = width - padX * 2;
     if (work) {
       currentSection = "work";
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(...muted);
-      doc.text("Work details", left, y);
-      y += 6;
-      drawRule(y);
-      y += 14;
+      drawSectionBar("Work details");
+      beginFrame();
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.setTextColor(...dark);
-      wrapLines(doc, work, width, true).forEach((line) => {
-        ensureLine(11);
-        doc.text(line, left, y);
-        y += 11;
+      wrapLines(doc, work, workInnerW, true).forEach((line) => {
+        ensureLine(workRowH);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...bodyText);
+        doc.text(line, left + padX, y + 10);
+        doc.setDrawColor(...ruleSoft);
+        doc.setLineWidth(0.5);
+        doc.line(left + padX, y + workRowH - 1, right - padX, y + workRowH - 1);
+        y += workRowH;
       });
-      y += 10;
+      closeFrame();
+      y += 8;
     }
 
     const rows = [
       trimStr(src.contractTotalLabel) && src.contractTotal != null
         ? [src.contractTotalLabel, formatMoney(src.contractTotal, currency)]
         : null,
-      trimStr(src.laborAmount) ? ["Labor", trimStr(src.laborAmount)] : null,
-      trimStr(src.materialsAmount) ? ["Materials", trimStr(src.materialsAmount)] : null,
+      trimStr(src.laborAmount) ? ["Labor", formatMoneyOrText(src.laborAmount, currency)] : null,
+      trimStr(src.materialsAmount) ? ["Materials", formatMoneyOrText(src.materialsAmount, currency)] : null,
       src.invoiceAmount != null ? ["Invoice amount", formatMoney(src.invoiceAmount, currency)] : null,
       src.paidToDate != null ? ["Paid to date", formatMoney(src.paidToDate, currency)] : null,
       src.remainingBalance != null ? ["Remaining balance", formatMoney(src.remainingBalance, currency)] : null
@@ -265,23 +337,23 @@
     if (mailLine && !instrHasMail) instrParts.push(mailLine);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const instrLines = instrParts.map((part) => wrapLines(doc, part, width, true));
+    const instrLines = instrParts.map((part) => wrapLines(doc, part, workInnerW, true));
 
     function measureClosingHeight() {
       let h = 0;
       if (rows.length) {
-        h += 8;
+        h += 8 + sectionHeadH;
         rows.forEach((_, idx) => {
-          h += idx === rows.length - 1 ? 16 : 13;
+          h += idx === rows.length - 1 ? ledgerLastH : ledgerRowH;
         });
-        h += 8;
       }
       if (instrParts.length) {
-        h += 20;
+        h += 8 + sectionHeadH + 8;
         instrLines.forEach((lines, partIdx) => {
           if (partIdx > 0) h += 4;
-          h += lines.length * 11;
+          h += lines.length * workRowH;
         });
+        h += 6;
       }
       return h;
     }
@@ -290,45 +362,54 @@
     if (y + measureClosingHeight() > pageBottom) startNewPage();
 
     if (rows.length) {
-      const labelX = right - 220;
+      drawSectionBar("Summary");
+      beginFrame();
       rows.forEach((row, idx) => {
         const isLast = idx === rows.length - 1;
+        const h = isLast ? ledgerLastH : ledgerRowH;
+        ensureLine(h);
         if (isLast) {
-          y += 4;
-          doc.setDrawColor(...lineGray);
-          doc.setLineWidth(1);
-          doc.line(labelX, y, right, y);
-          y += 12;
+          doc.setFillColor(...lastBg);
+          doc.rect(left, y, width, h, "F");
+          doc.setDrawColor(...dark);
+          doc.setLineWidth(1.1);
+          doc.line(left, y, right, y);
+        } else if (idx > 0) {
+          doc.setDrawColor(...ruleSoft);
+          doc.setLineWidth(0.5);
+          doc.line(left + padX, y, right - padX, y);
         }
         doc.setFont("helvetica", isLast ? "bold" : "normal");
         doc.setFontSize(isLast ? 10 : 9);
         doc.setTextColor(...dark);
-        doc.text(String(row[0]), labelX, y);
-        doc.text(String(row[1]), right, y, { align: "right" });
-        y += isLast ? 16 : 13;
+        doc.text(String(row[0]), left + padX, y + (isLast ? 13 : 11));
+        doc.text(String(row[1]), right - padX, y + (isLast ? 13 : 11), { align: "right" });
+        y += h;
       });
+      closeFrame();
+      y += 8;
     }
 
     if (instrParts.length) {
-      y += 8;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(...muted);
-      doc.text("Payment instructions", left, y);
+      drawSectionBar("Payment instructions");
+      beginFrame();
       y += 6;
-      drawRule(y);
-      y += 14;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.setTextColor(...dark);
+      doc.setTextColor(...bodyText);
       instrLines.forEach((lines, partIdx) => {
         if (partIdx > 0) y += 4;
         lines.forEach((line) => {
-          ensureLine(11);
-          doc.text(line, left, y);
-          y += 11;
+          ensureLine(workRowH);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(...bodyText);
+          doc.text(line, left + padX, y + 10);
+          y += workRowH;
         });
       });
+      y += 4;
+      closeFrame();
     }
 
     const pageCount = doc.internal.getNumberOfPages();
