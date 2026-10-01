@@ -169,6 +169,41 @@
       });
     }
 
+    if (businessName) {
+      if (y > 640) {
+        doc.addPage();
+        y = 56;
+      } else {
+        y += 12;
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...dark);
+      doc.text("Payment instructions", left, y);
+      y += 16;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      wrapLines(doc, "Make check payable to " + businessName, width).forEach((line) => {
+        if (y > 720) {
+          doc.addPage();
+          y = 56;
+        }
+        doc.text(line, left, y);
+        y += 13;
+      });
+      if (address) {
+        y += 4;
+        wrapLines(doc, "Mail payment to: " + address, width).forEach((line) => {
+          if (y > 720) {
+            doc.addPage();
+            y = 56;
+          }
+          doc.text(line, left, y);
+          y += 13;
+        });
+      }
+    }
+
     const base64 = doc.output("datauristring").split(",")[1];
     const safeNo = invoiceNo.replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-") || "Invoice";
     return {
