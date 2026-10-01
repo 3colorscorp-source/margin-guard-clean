@@ -351,7 +351,7 @@ function main() {
   ok("invoice pdf skips duplicate payable line", /instrHasPayable/.test(invoicePdf));
   ok("invoice pdf does not hardcode Three Colors Corp", !/Three Colors Corp/.test(invoicePdf));
   ok("invoice pdf can mail to stored address", /Mail payment to:/.test(invoicePdf));
-  ok("invoice pdf wraps payment copy tightly", /wrapLines\(doc, part, width, true\)/.test(invoicePdf));
+  ok("invoice pdf wraps payment copy tightly", /wrapLines\(doc, part, workInnerW, true\)/.test(invoicePdf));
   ok("invoice pdf skips duplicate street in stored instructions", /storedHasAddress/.test(invoicePdf));
   ok("invoice pdf does not force a second page at 640pt", !/y > 640/.test(invoicePdf));
   ok("invoice pdf paginates only at the letter bottom", /pageBottom = 752/.test(invoicePdf) && /ensureLine/.test(invoicePdf));
@@ -361,8 +361,14 @@ function main() {
   ok("invoice pdf keeps totals and payment together", /measureClosingHeight/.test(invoicePdf) && /currentSection = "closing"/.test(invoicePdf));
   ok("invoice pdf continues long work details on the next page", /Work details \(continued\)/.test(invoicePdf));
   ok("invoice pdf prints Page X of Y", /Page " \+ i \+ " of " \+ pageCount/.test(invoicePdf));
+  ok("invoice pdf draws labeled section bars", /drawSectionBar\("Work details"\)/.test(invoicePdf) && /drawSectionBar\("Summary"\)/.test(invoicePdf) && /drawSectionBar\("Payment instructions"\)/.test(invoicePdf));
+  ok("invoice pdf rules work-detail rows", /workRowH/.test(invoicePdf) && /ruleSoft/.test(invoicePdf));
+  ok("invoice pdf uses ledger rows for summary", /ledgerRowH/.test(invoicePdf) && /Remaining balance/.test(invoicePdf));
+  ok("invoice pdf formats stored labor money", /formatMoneyOrText\(src\.laborAmount/.test(invoicePdf));
   ok("public invoice pdf payload carries payment instructions", /paymentInstructions: String\(paymentInstructions/.test(publicHtml));
   ok("hub pdf loads owner payment instructions", /owner-settings-deposit-link/.test(app) && /paymentInstructions/.test(app));
+  ok("hub pdf loads contractor L# from legal profile", /loadOwnerContractorLicenseNumber\(\)/.test(app) && /tenant-legal-profile/.test(app));
+  ok("invoice pdf prints L# in the letterhead before phone", /letterhead\.push\(license\)/.test(invoicePdf) && invoicePdf.indexOf("letterhead.push(license)") < invoicePdf.indexOf('letterhead.push("Phone:'));
 
   console.log("\n" + passed + " passed");
 }
