@@ -1,6 +1,10 @@
 /**
  * Operational execution plan (field schedule) — no contract $, rates, or margin.
+ * area_id is not part of the default plan. It is attached only by
+ * normalizeOperationalPlanWithAreaCatalog when the caller passes an authorized catalog.
  */
+
+const { applyAuthorizedAreaCatalog, rawDaysOf } = require("./operational-plan-area-contract");
 
 function num(v, fallback = 0) {
   const n = Number(v);
@@ -80,7 +84,41 @@ function normalizeDay(row, fallbackDayNumber, hoursPerDay) {
     .map((w) => normalizeWorker(w, hoursPerDay))
     .filter(Boolean);
   if (!workers.length) return null;
+  // area_id and area_ref are intentionally omitted. Publish uses this shape.
   return { day_number, phase, workers };
+}
+
+/**
+ * Opt-in. Default normalizeOperationalPlan never calls this.
+ * A day keeps area_id only when that UUID is in areaCatalog.
+ */
+function normalizeOperationalPlanWithAreaCatalog(
+  input,
+  areaCatalog,
+  estimatedDaysOverride = null,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY
+) {
+  const sourceDays = rawDaysOf(input);
+  if (!sourceDays) {
+    return { ok: false, code: "invalid_area_contract", error: "Days must be an array." };
+  }
+  const authorized = applyAuthorizedAreaCatalog(sourceDays, areaCatalog);
+  if (!authorized.ok) return authorized;
+  const plan = normalizeOperationalPlan(authorized.days, estimatedDaysOverride, hoursPerDay);
+  const areaByDay = new Map(authorized.days.map((day) => [day.day_number, day.area_id || ""]));
+  const withAreas = [];
+  for (const day of plan) {
+    if (!areaByDay.has(day.day_number)) {
+      return {
+        ok: false,
+        code: "orphan_day_area",
+        error: "A normalized day lost its authorized area.",
+      };
+    }
+    const areaId = areaByDay.get(day.day_number);
+    withAreas.push(areaId ? { ...day, area_id: areaId } : day);
+  }
+  return { ok: true, plan: withAreas };
 }
 
 /**
@@ -558,6 +596,7 @@ async function resolveOperationalPlanForQuote(quoteRow, loadSnapshotPayload) {
 
 module.exports = {
   normalizeOperationalPlan,
+  normalizeOperationalPlanWithAreaCatalog,
   computeOperationalPlanMetrics,
   computeOperationalPlanExecutionState,
   scheduledDayNumbersSet,

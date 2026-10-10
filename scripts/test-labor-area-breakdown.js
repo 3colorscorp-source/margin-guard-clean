@@ -138,4 +138,20 @@ test("minimum stage still prices the whole quote once", () => {
   assert.ok(plain.total >= plain.minimum_price);
 });
 
-console.log(passed + " passed");
+const { runOperationalPlanAreaContractTests } = require("./test-operational-plan-area-contract");
+
+function runLaborAreaBreakdownTests() {
+  const contractPassed = runOperationalPlanAreaContractTests();
+  if (contractPassed !== 18) {
+    throw new Error("expected 18 operational plan area contract tests, got " + contractPassed);
+  }
+  return passed + contractPassed;
+}
+
+if (require.main === module) {
+  const total = runLaborAreaBreakdownTests();
+  console.log(total + " passed");
+  if (total !== 24) process.exit(1);
+}
+
+module.exports = { runLaborAreaBreakdownTests };
