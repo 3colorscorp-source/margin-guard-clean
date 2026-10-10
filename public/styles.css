@@ -9360,3 +9360,24 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
     padding:8px 10px;
   }
 }
+
+.mg-labor-areas{display:flex;flex-direction:column;gap:12px;margin:0 0 16px}
+.mg-labor-areas__head h3{margin:0 0 4px}
+.mg-labor-areas__head p{margin:0;opacity:.8}
+.mg-labor-area-card{border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.mg-labor-area-card label{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.mg-labor-area-card input,.mg-labor-area-card textarea,.mg-labor-area-card select{width:100%;max-width:100%;box-sizing:border-box}
+.mg-labor-area-card__top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.mg-labor-area-card__top label{flex:1 1 220px}
+.mg-labor-area-sub{margin:0;font-weight:700}
+.mg-labor-area-actions,.mg-labor-area-confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.mg-labor-area-confirm{border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
+.mg-labor-area-confirm p{flex-basis:100%;margin:0}
+.mg-public-area{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.mg-public-area__name{font-weight:700}
+.mg-public-area__scope{white-space:pre-wrap;margin-top:6px}
+.mg-public-area__sell{margin-top:6px;font-weight:700}
+@media (max-width:720px){
+  .mg-labor-area-card__top{display:block}
+  .mg-labor-area-actions .btn,.mg-labor-area-confirm .btn{flex:1 1 140px}
+}

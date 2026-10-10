@@ -28,6 +28,10 @@ const {
   requireOwnerOrAdmin,
   sanitizeWorkersForTenantPricing,
 } = require("./_lib/quote-reprice-helpers");
+const {
+  buildLaborAreaBreakdown,
+  isMissingLaborAreaColumn,
+} = require("./_lib/labor-area-breakdown");
 
 exports.handler = async (event) => {
   try {
@@ -225,13 +229,33 @@ exports.handler = async (event) => {
       });
     }
 
-    const workersPersisted = workersNormalized.map((w) => {
+    const laborAreasSent = Object.prototype.hasOwnProperty.call(body, "labor_areas");
+    const laborAreaResult = laborAreasSent
+      ? buildLaborAreaBreakdown({
+          areasInput: body.labor_areas,
+          workers: workersNormalized,
+          tenantSettings,
+          total: newTotal,
+        })
+      : { ok: true, breakdown: undefined, scopeText: null, publicAreas: [] };
+    if (!laborAreaResult.ok) {
+      return json(400, {
+        ok: false,
+        error: laborAreaResult.error,
+        code: laborAreaResult.code,
+      });
+    }
+
+    const workersPersisted = (
+      laborAreaResult.breakdown ? laborAreaResult.breakdown.workers : workersNormalized
+    ).map((w) => {
       const row = {
         type: w.type === "helper" ? "helper" : "installer",
         days: Math.max(0, Number(w.days || 0)),
       };
       if (w.name) row.name = w.name;
       if (w.hours != null && Number(w.hours) > 0) row.hours = Number(w.hours);
+      if (w.area_id) row.area_id = w.area_id;
       return row;
     });
 
@@ -251,12 +275,35 @@ exports.handler = async (event) => {
       last_negotiation_price: financials.negotiation,
       last_recommended_price: financials.recommended_price,
       updated_at: nowIso,
+      ...(laborAreasSent ? { labor_area_breakdown: laborAreaResult.breakdown } : {}),
+      ...(laborAreaResult.breakdown ? { scope_of_work: laborAreaResult.scopeText || "" } : {}),
     };
 
-    await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
-      method: "PATCH",
-      body: quotePatch,
-    });
+    try {
+      await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
+        method: "PATCH",
+        body: quotePatch,
+      });
+    } catch (patchErr) {
+      if (laborAreasSent && isMissingLaborAreaColumn(patchErr && patchErr.message)) {
+        if (laborAreaResult.breakdown) {
+          return json(503, {
+            ok: false,
+            error:
+              "Quote labor_area_breakdown column is missing. Run SUPABASE_QUOTES_LABOR_AREAS.sql in Supabase SQL editor, then retry.",
+            code: "labor_area_column_missing",
+            migration: "SUPABASE_QUOTES_LABOR_AREAS.sql",
+          });
+        }
+        const { labor_area_breakdown: _drop, ...legacyPatch } = quotePatch;
+        await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
+          method: "PATCH",
+          body: legacyPatch,
+        });
+      } else {
+        throw patchErr;
+      }
+    }
 
     const auditRow = {
       tenant_id: tenantId,
@@ -319,6 +366,7 @@ exports.handler = async (event) => {
         recommended_price: financials.recommended_price,
         pricing_stage: pricingStage,
         workers: workersPersisted,
+        labor_areas: laborAreaResult.publicAreas || [],
         reason,
       },
       audit: { inserted: true },

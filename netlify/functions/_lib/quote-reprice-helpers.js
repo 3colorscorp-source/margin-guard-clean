@@ -9,6 +9,11 @@ const {
   sanitizeWorkersForTenantPricing,
   resolveSchedulingPaymentAmount,
 } = require("./pricing-engine");
+const {
+  editorAreasFromBreakdown,
+  publicAreasFromBreakdown,
+  isMissingLaborAreaColumn,
+} = require("./labor-area-breakdown");
 
 const ALLOWED_REPRICE_BODY_KEYS = new Set([
   "quote_id",
@@ -19,6 +24,7 @@ const ALLOWED_REPRICE_BODY_KEYS = new Set([
   "manual_price_touched",
   "reason",
   "confirm_sent_update",
+  "labor_areas",
 ]);
 
 const FORBIDDEN_WORKER_KEYS = new Set([
@@ -55,6 +61,7 @@ const REPRICE_QUOTE_SELECT = [
   "last_negotiation_price",
   "total",
   "deposit_required",
+  "labor_area_breakdown",
 ].join(",");
 
 const REASON_MAX = 500;
@@ -131,6 +138,10 @@ function normalizeWorkersLaborDays(workers, tenantSettings) {
     };
     if (obj.name != null && String(obj.name).trim()) {
       out.name = String(obj.name).trim().slice(0, 120);
+    }
+    const areaId = String(obj.area_id || obj.areaId || "").trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(areaId)) {
+      out.area_id = areaId;
     }
     if (h > 0 && !(d > 0)) {
       out.hours = h;
@@ -249,17 +260,25 @@ function serializeRepriceState(row) {
       r.last_negotiation_price == null ? null : Number(r.last_negotiation_price),
     last_recommended_price:
       r.last_recommended_price == null ? null : Number(r.last_recommended_price),
+    labor_areas: editorAreasFromBreakdown(r.labor_area_breakdown),
+    labor_area_public: publicAreasFromBreakdown(r.labor_area_breakdown),
   };
 }
 
 async function fetchQuoteRepriceRow(tenantId, quoteId) {
   const tid = encodeURIComponent(String(tenantId));
   const qid = encodeURIComponent(String(quoteId));
-  const rows = await supabaseRequest(
-    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${REPRICE_QUOTE_SELECT}&limit=1`,
-    { method: "GET" }
-  );
-  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  const pathFor = (select) =>
+    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${select}&limit=1`;
+  try {
+    const rows = await supabaseRequest(pathFor(REPRICE_QUOTE_SELECT), { method: "GET" });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (err) {
+    if (!isMissingLaborAreaColumn(err && err.message)) throw err;
+    const legacySelect = REPRICE_QUOTE_SELECT.replace(",labor_area_breakdown", "");
+    const rows = await supabaseRequest(pathFor(legacySelect), { method: "GET" });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
 }
 
 function buildSettingsSnapshotForAudit(settings) {

@@ -1,6 +1,7 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
+const { buildLaborAreaBreakdown } = require("./_lib/labor-area-breakdown");
 
 function json(statusCode, payload) {
   return {
@@ -161,6 +162,16 @@ exports.handler = async (event) => {
       );
     }
 
+    const laborAreaResult = buildLaborAreaBreakdown({
+      areasInput: body.labor_areas !== undefined ? body.labor_areas : body.laborAreas,
+      workers: workersSanitized,
+      tenantSettings,
+      total: financials.total,
+    });
+    if (!laborAreaResult.ok) {
+      return badRequest(laborAreaResult.code || "invalid_labor_areas", laborAreaResult.error);
+    }
+
     const minPrice = financials.minimum_price;
     if (Number(financials.total) + 1e-9 < Number(minPrice)) {
       return badRequest(
@@ -188,7 +199,8 @@ exports.handler = async (event) => {
         total: financials.total,
         deposit_required: financials.deposit_required,
         recommended_price: financials.recommended_price,
-        minimum_price: financials.minimum_price
+        minimum_price: financials.minimum_price,
+        labor_areas: laborAreaResult.publicAreas
       }
     });
   } catch (err) {

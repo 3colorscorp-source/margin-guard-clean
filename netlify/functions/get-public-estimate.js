@@ -1,5 +1,9 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
+const {
+  isMissingLaborAreaColumn,
+  publicAreasFromBreakdown,
+} = require("./_lib/labor-area-breakdown");
 const { scrubPublicPayload, sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
 
 function json(statusCode, body) {
@@ -107,7 +111,7 @@ exports.handler = async (event) => {
     }
 
     const pathWithDates =
-      `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT_WITH_DATES}&limit=2`;
+      `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT_WITH_DATES},labor_area_breakdown&limit=2`;
     const pathBase =
       `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
     const pathLegacy = pathBase.replace(",scope_of_work", "").replace("scope_of_work,", "");
@@ -116,7 +120,28 @@ exports.handler = async (event) => {
     try {
       rows = await supabaseRequest(pathWithDates, { method: "GET" });
     } catch (err) {
-      if (isMissingScopeOfWorkColumn(err.message)) {
+      if (isMissingLaborAreaColumn(err.message)) {
+        const pathWithoutAreas = pathWithDates.replace(",labor_area_breakdown", "");
+        try {
+          rows = await supabaseRequest(pathWithoutAreas, { method: "GET" });
+        } catch (errAreas) {
+          if (isMissingScopeOfWorkColumn(errAreas.message)) {
+            try {
+              rows = await supabaseRequest(pathLegacy, { method: "GET" });
+            } catch (errScope) {
+              return json(502, { error: errScope.message || "Failed to read quote" });
+            }
+          } else if (!isMissingQuoteDateColumns(errAreas.message)) {
+            return json(502, { error: errAreas.message || "Failed to read quote" });
+          } else {
+            try {
+              rows = await supabaseRequest(pathBase, { method: "GET" });
+            } catch (err2) {
+              return json(502, { error: err2.message || "Failed to read quote" });
+            }
+          }
+        }
+      } else if (isMissingScopeOfWorkColumn(err.message)) {
         try {
           rows = await supabaseRequest(pathLegacy, { method: "GET" });
         } catch (errScope) {
@@ -267,7 +292,8 @@ exports.handler = async (event) => {
         logo_url: tenantLogoUrl,
         deposit_payment_available,
         deposit_payment_link: ownerSettings?.deposit_payment_link || null,
-        items: []
+        items: [],
+        labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown)
       }))
     });
   } catch (err) {

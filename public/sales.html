@@ -1971,10 +1971,12 @@
                 <p class="sales-labor-guide__meta" id="salesCrewHint"></p>
               </div>
 
+              <div id="salesLaborAreasHost"></div>
               <div class="sales-labor-table-wrap">
                 <table class="table sales-labor-table">
                   <thead>
                     <tr>
+                      <th class="sales-labor-th sales-labor-th--area" id="salesLaborAreaHead" hidden scope="col">Area</th>
                       <th class="sales-labor-th sales-labor-th--worker" scope="col">Worker</th>
                       <th class="sales-labor-th sales-labor-th--type" scope="col">Type</th>
                       <th class="sales-labor-th sales-labor-th--units" scope="col">Days</th>
@@ -2309,6 +2311,7 @@
   <script src="/js/sales-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/quote-send-feedback.js?v=owner-total-parity-1"></script>
+  <script src="/js/labor-areas.js"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
@@ -5519,6 +5522,26 @@
         }
       }
 
+      function sellerLaborAreaError(state) {
+        const areas = Array.isArray(state && state.laborAreas) ? state.laborAreas : [];
+        if (!areas.length) return '';
+        if (areas.some(function (area) { return !String(area && area.name || '').trim(); })) {
+          return 'Name each area before sending.';
+        }
+        const ids = {};
+        areas.forEach(function (area) { ids[area.id] = true; });
+        const workers = Array.isArray(state.workers) ? state.workers : [];
+        for (let i = 0; i < workers.length; i += 1) {
+          const days = Number(workers[i] && workers[i].days || 0);
+          const hours = Number(workers[i] && workers[i].hours || 0);
+          if (!(days > 0 || hours > 0)) continue;
+          if (!ids[workers[i].area_id]) {
+            return 'Assign every labor line to an area, or remove the areas.';
+          }
+        }
+        return '';
+      }
+
       function validateSellerDraftForAction(state, action) {
         if (!isSellerDeviceSalesMode()) {
           return { ok: true };
@@ -5573,6 +5596,8 @@
           if (!sellerHasEffectiveLaborForPublish(state, loadSettings())) {
             return { ok: false, error: 'Add labor lines before creating a public quote link.' };
           }
+          const areaError = sellerLaborAreaError(state);
+          if (areaError) return { ok: false, error: areaError };
           return { ok: true };
         }
 
@@ -5625,6 +5650,10 @@
         if (state.labor_manual_override == null) {
           state.labor_manual_override = false;
         }
+        state.laborAreas = window.MgLaborAreas
+          ? window.MgLaborAreas.sanitizeClientAreas(state.laborAreas)
+          : (Array.isArray(state.laborAreas) ? state.laborAreas : []);
+        state.laborAreaPublic = Array.isArray(state.laborAreaPublic) ? state.laborAreaPublic : [];
         return state;
       }
 
@@ -5757,6 +5786,7 @@
       }
 
       function syncLaborWorkersFromOperationalPlan(state, settings) {
+        if (Array.isArray(state && state.laborAreas) && state.laborAreas.length) return false;
         if (!isLaborAutoSyncActive(state)) return false;
         const api = getOperationalPlanApi();
         if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== 'function') return false;
@@ -5848,17 +5878,24 @@
         const wrap = document.getElementById('salesLaborAutoSyncWrap');
         const note = document.getElementById('salesLaborSyncNote');
         const warn = document.getElementById('salesLaborManualWarn');
-        const active = isLaborAutoSyncActive(state);
-        if (autoSync) autoSync.checked = active;
-        if (wrap) wrap.style.opacity = state.labor_manual_override && !active ? '0.85' : '1';
-        if (note) {
-          note.textContent = active
-            ? 'Labor days are synced from the Operational Plan.'
-            : (state.labor_manual_override
-              ? 'Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again.'
-              : 'Add Operational Plan days to auto-sync labor worker-days.');
+        const areasOn = Array.isArray(state && state.laborAreas) && state.laborAreas.length > 0;
+        const active = !areasOn && isLaborAutoSyncActive(state);
+        if (autoSync) {
+          autoSync.checked = active;
+          autoSync.disabled = areasOn;
         }
-        if (warn) warn.style.display = state.labor_manual_override && !active ? 'block' : 'none';
+        if (wrap) wrap.style.opacity = areasOn || (state.labor_manual_override && !active) ? '0.85' : '1';
+        if (note) {
+          note.hidden = false;
+          note.textContent = areasOn
+            ? 'Operational Plan auto-sync is paused while this quote uses areas. Assign each labor line to an area.'
+            : (active
+              ? 'Labor days are synced from the Operational Plan.'
+              : (state.labor_manual_override
+                ? 'Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again.'
+                : 'Add Operational Plan days to auto-sync labor worker-days.'));
+        }
+        if (warn) warn.style.display = !areasOn && state.labor_manual_override && !active ? 'block' : 'none';
       }
 
       function markLaborManualOverride(state) {
@@ -8728,11 +8765,15 @@
       const SECURE_PRICING_DEBOUNCE_MS = 520;
 
       function pricingFingerprint(state) {
-        return JSON.stringify({
+        const fingerprint = {
           w: state.workers,
           s: state.pricingStage == null ? 2 : state.pricingStage,
           t: Boolean(state._sliderTouched || state._manualPriceTouched)
-        });
+        };
+        if (Array.isArray(state.laborAreas) && state.laborAreas.length) {
+          fingerprint.a = state.laborAreas;
+        }
+        return JSON.stringify(fingerprint);
       }
 
       function negotiationFromBounds(recommended, minimum) {
@@ -8925,6 +8966,7 @@
 
           const payload = {
             workers: state.workers,
+            labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
             price: state.price,
             pricing_stage: state.pricingStage == null ? 2 : state.pricingStage,
             _sliderTouched: Boolean(state._sliderTouched || state._manualPriceTouched),
@@ -8946,6 +8988,21 @@
               if (!response || response.status >= 400) {
                 console.error('SECURE PRICING server error', response);
                 return;
+              }
+              const priced = response.body && response.body.pricing ? response.body.pricing.labor_areas : null;
+              if (Array.isArray(priced)) {
+                const saved = loadSalesState();
+                saved.laborAreaPublic = priced;
+                saveSalesState(saved);
+                const host = document.getElementById('salesLaborAreasHost');
+                if (host && window.MgLaborAreas) {
+                  window.MgLaborAreas.mount(host, {
+                    areas: saved.laborAreas,
+                    workers: saved.workers,
+                    subtotals: priced,
+                    onCommit: host._mgOnCommit
+                  });
+                }
               }
               console.log('SECURE PRICING RESPONSE', response);
             })
@@ -9149,6 +9206,7 @@
             (typeof isOwnerSalesPreviewSurface === 'function' && isOwnerSalesPreviewSurface())
           ) {
             try {
+              renderSellerWorkersStandalone();
               enforceSellerRightPanelCurrencyConsistency();
               paintSellerAuthoritativePrimaryPricesNow();
             } catch (_patchErr) { /* ignore */ }
@@ -9315,6 +9373,10 @@
         const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         updateLaborSyncChrome(state);
 
+        const areas = Array.isArray(state.laborAreas) ? state.laborAreas : [];
+        const areaHead = document.getElementById('salesLaborAreaHead');
+        if (areaHead) areaHead.hidden = areas.length === 0;
+        const areaApi = window.MgLaborAreas;
         body.innerHTML = state.workers.map((worker, index) => {
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
@@ -9325,8 +9387,12 @@
             ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
             : '';
           const rowClass = autoSync ? 'sales-labor-row--synced' : '';
+          const areaCell = areas.length && areaApi
+            ? `<td class="sales-labor-td sales-labor-td--area">${areaApi.areaSelectHtml(areas, worker.area_id || '')}</td>`
+            : '';
           return `
             <tr data-index="${index}"${rowClass ? ' class="' + rowClass + '"' : ''}>
+              ${areaCell}
               <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" ${autoSync ? 'readonly tabindex="-1"' : ''} /></td>
               <td class="sales-labor-td sales-labor-td--type">
                 <select data-key="type" ${autoSync ? 'disabled' : ''}>
@@ -9346,6 +9412,24 @@
             </tr>
           `;
         }).join('');
+
+        const areaHost = document.getElementById('salesLaborAreasHost');
+        if (areaHost && window.MgLaborAreas) {
+          window.MgLaborAreas.mount(areaHost, {
+            areas: state.laborAreas,
+            workers: state.workers,
+            subtotals: state.laborAreaPublic,
+            onCommit: function (next) {
+              const current = loadSalesState();
+              current.laborAreas = next.areas;
+              current.workers = next.workers;
+              if (next.areas.length) markLaborManualOverride(current);
+              current.laborAreaPublic = [];
+              saveSalesState(current);
+              refreshSellerFromStandalone();
+            }
+          });
+        }
 
         const hint = document.getElementById('salesCrewHint');
         if (hint) {
@@ -9378,7 +9462,8 @@
           event.stopImmediatePropagation();
           const state = loadSalesState();
           markLaborManualOverride(state);
-          state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
+          const firstArea = Array.isArray(state.laborAreas) && state.laborAreas[0] ? state.laborAreas[0].id : '';
+          state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '', area_id: firstArea });
           saveSalesState(state);
           refreshSellerFromStandalone();
         }, true);
@@ -10691,8 +10776,24 @@
 
   y = headerBottom + 24;
 
-  drawSectionTitle('Scope of Work');
-  drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+  const laborAreas = Array.isArray(data.laborAreas) ? data.laborAreas : [];
+  if (laborAreas.length) {
+    drawSectionTitle('Scope of Work');
+    laborAreas.forEach(function (area) {
+      const title = String(area && area.name || 'Area');
+      const scope = String(area && area.scope || '').trim();
+      const lines = [title];
+      if (scope) lines.push(scope);
+      drawBullets(lines, left, contentWidth);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y);
+      y += 18;
+    });
+  } else {
+    drawSectionTitle('Scope of Work');
+    drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+  }
 
   y += 8;
   drawSectionTitle('Project Investment');
@@ -11174,6 +11275,7 @@ async function fillSendModal() {
       depositRequired,
       scopeSummary: messageToClient || '-',
       scope_of_work: messageToClient || '',
+      laborAreas: Array.isArray(state.laborAreaPublic) ? state.laborAreaPublic : [],
       messageText: defaultMessage,
       publicQuoteUrl: String(state.publicQuoteUrl || '').trim()
     };
@@ -11511,6 +11613,7 @@ async function openSellerSendModal(event) {
       job_site: projectAddress,
       address: projectAddress,
       workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
+      labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(stateFresh.laborAreas) : [],
       price: stateFresh.price,
       pricing_stage: stateFresh.pricingStage == null ? 2 : stateFresh.pricingStage,
       _sliderTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
@@ -12056,7 +12159,8 @@ async function runSellerSend(event) {
         totalFormatted: formatUsd(rowTotal),
         depositRequired: rowDeposit,
         depositFormatted: formatUsd(rowDeposit),
-        estimateNumber: quoteNumberDisplay || payload.estimateNumber || ''
+        estimateNumber: quoteNumberDisplay || payload.estimateNumber || '',
+        laborAreas: Array.isArray(publishData.labor_areas) ? publishData.labor_areas : (payload.laborAreas || [])
       };
 
       console.log('PDF payload before rebuild', {

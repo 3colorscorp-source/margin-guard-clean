@@ -964,6 +964,10 @@ Thank you.`
       saved.operational_estimated_hours_override != null ? saved.operational_estimated_hours_override : "";
     merged.labor_manual_override = Boolean(saved.labor_manual_override);
     merged.labor_auto_sync_from_plan = saved.labor_auto_sync_from_plan !== false;
+    merged.laborAreas = window.MgLaborAreas
+      ? window.MgLaborAreas.sanitizeClientAreas(saved.laborAreas)
+      : (Array.isArray(saved.laborAreas) ? saved.laborAreas : []);
+    merged.laborAreaPublic = Array.isArray(saved.laborAreaPublic) ? saved.laborAreaPublic : [];
     normalizeOwnerQuoteDates(merged, loadOwnerPricingSettings());
     return merged;
   }
@@ -7864,6 +7868,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   function syncOwnerLaborFromOperationalPlan(state, settings) {
+    if (Array.isArray(state && state.laborAreas) && state.laborAreas.length) return false;
     if (!isOwnerLaborAutoSyncActive(state)) return false;
     const api = getOwnerOperationalPlanApi();
     if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== "function") return false;
@@ -7899,11 +7904,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const wrap = $("ownerLaborAutoSyncWrap");
     const note = $("ownerLaborSyncNote");
     const warn = $("ownerLaborManualWarn");
-    const active = isOwnerLaborAutoSyncActive(state);
-    if (autoSync) autoSync.checked = active;
-    if (wrap) wrap.style.opacity = state.labor_manual_override && !active ? "0.85" : "1";
+    const areasOn = Array.isArray(state && state.laborAreas) && state.laborAreas.length > 0;
+    const active = !areasOn && isOwnerLaborAutoSyncActive(state);
+    if (autoSync) {
+      autoSync.checked = active;
+      autoSync.disabled = areasOn;
+    }
+    if (wrap) wrap.style.opacity = areasOn || (state.labor_manual_override && !active) ? "0.85" : "1";
     if (note) {
-      if (active) {
+      if (areasOn) {
+        note.textContent = "Operational Plan auto-sync is paused while this quote uses areas. Assign each labor line to an area.";
+      } else if (active) {
         note.textContent = s.pricingMode === "day"
           ? "Labor days are synced from the Operational Plan (Business Settings: day mode)."
           : "Labor hours are synced from the Operational Plan (Business Settings: hour mode).";
@@ -7915,7 +7926,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           : "Add Operational Plan hours to auto-sync labor totals.";
       }
     }
-    if (warn) warn.style.display = state.labor_manual_override && !active ? "block" : "none";
+    if (warn) warn.style.display = !areasOn && state.labor_manual_override && !active ? "block" : "none";
   }
 
   function getOwnerOperationalMetrics(state, settings) {
@@ -8750,6 +8761,47 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     ];
   }
 
+  let ownerAreaSellTimer = null;
+  function scheduleOwnerAreaSell(state) {
+    if (ownerAreaSellTimer) clearTimeout(ownerAreaSellTimer);
+    const areas = Array.isArray(state && state.laborAreas) ? state.laborAreas : [];
+    if (!areas.length || !window.MgLaborAreas) return;
+    ownerAreaSellTimer = setTimeout(async () => {
+      ownerAreaSellTimer = null;
+      try {
+        const response = await fetch("/.netlify/functions/calc-secure-pricing", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workers: state.workers,
+            labor_areas: window.MgLaborAreas.payloadAreas(areas),
+            pricing_stage: 2
+          })
+        });
+        const data = await response.json();
+        const priced = data && data.pricing && Array.isArray(data.pricing.labor_areas)
+          ? data.pricing.labor_areas
+          : null;
+        if (!response.ok || !priced) return;
+        const current = loadOwner();
+        current.laborAreaPublic = priced;
+        saveOwner(current, calcOwner(current, loadOwnerPricingSettings()));
+        const host = $("ownerLaborAreasHost");
+        if (host && window.MgLaborAreas) {
+          window.MgLaborAreas.mount(host, {
+            areas: current.laborAreas,
+            workers: current.workers,
+            subtotals: priced,
+            onCommit: host._mgOnCommit
+          });
+        }
+      } catch (_err) {
+        /* Subtotals stay blank until the next successful pricing call. */
+      }
+    }, 400);
+  }
+
   function renderWorkers(state, settings, metrics) {
     const body = $("workersBody");
     if (!body) return;
@@ -8766,14 +8818,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       hint.textContent = formatOwnerCrewHint(state, quoteSettings, autoSync);
     }
 
+    const areas = Array.isArray(state.laborAreas) ? state.laborAreas : [];
+    const areaHead = $("ownerLaborAreaHead");
+    if (areaHead) areaHead.hidden = areas.length === 0;
+    const areaApi = window.MgLaborAreas;
     body.innerHTML = state.workers.map((worker, index) => {
       const unitsVal = ownerLaborHoursToDisplayUnits(worker.hours, quoteSettings, hoursPerDay);
       const unitsAttrs = autoSync
         ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
         : "";
       const rowClass = autoSync ? ' class="owner-labor-row--synced"' : "";
+      const areaCell = areas.length && areaApi
+        ? `<td>${areaApi.areaSelectHtml(areas, worker.area_id || "")}</td>`
+        : "";
       return `
       <tr data-index="${index}"${rowClass}>
+        ${areaCell}
         <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" ${autoSync ? "readonly tabindex=\"-1\"" : ""} /></td>
         <td>
           <select data-key="type" ${autoSync ? "disabled" : ""}>
@@ -8793,6 +8853,28 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       </tr>
     `;
     }).join("");
+
+    const areaHost = $("ownerLaborAreasHost");
+    scheduleOwnerAreaSell(state, quoteSettings);
+    if (areaHost && window.MgLaborAreas) {
+      window.MgLaborAreas.mount(areaHost, {
+        areas: state.laborAreas,
+        workers: state.workers,
+        subtotals: state.laborAreaPublic,
+        onCommit: (next) => {
+          const current = loadOwner();
+          current.laborAreas = next.areas;
+          current.workers = next.workers;
+          if (next.areas.length) {
+            current.labor_manual_override = true;
+            current.labor_auto_sync_from_plan = false;
+          }
+          current.laborAreaPublic = [];
+          saveOwner(current, calcOwner(current, quoteSettings));
+          renderOwner();
+        }
+      });
+    }
 
     body.querySelectorAll("input,select").forEach((el) => {
       const commit = () => {
@@ -9062,7 +9144,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
       markOwnerLaborManualOverride(state);
-      state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
+      const firstArea = Array.isArray(state.laborAreas) && state.laborAreas[0] ? state.laborAreas[0].id : "";
+      state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "", area_id: firstArea });
       saveOwner(state, calcOwner(state, settings));
       renderOwner();
     };
@@ -9437,7 +9520,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         name: String(w.name || "Worker"),
         type: w.type === "helper" ? "helper" : "installer",
         days: Number.isFinite(daysForSales) ? daysForSales : 0,
-        rate: w.rate === "" || w.rate == null ? "" : Number(w.rate)
+        rate: w.rate === "" || w.rate == null ? "" : Number(w.rate),
+        area_id: w.area_id || ""
       };
     });
     const existing = loadSales();
@@ -9459,6 +9543,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       location: nonEmptyString(ownerState.location),
       messageToClient,
       workers: salesWorkers.length ? salesWorkers : existing.workers,
+      laborAreas: Array.isArray(ownerState.laborAreas) ? ownerState.laborAreas : [],
+      laborAreaPublic: Array.isArray(ownerState.laborAreaPublic) ? ownerState.laborAreaPublic : [],
       depositRequired: (() => {
         const raw = document.getElementById("deposit")?.value;
         if (raw === undefined || raw === null || String(raw).trim() === "") return 1000;
@@ -9701,6 +9787,26 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     const tenantPdf = H.buildEstimateTenantPayload(branding, settingsForPdf, {});
     const ownerForPdf = loadOwner();
+    if (Array.isArray(ownerForPdf.laborAreas) && ownerForPdf.laborAreas.length && window.MgLaborAreas) {
+      try {
+        const areaResponse = await fetch("/.netlify/functions/calc-secure-pricing", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workers: ownerForPdf.workers,
+            labor_areas: window.MgLaborAreas.payloadAreas(ownerForPdf.laborAreas),
+            pricing_stage: 2
+          })
+        });
+        const areaData = await areaResponse.json();
+        if (areaResponse.ok && areaData && areaData.pricing && Array.isArray(areaData.pricing.labor_areas)) {
+          ownerForPdf.laborAreaPublic = areaData.pricing.labor_areas;
+        }
+      } catch (_areaErr) {
+        /* Publish still stores the server allocation. */
+      }
+    }
     const projectNotes = nonEmptyString(ownerForPdf.quoteNotes);
     const basePayload = {
       ...tenantPdf,
@@ -9726,6 +9832,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       quoteNotes: projectNotes,
       scope_of_work: projectNotes,
       scopeSummary: nonEmptyString(projectNotes, scope, state.messageToClient, "-"),
+      laborAreas: Array.isArray(ownerForPdf.laborAreaPublic) ? ownerForPdf.laborAreaPublic : [],
       messageText: messageWithLink,
       publicQuoteUrl
     };
@@ -9820,6 +9927,26 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
       return;
     }
+    const ownerAreas = Array.isArray(ownerState.laborAreas) ? ownerState.laborAreas : [];
+    if (ownerAreas.length) {
+      const unnamed = ownerAreas.some((area) => !String(area && area.name || "").trim());
+      const areaIds = new Set(ownerAreas.map((area) => area.id));
+      const unassigned = (ownerState.workers || []).some((worker) => {
+        const hours = Number(worker && worker.hours || 0);
+        const days = Number(worker && worker.days || 0);
+        return (hours > 0 || days > 0) && !areaIds.has(worker.area_id);
+      });
+      if (unnamed || unassigned) {
+        if (sendStatus) {
+          sendStatus.style.display = "block";
+          sendStatus.className = "notice error";
+          sendStatus.textContent = unnamed
+            ? "Name each area before sending."
+            : "Assign every labor line to an area, or remove the areas.";
+        }
+        return;
+      }
+    }
 
     await verifyOwnerCapacityBeforeSend(ownerState, freshSettings);
 
@@ -9884,6 +10011,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           job_site: projectAddress,
           address: projectAddress,
           workers: Array.isArray(state.workers) ? state.workers : [],
+          labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
           price: state.price,
           pricing_stage: state.pricingStage,
           _sliderTouched: Boolean(state._sliderTouched),
