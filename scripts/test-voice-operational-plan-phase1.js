@@ -529,6 +529,35 @@ async function main() {
   }
   passed += serverAreaPassed;
 
+  const identityRel = "scripts/test-seller-operational-plan-area-identity.js";
+  const gatesRel = "scripts/test-seller-operational-plan-pr3a-gates.js";
+  console.log(identityRel);
+  console.log(gatesRel);
+  for (const rel of [identityRel, gatesRel]) {
+    if (!fs.existsSync(path.join(ROOT, rel))) {
+      throw new Error(rel + " is missing");
+    }
+  }
+  const areaIdentity = require("./test-seller-operational-plan-area-identity");
+  if (typeof areaIdentity.runSellerOperationalPlanAreaIdentityTests !== "function" || !Number.isInteger(areaIdentity.EXPECTED) || areaIdentity.EXPECTED <= 0) {
+    throw new Error(identityRel + " did not export a valid summary");
+  }
+  const areaIdentityPassed = await areaIdentity.runSellerOperationalPlanAreaIdentityTests();
+  if (!Number.isInteger(areaIdentityPassed) || areaIdentityPassed <= 0 || areaIdentityPassed !== areaIdentity.EXPECTED) {
+    throw new Error(identityRel + " expected " + areaIdentity.EXPECTED + " identity tests, got " + areaIdentityPassed);
+  }
+  passed += areaIdentityPassed;
+
+  const areaGates = require("./test-seller-operational-plan-pr3a-gates");
+  if (typeof areaGates.runSellerOperationalPlanPr3aGateTests !== "function" || !Number.isInteger(areaGates.EXPECTED) || areaGates.EXPECTED <= 0) {
+    throw new Error(gatesRel + " did not export a valid summary");
+  }
+  const areaGatesPassed = await areaGates.runSellerOperationalPlanPr3aGateTests();
+  if (!Number.isInteger(areaGatesPassed) || areaGatesPassed <= 0 || areaGatesPassed !== areaGates.EXPECTED) {
+    throw new Error(gatesRel + " expected " + areaGates.EXPECTED + " gate tests, got " + areaGatesPassed);
+  }
+  passed += areaGatesPassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
@@ -537,6 +566,8 @@ async function main() {
     "netlify/functions/get-public-estimate.js",
     "netlify/functions/update-public-estimate-status.js",
     "public/js/voice-operational-plan.js",
+    "public/js/seller-operational-plan-areas.js",
+    "scripts/test-seller-operational-plan-pr3a-gates.js",
     "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/estimate-send-helpers.js",

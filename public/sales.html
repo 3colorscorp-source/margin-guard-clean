@@ -2315,6 +2315,7 @@
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
+  <script src="/js/seller-operational-plan-areas.js"></script>
   <script src="/js/app.js?v=seller-visual-dollar-source-v1"></script>
   <script>
     (function () {
@@ -5654,6 +5655,9 @@
           ? window.MgLaborAreas.sanitizeClientAreas(state.laborAreas)
           : (Array.isArray(state.laborAreas) ? state.laborAreas : []);
         state.laborAreaPublic = Array.isArray(state.laborAreaPublic) ? state.laborAreaPublic : [];
+        if (!state.seller_plan_area_draft || typeof state.seller_plan_area_draft !== 'object') {
+          state.seller_plan_area_draft = null;
+        }
         return state;
       }
 
@@ -9706,6 +9710,7 @@
           pricingStage: 2,
           operational_plan: [],
           internal_operational_plan: null,
+          seller_plan_area_draft: null,
           operational_estimated_days_override: '',
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
@@ -11779,6 +11784,7 @@ async function openSellerSendModal(event) {
       stateFresh.publicQuoteUrl = publishData.public_url;
       stateFresh.estimateNumber =
         publishData.quote_number_display || stateFresh.estimateNumber || '';
+      rememberCanonicalAreaDocument(stateFresh, publishData);
       stateFresh._sellerPublishedDraftId = String(stateFresh._sellerDraftId || '').trim();
       stateFresh._sellerPublishFingerprint = sellerDraftFingerprint(stateFresh);
       removeSellerPublishOrphanNotice();
@@ -12044,6 +12050,7 @@ async function runSellerSend(event) {
         stateFresh.publicQuoteUrl = publishData.public_url;
         stateFresh.estimateNumber =
           publishData.quote_number_display || stateFresh.estimateNumber || '';
+        rememberCanonicalAreaDocument(stateFresh, publishData);
         saveSalesState(stateFresh);
       }
 
@@ -12796,6 +12803,88 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         restoreContactRefFromState();
       }
 
+      var sellerPlanHydrationGeneration = 0;
+
+      function rememberCanonicalAreaDocument(state, publishData) {
+        var api = window.MgSellerOperationalPlanAreas;
+        if (!api || !state || !publishData || !publishData.internal_operational_plan) return;
+        var applied = api.applyCanonicalDocument({
+          document: state.internal_operational_plan,
+          draftId: state._sellerDraftId || '',
+          quoteId: ''
+        }, publishData.internal_operational_plan);
+        if (!applied.ok) return;
+        state.internal_operational_plan = applied.draft.document;
+        state.seller_plan_area_draft = api.bindDraftToQuote(applied.draft, publishData.quote_id || state.quoteId || '');
+      }
+
+      async function previewSellerOperationalPlanAreas(temporaryDocument) {
+        var api = window.MgSellerOperationalPlanAreas;
+        var before = loadSalesState();
+        var confirmed = {
+          document: before.internal_operational_plan,
+          draftId: before._sellerDraftId || '',
+          quoteId: before.quoteId || ''
+        };
+        if (!api) return { ok: false, confirmed: confirmed.document };
+        var response;
+        try {
+          response = await fetch('/.netlify/functions/quote-internal-operational-plan', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'preview', document: temporaryDocument })
+          });
+        } catch (_previewErr) {
+          return { ok: false, confirmed: confirmed.document };
+        }
+        var data = {};
+        try { data = await response.json(); } catch (_parseErr) { data = {}; }
+        if (!response.ok) return { ok: false, confirmed: confirmed.document };
+        var applied = api.applyPreviewResult(confirmed, data);
+        if (!applied.ok) return { ok: false, confirmed: confirmed.document };
+        var state = loadSalesState();
+        state.internal_operational_plan = applied.draft.document;
+        state.seller_plan_area_draft = applied.draft;
+        saveSalesState(state);
+        return { ok: true, document: applied.draft.document };
+      }
+
+      async function hydrateSellerOperationalPlanAreas() {
+        var api = window.MgSellerOperationalPlanAreas;
+        if (!api) return;
+        var generation = ++sellerPlanHydrationGeneration;
+        var requested = loadSalesState();
+        var quoteId = String(requested.quoteId || '').trim();
+        if (!quoteId) return;
+        var response;
+        try {
+          response = await fetch('/.netlify/functions/quote-internal-operational-plan?quote_id=' + encodeURIComponent(quoteId), {
+            method: 'GET',
+            credentials: 'include'
+          });
+        } catch (_hydrateErr) {
+          return;
+        }
+        var data = {};
+        try { data = await response.json(); } catch (_parseErr) { data = {}; }
+        var current = loadSalesState();
+        var decision = api.decideHydration({
+          currentQuoteId: String(current.quoteId || '').trim(),
+          requestQuoteId: quoteId,
+          generation: generation,
+          latestGeneration: sellerPlanHydrationGeneration,
+          status: response.status,
+          serverDocument: data.document,
+          serverQuoteId: data.quote_id,
+          localDraft: current.seller_plan_area_draft,
+          legacyPlan: current.operational_plan
+        });
+        var hydrated = api.applyHydrationResult(current, decision);
+        if (!hydrated.applied) return;
+        saveSalesState(hydrated.state);
+      }
+
       function bootSellerPortalLayout() {
         startSellerPortalAuthSync();
         bindStandaloneSellerWorkers();
@@ -12821,6 +12910,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       document.addEventListener('device-auth-ready', function () {
+        if (typeof hydrateSellerOperationalPlanAreas === 'function') {
+          hydrateSellerOperationalPlanAreas();
+        }
         if (typeof window.__mgSyncSellerPortalGuardAndLayout === 'function') {
           window.__mgSyncSellerPortalGuardAndLayout();
         } else if (isOwnerSellerPreviewLayoutActive()) {

@@ -418,22 +418,23 @@ function runPureServerOperationalPlanAreaTests() {
       "invalid_area_id"
     );
   });
-  test("a partial catalog fails without minting", () => {
+  test("a mixed catalog mints only the new area", () => {
     let calls = 0;
-    const code = codes(() =>
-      normalize(
-        temporaryDoc(
-          [area({ area_ref: "area_1" }), area({ id: MASTER, sort_order: 1 })],
-          [day({ area_ref: "area_1" })]
-        ),
-        function createId() {
-          calls += 1;
-          return KITCHEN;
-        }
-      )
+    const doc = normalize(
+      temporaryDoc(
+        [area({ area_ref: "area_1" }), area({ id: MASTER, name: "Master Bathroom", sort_order: 1 })],
+        [day({ area_ref: "area_1" })]
+      ),
+      function createId() {
+        calls += 1;
+        return KITCHEN;
+      }
     );
-    assert.strictEqual(code, "invalid_area_contract");
-    assert.strictEqual(calls, 0);
+    assert.strictEqual(calls, 1);
+    assert.strictEqual(doc.areas[0].id, KITCHEN);
+    assert.strictEqual(doc.areas[1].id, MASTER);
+    assert.strictEqual(doc.days[0].area_id, KITCHEN);
+    assert.strictEqual(JSON.stringify(doc).includes("area_ref"), false);
   });
 
   return passed;

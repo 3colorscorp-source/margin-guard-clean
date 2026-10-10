@@ -13,6 +13,7 @@ const {
   computeOperationalPlanMetrics,
   planHasDays,
 } = require("./_lib/operational-plan");
+const { UUID_RE: PLAN_AREA_UUID_RE } = require("./_lib/operational-plan-area-contract");
 const {
   isMissingScopeOfWorkColumn,
   resolveScopeOfWorkWriteFromBody,
@@ -287,6 +288,154 @@ function parseBody(raw) {
   }
 }
 
+const PLAN_AREA_MONEY_KEYS = [
+  "sell_subtotal",
+  "sell_cents",
+  "subtotal",
+  "price",
+  "total",
+  "cost",
+  "rate",
+  "margin",
+  "overhead",
+  "profit",
+  "reserve",
+  "commission",
+  "public_subtotals",
+];
+
+function planAreaFailure(code, error) {
+  return { ok: false, statusCode: 400, code, error };
+}
+
+function ownKey(obj, key) {
+  return !!obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function planAreaMoneyKey(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of PLAN_AREA_MONEY_KEYS) {
+    if (ownKey(obj, key)) return key;
+  }
+  return "";
+}
+
+function workerHasPublishWeight(worker) {
+  return Math.max(0, Number(worker && worker.days) || 0) > 0 || Math.max(0, Number(worker && worker.hours) || 0) > 0;
+}
+
+/**
+ * Area-plan publish must already be canonical. This runs before pricing and
+ * before any quote number, insert, or internal-plan RPC. Legacy quotes and
+ * manual labor areas skip it because their document has no areas property.
+ */
+function assertCanonicalOperationalPlanAreas(body) {
+  const raw = body && (body.internal_operational_plan || body.internalOperationalPlan);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !ownKey(raw, "areas")) {
+    return { ok: true, active: false };
+  }
+  if (!Array.isArray(raw.areas) || raw.areas.length === 0) {
+    return planAreaFailure("invalid_area_contract", "An area catalog must contain at least one area.");
+  }
+  if (!Array.isArray(raw.days)) {
+    return planAreaFailure("invalid_area_contract", "Area plan days must be an array.");
+  }
+
+  const catalogIds = new Set();
+  for (const area of raw.areas) {
+    if (!area || typeof area !== "object" || Array.isArray(area)) {
+      return planAreaFailure("invalid_area_contract", "Each area must be an object.");
+    }
+    if (ownKey(area, "area_ref")) {
+      return planAreaFailure("unresolved_area_ref", "Publish cannot accept area_ref. Preview must mint the canonical id first.");
+    }
+    const money = planAreaMoneyKey(area);
+    if (money) return planAreaFailure("invalid_area_contract", "Area catalog cannot carry " + money + ".");
+    const id = String(area.id == null ? "" : area.id).trim();
+    if (!PLAN_AREA_UUID_RE.test(id) || catalogIds.has(id)) {
+      return planAreaFailure(
+        catalogIds.has(id) ? "duplicate_area_id" : "invalid_area_id",
+        catalogIds.has(id) ? "Area id " + id + " is duplicated." : "Each area id must be a canonical UUID."
+      );
+    }
+    catalogIds.add(id);
+  }
+
+  const activeIds = new Set();
+  for (const day of raw.days) {
+    if (!day || typeof day !== "object" || Array.isArray(day)) {
+      return planAreaFailure("invalid_area_contract", "Each day must be an object.");
+    }
+    if (ownKey(day, "area_ref")) {
+      return planAreaFailure("unresolved_area_ref", "Publish cannot accept area_ref. Preview must mint the canonical id first.");
+    }
+    const dayMoney = planAreaMoneyKey(day);
+    if (dayMoney) return planAreaFailure("invalid_area_contract", "Day cannot carry " + dayMoney + ".");
+    const crew = []
+      .concat(Array.isArray(day.worker_assignments) ? day.worker_assignments : [])
+      .concat(Array.isArray(day.workers) ? day.workers : []);
+    for (const worker of crew) {
+      const workerMoney = planAreaMoneyKey(worker);
+      if (workerMoney) return planAreaFailure("invalid_area_contract", "Worker cannot carry " + workerMoney + ".");
+    }
+    const areaId = String(day.area_id == null ? "" : day.area_id).trim();
+    if (!PLAN_AREA_UUID_RE.test(areaId) || !catalogIds.has(areaId)) {
+      return planAreaFailure("orphan_day_area", "Every day must point at an area id in the catalog.");
+    }
+    activeIds.add(areaId);
+  }
+
+  const laborRaw = body.labor_areas !== undefined ? body.labor_areas : body.laborAreas;
+  const laborAreas = Array.isArray(laborRaw) ? laborRaw : [];
+  const laborIds = [];
+  for (const area of laborAreas) {
+    if (!area || typeof area !== "object") {
+      return planAreaFailure("labor_area_mismatch", "Each labor area must be an object.");
+    }
+    if (ownKey(area, "area_ref")) {
+      return planAreaFailure("unresolved_area_ref", "labor_areas cannot carry area_ref.");
+    }
+    const money = planAreaMoneyKey(area);
+    if (money) return planAreaFailure("invalid_area_contract", "labor_areas cannot carry " + money + ".");
+    const id = String(area.id == null ? "" : area.id).trim();
+    if (!PLAN_AREA_UUID_RE.test(id)) {
+      return planAreaFailure("invalid_area_id", "normalizeLaborAreas must not mint or replace area ids.");
+    }
+    if (laborIds.includes(id)) {
+      return planAreaFailure("duplicate_area_id", "labor_areas repeats " + id + ".");
+    }
+    if (!activeIds.has(id)) {
+      return planAreaFailure("labor_area_mismatch", "labor_areas contains an area that is not active in the operational plan.");
+    }
+    laborIds.push(id);
+  }
+  for (const id of activeIds) {
+    if (!laborIds.includes(id)) {
+      return planAreaFailure("labor_area_mismatch", "Every area that has a day must be sent with that same UUID.");
+    }
+  }
+
+  const workers = Array.isArray(body.workers) ? body.workers : [];
+  const weighted = new Set();
+  for (const worker of workers) {
+    if (!worker || typeof worker !== "object") {
+      return planAreaFailure("orphan_worker_area", "Each worker must belong to an active area.");
+    }
+    const areaId = String(worker.area_id == null ? "" : worker.area_id).trim();
+    if (!activeIds.has(areaId)) {
+      return planAreaFailure("orphan_worker_area", "A worker points at an area that is not in the active plan payload.");
+    }
+    if (workerHasPublishWeight(worker)) weighted.add(areaId);
+  }
+  for (const id of activeIds) {
+    if (!weighted.has(id)) {
+      return planAreaFailure("area_without_labor", "An active area must have labor weight. Empty areas stay in the document only.");
+    }
+  }
+
+  return { ok: true, active: true };
+}
+
 function extractSettingsFromSnapshotPayload(payload) {
   if (!payload || typeof payload !== "object") return {};
   const storage =
@@ -547,6 +696,15 @@ exports.handler = async (event) => {
     }
 
     const body = parseBody(event.body);
+    const planAreaGuard = assertCanonicalOperationalPlanAreas(body);
+    if (!planAreaGuard.ok) {
+      return json(planAreaGuard.statusCode || 400, {
+        ok: false,
+        persisted: false,
+        error: planAreaGuard.error,
+        code: planAreaGuard.code,
+      });
+    }
 
     const clientTenantId = body.tenant_id ?? body.tenantId;
     if (
@@ -1105,6 +1263,9 @@ exports.handler = async (event) => {
       publish_amounts_reason: canonical.publish_amounts_reason,
       financials: financialsOut,
       labor_areas: laborAreaResult.publicAreas,
+      ...(planAreaGuard.active && opPublish.internalDocument
+        ? { internal_operational_plan: opPublish.internalDocument }
+        : {}),
       normalized_customer: {
         client_name: clientName,
         client_email: clientEmail,
@@ -1156,6 +1317,7 @@ exports._test = {
   resolveHoursPerDayForLabor,
   validateWorkersForPricing,
   parseOperationalPublishFields,
+  assertCanonicalOperationalPlanAreas,
   isMissingInternalPlanTable,
   persistPublishedInternalPlan,
   membershipIdForRpc,
