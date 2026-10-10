@@ -531,9 +531,11 @@ async function main() {
 
   const identityRel = "scripts/test-seller-operational-plan-area-identity.js";
   const gatesRel = "scripts/test-seller-operational-plan-pr3a-gates.js";
+  const workAreasRel = "scripts/test-seller-operational-plan-work-areas-ui.js";
   console.log(identityRel);
   console.log(gatesRel);
-  for (const rel of [identityRel, gatesRel]) {
+  console.log(workAreasRel);
+  for (const rel of [identityRel, gatesRel, workAreasRel]) {
     if (!fs.existsSync(path.join(ROOT, rel))) {
       throw new Error(rel + " is missing");
     }
@@ -558,6 +560,16 @@ async function main() {
   }
   passed += areaGatesPassed;
 
+  const workAreas = require("./test-seller-operational-plan-work-areas-ui");
+  if (typeof workAreas.runSellerOperationalPlanWorkAreasUiTests !== "function" || !Number.isInteger(workAreas.EXPECTED) || workAreas.EXPECTED <= 0) {
+    throw new Error(workAreasRel + " did not export a valid summary");
+  }
+  const workAreasPassed = await workAreas.runSellerOperationalPlanWorkAreasUiTests();
+  if (!Number.isInteger(workAreasPassed) || workAreasPassed <= 0 || workAreasPassed !== workAreas.EXPECTED) {
+    throw new Error(workAreasRel + " expected " + workAreas.EXPECTED + " work area tests, got " + workAreasPassed);
+  }
+  passed += workAreasPassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
@@ -568,6 +580,7 @@ async function main() {
     "public/js/voice-operational-plan.js",
     "public/js/seller-operational-plan-areas.js",
     "scripts/test-seller-operational-plan-pr3a-gates.js",
+    "scripts/test-seller-operational-plan-work-areas-ui.js",
     "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/estimate-send-helpers.js",
