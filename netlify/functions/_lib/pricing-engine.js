@@ -29,18 +29,75 @@ function laborBaseFromWorkers(workers, tenantSettings) {
   return sum;
 }
 
-/** Strip client-supplied labor rates; keep type, days, hours, name only. */
+const AREA_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Strip client-supplied labor rates. Keep type, days, hours, name, and optional area label. */
 function sanitizeWorkersForTenantPricing(workers) {
   const list = Array.isArray(workers) ? workers : [];
   return list.map((w) => {
     const obj = w && typeof w === "object" ? w : {};
-    return {
+    const row = {
       name: obj.name,
       type: obj.type === "helper" ? "helper" : "installer",
       days: Math.max(0, Number(obj.days || 0)),
       hours: Math.max(0, Number(obj.hours || 0)),
     };
+    const areaId = String(obj.area_id || obj.areaId || "").trim();
+    if (AREA_ID_RE.test(areaId)) row.area_id = areaId;
+    return row;
   });
+}
+
+/**
+ * Same labor, burden, and overhead math used by calculateQuotePublishFinancials.
+ * beforeProfit on each row sums to the quote beforeProfit.
+ */
+function computePublishLaborComponents(workers, settings) {
+  const src = settings && typeof settings === "object" ? settings : {};
+  const hoursPerDay = Math.max(Number(src.hoursPerDay || 8), 0.25);
+  const taxPct =
+    (Number(src.wcPct || 0) +
+      Number(src.ficaPct || 0) +
+      Number(src.futaPct || 0) +
+      Number(src.casuiPct || 0)) /
+    100;
+  const stdHours = Number(src.stdHours || 0);
+  const overheadMonthly = Number(src.overheadMonthly || 0);
+  const overheadPerHour = stdHours > 0 ? overheadMonthly / stdHours : 0;
+  const laborByWorker = (Array.isArray(workers) ? workers : []).map((worker) => {
+    const days = Math.max(0, Number(worker.days || 0));
+    const baseRate =
+      worker.type === "helper"
+        ? Number(src.baseHelper || 0)
+        : Number(src.baseInstaller || 0);
+    const rate = baseRate;
+    const hours = days * hoursPerDay;
+    const cost = hours * rate;
+    const beforeProfit = cost * (1 + taxPct) + hours * overheadPerHour;
+    return {
+      area_id: worker.area_id || "",
+      days,
+      hours,
+      cost,
+      beforeProfit,
+    };
+  });
+  const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
+  const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+  const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
+  const taxes = labor * taxPct;
+  const overhead = totalHours * overheadPerHour;
+  const beforeProfit = labor + taxes + overhead;
+  return {
+    laborByWorker,
+    labor,
+    totalHours,
+    totalWorkerDays,
+    taxes,
+    overhead,
+    beforeProfit,
+  };
 }
 
 /**
@@ -190,35 +247,11 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     return Number.isFinite(x) ? x : fallback;
   }
 
-  const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
-  const taxPct =
-    (Number(settings.wcPct || 0) +
-      Number(settings.ficaPct || 0) +
-      Number(settings.futaPct || 0) +
-      Number(settings.casuiPct || 0)) /
-    100;
-  const stdHours = Number(settings.stdHours || 0);
-  const overheadMonthly = Number(settings.overheadMonthly || 0);
-  const overheadPerHour = stdHours > 0 ? overheadMonthly / stdHours : 0;
-
-  const laborByWorker = workers.map((worker) => {
-    const days = Math.max(0, Number(worker.days || 0));
-    const baseRate =
-      worker.type === "helper"
-        ? Number(settings.baseHelper || 0)
-        : Number(settings.baseInstaller || 0);
-    const rate = baseRate;
-    const hours = days * hoursPerDay;
-    const cost = hours * rate;
-    return { days, rate, hours, cost };
-  });
-
-  const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
-  const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
-  const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
-  const taxes = labor * taxPct;
-  const overhead = totalHours * overheadPerHour;
-  const beforeProfit = labor + taxes + overhead;
+  const components = computePublishLaborComponents(workers, settings);
+  const labor = components.labor;
+  const totalHours = components.totalHours;
+  const totalWorkerDays = components.totalWorkerDays;
+  const beforeProfit = components.beforeProfit;
   const reservePct = finiteNumber(settings.reservePct ?? 5, 5);
   const reserve = beforeProfit * (reservePct / 100);
   const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
@@ -385,4 +418,5 @@ module.exports = {
   computeManualInvoiceSystemSellRates,
   sanitizeWorkersForTenantPricing,
   resolveOfferedFromPricingInput,
+  computePublishLaborComponents,
 };

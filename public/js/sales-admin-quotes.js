@@ -78,6 +78,8 @@
     manualDriver: "none",
     pricingAnchorsBusy: false,
     quoteTotal: null,
+    laborAreas: [],
+    laborAreaPublic: [],
   };
   let pricingAnchorsTimer = null;
 
@@ -788,6 +790,7 @@
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         workers,
+        labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(editState.laborAreas) : [],
         pricing_stage: pricingStage,
       }),
     });
@@ -835,6 +838,10 @@
       if (isPositiveMoney(nextNegotiation)) merged.negotiation = nextNegotiation;
       if (isPositiveMoney(nextRecommended)) merged.recommended = nextRecommended;
       editState.pricingAnchors = merged;
+      if (Array.isArray(recRes.data.pricing.labor_areas)) {
+        editState.laborAreaPublic = recRes.data.pricing.labor_areas;
+        mountSaQuoteAreas();
+      }
       updatePricingRefsDisplay();
       updateManualPricingUI();
     } catch (_err) {
@@ -902,11 +909,34 @@
     const days = Math.max(0, Number(w.days || 0));
     const hours = Math.max(0, Number(w.hours || 0));
     const name = String(w.name || "").trim();
-    return { type, days: Number.isFinite(days) ? days : 0, hours: Number.isFinite(hours) ? hours : 0, name };
+    const areaId = String(w.area_id || "").trim();
+    return {
+      type,
+      days: Number.isFinite(days) ? days : 0,
+      hours: Number.isFinite(hours) ? hours : 0,
+      name,
+      area_id: areaId,
+    };
   }
 
   function defaultWorkerRows() {
     return [{ type: "installer", days: 0, hours: 0, name: "" }];
+  }
+
+  function mountSaQuoteAreas() {
+    const host = $("saQuoteEditAreas");
+    if (!host || !window.MgLaborAreas) return;
+    window.MgLaborAreas.mount(host, {
+      areas: editState.laborAreas,
+      workers: readWorkersFromUI(),
+      subtotals: editState.laborAreaPublic,
+      onCommit: function (next) {
+        editState.laborAreas = next.areas;
+        editState.laborAreaPublic = [];
+        renderWorkerRows(next.workers);
+        mountSaQuoteAreas();
+      },
+    });
   }
 
   function renderWorkerRows(workers) {
@@ -920,8 +950,13 @@
         const daysVal = w.days > 0 ? String(w.days) : "";
         const hoursVal = w.hours > 0 ? String(w.hours) : "";
         const nameVal = escapeHtml(w.name);
+        const areas = Array.isArray(editState.laborAreas) ? editState.laborAreas : [];
+        const areaCell = areas.length && window.MgLaborAreas
+          ? `<div><label>Area</label>${window.MgLaborAreas.areaSelectHtml(areas, w.area_id || "").replace('data-key="area_id"', 'class="sa-worker-area" data-key="area_id"')}</div>`
+          : "";
         return (
           `<div class="sa-edit-worker-row" data-worker-index="${idx}">` +
+          areaCell +
           `<div><label>Type</label><select class="sa-worker-type" aria-label="Worker type">` +
           `<option value="installer"${typeInst}>Installer</option>` +
           `<option value="helper"${typeHelp}>Helper</option>` +
@@ -977,12 +1012,14 @@
       const days = Number(row.querySelector(".sa-worker-days")?.value || 0);
       const hours = Number(row.querySelector(".sa-worker-hours")?.value || 0);
       const name = String(row.querySelector(".sa-worker-name")?.value || "").trim();
+      const areaId = String(row.querySelector(".sa-worker-area")?.value || "").trim();
       const worker = {
         type: type === "helper" ? "helper" : "installer",
       };
       if (days > 0) worker.days = days;
       if (hours > 0) worker.hours = hours;
       if (name) worker.name = name.slice(0, 120);
+      if (areaId) worker.area_id = areaId;
       out.push(worker);
     });
     return out;
@@ -1001,6 +1038,19 @@
     if (!hasLabor) {
       return "Each worker line needs days greater than zero or hours greater than zero.";
     }
+    const areas = Array.isArray(editState.laborAreas) ? editState.laborAreas : [];
+    if (areas.length) {
+      if (areas.some((area) => !String(area && area.name || "").trim())) {
+        return "Name each area before applying a price change.";
+      }
+      const ids = new Set(areas.map((area) => area.id));
+      for (const w of workers) {
+        const days = Math.max(0, Number(w.days || 0));
+        const hours = Math.max(0, Number(w.hours || 0));
+        if (!(days > 0 || hours > 0)) continue;
+        if (!ids.has(w.area_id)) return "Assign every labor line to an area, or remove the areas.";
+      }
+    }
     return "";
   }
 
@@ -1008,6 +1058,7 @@
     const body = {
       quote_id: editState.quoteId,
       workers: readWorkersFromUI(),
+      labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(editState.laborAreas) : [],
       pricing_stage: readPricingStageFromUI(),
       reason: REPRICE_DEFAULT_REASON,
     };
@@ -1095,10 +1146,17 @@
       }
     }
 
+    if (Array.isArray(reprice.labor_areas) && reprice.labor_areas.some((area) => area && area.id)) {
+      editState.laborAreas = reprice.labor_areas;
+    }
+    if (Array.isArray(reprice.labor_area_public)) {
+      editState.laborAreaPublic = reprice.labor_area_public;
+    }
     const workers = Array.isArray(reprice.pricing_workers) && reprice.pricing_workers.length
       ? reprice.pricing_workers
       : defaultWorkerRows();
     renderWorkerRows(workers);
+    mountSaQuoteAreas();
     setPricingStageValue(
       reprice.pricing_stage === null || reprice.pricing_stage === undefined ? 2 : reprice.pricing_stage
     );
@@ -1194,6 +1252,8 @@
       manualDriver: "none",
       pricingAnchorsBusy: false,
       quoteTotal: null,
+      laborAreas: [],
+      laborAreaPublic: [],
     };
     if (pricingAnchorsTimer) {
       clearTimeout(pricingAnchorsTimer);

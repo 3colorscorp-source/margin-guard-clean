@@ -5,6 +5,10 @@ const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const { makePublicToken } = require("./_lib/public-token");
 const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing, resolveSchedulingPaymentAmount } = require("./_lib/pricing-engine");
 const {
+  buildLaborAreaBreakdown,
+  isMissingLaborAreaColumn,
+} = require("./_lib/labor-area-breakdown");
+const {
   normalizeOperationalPlan,
   computeOperationalPlanMetrics,
   planHasDays,
@@ -638,6 +642,15 @@ exports.handler = async (event) => {
 
     const total = canonical.total;
     const depositRequired = canonical.deposit_required;
+    const laborAreaResult = buildLaborAreaBreakdown({
+      areasInput: body.labor_areas !== undefined ? body.labor_areas : body.laborAreas,
+      workers: workersSanitized,
+      tenantSettings,
+      total,
+    });
+    if (!laborAreaResult.ok) {
+      return json(400, { error: laborAreaResult.error, code: laborAreaResult.code });
+    }
 
     console.log("[MG Publish Financials]", {
       clientTotalReported,
@@ -772,7 +785,9 @@ exports.handler = async (event) => {
 
     // Canonical contractual Scope — never from email/notes/public_message.
     // Only write when the client explicitly sends scope_of_work / scopeOfWork.
-    const scopeWrite = resolveScopeOfWorkWriteFromBody(body, 16000);
+    const scopeWrite = laborAreaResult.breakdown
+      ? { include: true, value: laborAreaResult.scopeText || "" }
+      : resolveScopeOfWorkWriteFromBody(body, 16000);
     const hasExplicitScope = scopeWrite.include;
     const scopeOfWork = hasExplicitScope ? scopeWrite.value : undefined;
 
@@ -887,6 +902,9 @@ exports.handler = async (event) => {
         ...sellerAttributionForInsert(ctx),
         ...(resolvedContactId ? { contact_id: resolvedContactId } : {}),
         ...(hasExplicitScope ? { scope_of_work: scopeOfWork } : {}),
+        ...(laborAreaResult.breakdown
+          ? { labor_area_breakdown: laborAreaResult.breakdown }
+          : {}),
       };
     }
 
@@ -959,6 +977,14 @@ exports.handler = async (event) => {
     }
 
     if (!insertResult) {
+      if (laborAreaResult.breakdown && isMissingLaborAreaColumn(lastErrorText)) {
+        return json(503, {
+          error:
+            "Quote labor_area_breakdown column is missing. Run SUPABASE_QUOTES_LABOR_AREAS.sql in Supabase SQL editor, then retry Send Estimate.",
+          migration: "SUPABASE_QUOTES_LABOR_AREAS.sql",
+          missing_columns_hint: lastErrorText,
+        });
+      }
       if (isMissingScopeOfWorkColumn(lastErrorText)) {
         return json(503, {
           error:
@@ -1078,6 +1104,7 @@ exports.handler = async (event) => {
       publish_amounts_source: canonical.publish_amounts_source,
       publish_amounts_reason: canonical.publish_amounts_reason,
       financials: financialsOut,
+      labor_areas: laborAreaResult.publicAreas,
       normalized_customer: {
         client_name: clientName,
         client_email: clientEmail,

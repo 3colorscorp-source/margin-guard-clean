@@ -1234,6 +1234,26 @@
     const wrap = $("publicEstimateScope");
     if (!section || !wrap) return;
 
+    const areas = Array.isArray(next && next.labor_areas) ? next.labor_areas : [];
+    if (areas.length) {
+      section.style.display = "";
+      wrap.style.whiteSpace = "normal";
+      wrap.innerHTML = areas
+        .map(function (area) {
+          const name = escapeHtml(area && area.name ? area.name : "Area");
+          const scope = escapeHtml(area && area.scope ? area.scope : "");
+          const sell = money(area && area.sell_subtotal, next.currency);
+          return (
+            '<div class="mg-public-area">' +
+            '<div class="mg-public-area__name">' + name + "</div>" +
+            (scope ? '<div class="mg-public-area__scope">' + scope + "</div>" : "") +
+            '<div class="mg-public-area__sell">Subtotal ' + escapeHtml(sell) + "</div></div>"
+          );
+        })
+        .join("");
+      return;
+    }
+
     const resolved =
       window.MarginGuardContractScope &&
       typeof window.MarginGuardContractScope.resolveContractScope === "function"

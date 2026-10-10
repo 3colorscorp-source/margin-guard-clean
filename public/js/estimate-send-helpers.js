@@ -583,8 +583,24 @@
 
   y = headerBottom + 24;
 
-  drawSectionTitle('Scope of Work');
-  drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+  const laborAreas = Array.isArray(data.laborAreas) ? data.laborAreas : [];
+  if (laborAreas.length) {
+    drawSectionTitle('Scope of Work');
+    laborAreas.forEach(function (area) {
+      const title = String(area && area.name || 'Area');
+      const scope = String(area && area.scope || '').trim();
+      const lines = [title];
+      if (scope) lines.push(scope);
+      drawBullets(lines, left, contentWidth);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y);
+      y += 18;
+    });
+  } else {
+    drawSectionTitle('Scope of Work');
+    drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+  }
 
   y += 8;
   drawSectionTitle('Project Investment');
