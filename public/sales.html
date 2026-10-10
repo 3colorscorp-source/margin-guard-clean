@@ -1573,6 +1573,39 @@
       color: #e8eefc;
       padding: 12px;
     }
+    .mg-work-area__summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; }
+    .mg-work-area__summary-copy { min-width: 0; }
+    .mg-work-area__summary-copy h4 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+    .mg-work-area__summary-copy p { margin: 0; color: var(--muted); font-size: 12px; }
+    .mg-work-area-editor {
+      position: fixed;
+      inset: 0;
+      z-index: 1300;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(1,5,12,.78);
+      backdrop-filter: blur(8px);
+    }
+    .mg-work-area-editor[aria-hidden="true"] { display: none; }
+    .mg-work-area-editor__card {
+      width: min(920px, 100%);
+      max-height: min(90vh, 920px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      border: 1px solid rgba(34,197,94,.35);
+      border-radius: 18px;
+      background: #0b1320;
+      box-shadow: 0 28px 80px rgba(0,0,0,.55);
+    }
+    .mg-work-area-editor__header, .mg-work-area-editor__footer { position: sticky; z-index: 2; display: flex; gap: 10px; align-items: center; padding: 14px 16px; background: rgba(11,19,32,.97); }
+    .mg-work-area-editor__header { top: 0; justify-content: space-between; border-bottom: 1px solid rgba(148,163,184,.18); }
+    .mg-work-area-editor__header h3 { margin: 0; font-size: 18px; }
+    .mg-work-area-editor__body { padding: 16px; }
+    .mg-work-area-editor__footer { bottom: 0; justify-content: flex-end; border-top: 1px solid rgba(148,163,184,.18); }
+    .mg-work-area-editor__footer .mg-work-area-editor__add-next { margin-right: auto; }
+    .mg-work-areas__empty { margin: 0; color: var(--muted); }
+    .mg-new-area-modal .mg-work-areas__create { display: grid; }
     .mg-work-area summary { cursor: pointer; font-weight: 650; }
     .mg-work-area label, .mg-work-day label, .mg-work-areas__create label { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
     .mg-work-area input, .mg-work-area textarea, .mg-work-area select,
@@ -1588,6 +1621,8 @@
       padding: 8px 10px;
     }
     .mg-work-area__actions, .mg-work-day__actions, .mg-work-areas__create { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .mg-work-assignment { display: grid; grid-template-columns: minmax(150px,1.2fr) minmax(120px,.7fr) minmax(140px,.8fr) auto; gap: 8px; align-items: end; margin-top: 10px; padding: 10px; border: 1px solid rgba(148,163,184,.16); border-radius: 12px; }
+    .mg-work-assignment label { margin-top: 0; }
     .mg-work-area__danger { margin-left: auto; }
     .mg-work-areas__remove { justify-self: start; }
     .mg-work-areas__badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #2a2418; color: #f3d7a1; }
@@ -1606,7 +1641,14 @@
       .mg-work-area input, .mg-work-area textarea, .mg-work-area select,
       .mg-work-day input, .mg-work-day select, .mg-work-areas__create input { font-size: 16px; min-height: 44px; }
       .mg-work-day__move, .mg-work-day__move select { width: 100%; }
+      .mg-work-assignment { grid-template-columns: 1fr; }
       .mg-work-area__danger, .mg-work-areas__remove { margin-left: 0; margin-top: 8px; }
+      .mg-work-area__summary { grid-template-columns: 1fr; }
+      .mg-work-area-editor { padding: 0; place-items: stretch; }
+      .mg-work-area-editor__card { width: 100%; max-height: 100dvh; min-height: 100dvh; border-radius: 0; }
+      .mg-work-area-editor__footer { flex-wrap: wrap; }
+      .mg-work-area-editor__footer .btn { flex: 1 1 140px; }
+      .mg-work-area-editor__footer .mg-work-area-editor__add-next { margin-right: 0; }
     }
     @media (max-width: 430px) {
       .mg-work-area, .mg-work-day { padding: 10px; }
@@ -2199,10 +2241,11 @@
 
   <div id="salesNewQuoteModal" class="mg-modal hidden" role="dialog" aria-modal="true" aria-labelledby="salesNewQuoteTitle" aria-hidden="true" data-sales-new-quote-modal>
     <div class="mg-modal-card" role="document">
-      <h3 id="salesNewQuoteTitle">Start new quote?</h3>
-      <p>Current project fields and send metadata will reset.</p>
+      <h3 id="salesNewQuoteTitle">Start new quote</h3>
+      <p>Choose how this project will be organized. Current project fields and send metadata will reset.</p>
       <div class="mg-modal-actions">
-        <button type="button" id="salesConfirmNewQuote" class="btn primary">Yes, reset</button>
+        <button type="button" id="salesConfirmNewQuote" class="btn primary" data-quote-mode="single">Single Quote</button>
+        <button type="button" id="salesConfirmMultiAreaQuote" class="btn primary" data-quote-mode="multi_area">Multi-Area Quote</button>
         <button type="button" id="salesCancelNewQuote" class="btn secondary">Cancel</button>
       </div>
     </div>
@@ -6584,6 +6627,46 @@
         };
       }
 
+      function captureWorkAreaCard(api, doc, card) {
+        if (!api || !card) return { ok: false, code: 'missing_area' };
+        const fields = readWorkAreaCard(card);
+        let next = doc;
+        let result = api.renameArea(next, fields.key, fields.name);
+        if (!result.ok) return result;
+        next = result.document;
+        result = api.editScope(next, fields.key, fields.scope);
+        if (!result.ok) return result;
+        next = result.document;
+        card.querySelectorAll('.mg-work-day').forEach(function (day) {
+          const patch = {};
+          ['client_scope', 'task'].forEach(function (name) {
+            const input = day.querySelector('[data-wa-field="' + name + '"]');
+            if (!input) return;
+            patch[name] = input.value;
+          });
+          const updated = api.updateDay(next, day.getAttribute('data-day-id'), patch);
+          if (updated.ok) next = updated.document;
+          const assignments = Array.from(day.querySelectorAll('.mg-work-assignment')).map(function (row) {
+            const type = row.querySelector('[data-wa-field="worker_type"]');
+            const count = row.querySelector('[data-wa-field="worker_count"]');
+            const hours = row.querySelector('[data-wa-field="hours_per_worker"]');
+            return {
+              assignment_id: row.getAttribute('data-assignment-id') || '',
+              worker_type: type ? type.value : '',
+              worker_count: count ? Number(count.value) : 0,
+              hours_per_worker: hours ? Number(hours.value) : 0
+            };
+          });
+          const crewUpdate = api.replaceDayAssignments(next, day.getAttribute('data-day-id'), assignments);
+          if (crewUpdate.ok) next = crewUpdate.document;
+        });
+        return {
+          ok: true,
+          document: next,
+          invalidatesMoney: api.laborFingerprint(doc) !== api.laborFingerprint(next)
+        };
+      }
+
       function onWorkAreaHostEvent(event) {
         const api = workAreasApi();
         if (!api) return;
@@ -6599,10 +6682,38 @@
         const state = loadSalesState();
         let doc = api.workingDocument(state);
         let result = null;
+        let openAreaAfterCommit = '';
+        let openNewAreaAfterCommit = false;
+        let closeAreaAfterCommit = false;
         if (actionEl && event.type === 'click') {
           const action = actionEl.getAttribute('data-wa-action');
+          if (action === 'edit-area') {
+            const editor = actionEl.closest('.mg-work-area') && actionEl.closest('.mg-work-area').querySelector('[data-wa-editor]');
+            if (editor) editor.setAttribute('aria-hidden', 'false');
+            return;
+          }
+          if (action === 'close-area') {
+            const editor = actionEl.closest('[data-wa-editor]');
+            if (editor) editor.setAttribute('aria-hidden', 'true');
+            return;
+          }
+          if (action === 'open-add-area') {
+            const currentEditor = actionEl.closest('[data-wa-editor]');
+            if (!currentEditor) {
+              const modal = document.querySelector('[data-wa-new-modal]');
+              if (modal) modal.setAttribute('aria-hidden', 'false');
+              return;
+            }
+            openNewAreaAfterCommit = true;
+          }
+          if (action === 'close-add-area') {
+            const modal = actionEl.closest('[data-wa-new-modal]');
+            if (modal) modal.setAttribute('aria-hidden', 'true');
+            return;
+          }
           if (action === 'activate') {
             state.work_areas_ui = 'active';
+            state.quote_mode = 'multi_area';
             saveSalesState(state);
             refreshSellerFromStandalonePreservingRenderedCurrency();
             return;
@@ -6611,42 +6722,81 @@
             const name = document.getElementById('waNewAreaName');
             const scope = document.getElementById('waNewAreaScope');
             result = api.addArea(doc, { name: name ? name.value : '', scope: scope ? scope.value : '' });
+            if (result && result.ok) openAreaAfterCommit = result.area_ref || '';
           }
           const card = actionEl.closest('.mg-work-area');
           const key = card ? card.getAttribute('data-area-key') : '';
           const dayId = actionEl.getAttribute('data-day-id') || (actionEl.closest('.mg-work-day') && actionEl.closest('.mg-work-day').getAttribute('data-day-id'));
-          if (action === 'rename' && card) {
-            const fields = readWorkAreaCard(card);
-            result = api.renameArea(doc, key, fields.name);
-            if (result.ok) result = api.editScope(result.document, key, fields.scope);
+          if (card && ['add-day', 'copy-day', 'delete-day', 'add-worker', 'delete-worker'].includes(action)) {
+            openAreaAfterCommit = key;
           }
+          if (card && ['save-area', 'open-add-area', 'add-day', 'copy-day', 'delete-day', 'add-worker', 'delete-worker'].includes(action)) {
+            result = captureWorkAreaCard(api, doc, card);
+            if (!result.ok) return;
+            doc = result.document;
+          }
+          if (action === 'save-area') closeAreaAfterCommit = true;
           if (action === 'move-up') result = api.reorderArea(doc, key, -1);
           if (action === 'move-down') result = api.reorderArea(doc, key, 1);
-          if (action === 'add-day') result = api.addDay(doc, key);
-          if (action === 'copy-day') result = api.copyDay(doc, dayId);
-          if (action === 'delete-day') result = api.deleteDay(doc, dayId);
+          if (action === 'add-day') {
+            const changedBefore = result && result.invalidatesMoney;
+            result = api.addDay(doc, key);
+            result.invalidatesMoney = Boolean(result.invalidatesMoney || changedBefore);
+          }
+          if (action === 'copy-day') {
+            const changedBefore = result && result.invalidatesMoney;
+            result = api.copyDay(doc, dayId);
+            result.invalidatesMoney = Boolean(result.invalidatesMoney || changedBefore);
+          }
+          if (action === 'delete-day') {
+            const changedBefore = result && result.invalidatesMoney;
+            result = api.deleteDay(doc, dayId);
+            result.invalidatesMoney = Boolean(result.invalidatesMoney || changedBefore);
+          }
+          if (action === 'add-worker') {
+            result = api.addDayAssignment(doc, dayId);
+          }
+          if (action === 'delete-worker') {
+            result = api.deleteDayAssignment(doc, dayId, actionEl.getAttribute('data-assignment-id'));
+          }
           if (action === 'delete-area') result = api.deleteArea(doc, key, { confirm: window.confirm('Delete this empty work area?') });
           if (action === 'remove-all') {
             result = api.removeAllAreas(doc, state, { confirm: window.confirm('Remove all work areas and return to one labor total? Days, scope, and crew stay.') });
           }
         }
-        if (field && (event.type === 'change' || event.type === 'focusout')) {
+        if (field && event.type === 'change') {
           const card = field.closest('.mg-work-area');
           const day = field.closest('.mg-work-day');
           const key = card ? card.getAttribute('data-area-key') : '';
           const which = field.getAttribute('data-wa-field');
-          if (!day && which === 'name') result = api.renameArea(doc, key, field.value);
-          if (!day && which === 'scope') result = api.editScope(doc, key, field.value);
           if (day && which === 'move_area' && field.value && field.value !== key) {
+            const captured = captureWorkAreaCard(api, doc, card);
+            if (!captured.ok) return;
+            doc = captured.document;
             result = api.moveDay(doc, day.getAttribute('data-day-id'), field.value);
-          } else if (day && which !== 'move_area') {
-            const patch = {};
-            patch[which] = which === 'worker_count' || which === 'hours_per_worker' ? Number(field.value) : field.value;
-            result = api.updateDay(doc, day.getAttribute('data-day-id'), patch);
+            openAreaAfterCommit = key;
           }
         }
         if (!result) return;
-        if (commitWorkAreaResult(state, result)) refreshSellerFromStandalonePreservingRenderedCurrency();
+        if (commitWorkAreaResult(state, result)) {
+          refreshSellerFromStandalonePreservingRenderedCurrency();
+          if (openAreaAfterCommit) {
+            requestAnimationFrame(function () {
+              const card = Array.from(document.querySelectorAll('.mg-work-area')).find(function (node) {
+                return node.getAttribute('data-area-key') === openAreaAfterCommit;
+              });
+              const editor = card && card.querySelector('[data-wa-editor]');
+              if (editor) editor.setAttribute('aria-hidden', 'false');
+            });
+          }
+          if (openNewAreaAfterCommit) {
+            requestAnimationFrame(function () {
+              const modal = document.querySelector('[data-wa-new-modal]');
+              if (modal) modal.setAttribute('aria-hidden', 'false');
+            });
+          }
+          if (closeAreaAfterCommit) return;
+        }
       }
 
       function bindWorkAreasHost() {
@@ -6655,7 +6805,11 @@
         host.dataset.bound = '1';
         host.addEventListener('click', onWorkAreaHostEvent);
         host.addEventListener('change', onWorkAreaHostEvent);
-        host.addEventListener('focusout', onWorkAreaHostEvent);
+        document.addEventListener('keydown', function (event) {
+          if (event.key !== 'Escape') return;
+          const openEditor = host.querySelector('.mg-work-area-editor[aria-hidden="false"]');
+          if (openEditor) openEditor.setAttribute('aria-hidden', 'true');
+        });
       }
 
       function renderSalesOperationalPlanStandalone() {
@@ -9991,6 +10145,7 @@
       function resetSalesQuoteStateForNewQuote(opts) {
         delete window.__mgSellerQuoteCurrencyLock;
         const resetOpts = opts && typeof opts === 'object' ? opts : {};
+        const quoteMode = resetOpts.quoteMode === 'multi_area' ? 'multi_area' : 'single';
         const prev = loadSalesState();
         const preserved = {};
         if (prev && typeof prev === 'object') {
@@ -10046,7 +10201,8 @@
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
           labor_manual_override: false,
-          work_areas_ui: 'active',
+          quote_mode: quoteMode,
+          work_areas_ui: quoteMode === 'multi_area' ? 'active' : 'global',
           labor_from_work_areas: false,
           _sellerDraftId: createSellerDraftId(),
           _sellerPublishedDraftId: '',
@@ -10299,10 +10455,10 @@
 
       window.initializeSellerPortalQuoteState = initializeSellerPortalQuoteState;
 
-      function performStandaloneNewQuoteReset() {
+      function performStandaloneNewQuoteReset(opts) {
         window.__mgForceCloseSalesNewQuoteAfterRefresh = true;
         try {
-          resetSalesQuoteStateForNewQuote();
+          resetSalesQuoteStateForNewQuote(opts);
         } catch (err) {
           window.__mgForceCloseSalesNewQuoteAfterRefresh = false;
           console.error('[Sales New Quote] reset failed', err);

@@ -247,7 +247,7 @@ async function runSellerOperationalPlanWorkAreasUiTests() {
     assert.strictEqual(helper.detectMode({ quoteId: "quote-old", laborAreas: [], operational_plan: [{ day_number: 1 }] }), "global");
     const html = helper.renderWorkAreas({ work_areas_ui: "active", internal_operational_plan: { areas: [], days: [] } });
     assert.strictEqual(html.includes("Work Areas"), true);
-    assert.strictEqual(html.includes("+ Add work area"), true);
+    assert.strictEqual(html.includes("+ Add New Area"), true);
   });
 
   await test("a second click is ignored while the first operation is open", async () => {

@@ -1095,7 +1095,7 @@ Thank you.`
         '[data-sales-new-quote-modal], #salesNewQuoteModal, .sales-new-quote-modal, .mg-modal, [role="dialog"]'
       )
       .forEach((el) => {
-        if (el.textContent && el.textContent.includes("Start new quote?")) {
+        if (el.textContent && el.textContent.includes("Start new quote")) {
           el.classList.add("hidden");
           el.setAttribute("aria-hidden", "true");
           el.style.display = "none";
@@ -1142,22 +1142,25 @@ Thank you.`
     modal.addEventListener("click", (e) => {
       if (e.target === modal) hideSalesNewQuoteModal();
     });
-    const confirmBtn = document.getElementById("salesConfirmNewQuote");
-    if (confirmBtn) {
+    ["salesConfirmNewQuote", "salesConfirmMultiAreaQuote"].forEach((buttonId) => {
+      const confirmBtn = document.getElementById(buttonId);
+      if (!confirmBtn) return;
       confirmBtn.addEventListener("click", () => {
         if (typeof window.performStandaloneNewQuoteReset !== "function") {
           console.error("[Sales New Quote] performStandaloneNewQuoteReset is not available");
           return;
         }
         try {
-          window.performStandaloneNewQuoteReset();
+          window.performStandaloneNewQuoteReset({
+            quoteMode: confirmBtn.dataset.quoteMode === "multi_area" ? "multi_area" : "single",
+          });
         } catch (err) {
           console.error("[Sales New Quote] reset failed", err);
           return;
         }
         hideSalesNewQuoteModal();
       });
-    }
+    });
     const cancelBtn = document.getElementById("salesCancelNewQuote");
     if (cancelBtn) {
       cancelBtn.addEventListener("click", () => hideSalesNewQuoteModal());
