@@ -9,6 +9,11 @@ const {
   projectFinishFromStart,
   normDate,
 } = require("./sales-capacity-calendar");
+const {
+  resolveTemporaryAreaRefs,
+  applyAuthorizedAreaCatalog,
+  UUID_RE: AREA_UUID_RE,
+} = require("./operational-plan-area-contract");
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_HOURS_PER_DAY = 8;
@@ -346,7 +351,7 @@ function normalizeStringList(raw, maxItem = 400, maxItems = 24) {
   return out;
 }
 
-function normalizeDay(row, fallbackNumber) {
+function normalizeDay(row, fallbackNumber, keepAreaId) {
   if (!row || typeof row !== "object") return null;
   const day_number = Math.max(1, Math.floor(num(row.day_number, fallbackNumber)));
   const internal_tasks = (Array.isArray(row.internal_tasks) ? row.internal_tasks : [])
@@ -382,7 +387,7 @@ function normalizeDay(row, fallbackNumber) {
     str(row.client_scope, 2000) ||
     str(row.phase, 240) ||
     (internal_tasks[0] ? `Complete ${internal_tasks[0].label}.` : `Complete planned work for day ${day_number}.`);
-  return {
+  const normalized = {
     day_id: str(row.day_id, 80) || newStableId("day"),
     day_number,
     date: normDate(row.date) || null,
@@ -395,6 +400,11 @@ function normalizeDay(row, fallbackNumber) {
     risks: normalizeStringList(row.risks),
     internal_notes: str(row.internal_notes, 4000),
   };
+  if (keepAreaId === true) {
+    const areaId = str(row.area_id, 80);
+    if (AREA_UUID_RE.test(areaId)) normalized.area_id = areaId;
+  }
+  return normalized;
 }
 
 function createEmptyDay(dayNumber, hoursPerDay) {
@@ -616,6 +626,207 @@ function hydrateFromLegacyOperationalPlan(legacyDays, startYmd, settings, hoursP
 }
 
 function normalizeDocument(raw, options = {}) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  if (!Object.prototype.hasOwnProperty.call(source, "areas")) {
+    return normalizeDocumentWithoutAreas(source, options);
+  }
+  return normalizeDocumentWithAreas(source, options);
+}
+
+function areaContractError(code, error) {
+  const err = new Error(error || "Invalid area contract.");
+  err.code = code || "invalid_area_contract";
+  err.isAreaContractError = true;
+  return err;
+}
+
+function throwAreaResult(result) {
+  throw areaContractError(result && result.code, result && result.error);
+}
+
+function hasAreaRef(value) {
+  return !!value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "area_ref");
+}
+
+function declaredAreaId(area) {
+  const id = String(area && area.id == null ? "" : area.id).trim();
+  const areaId = String(area && area.area_id == null ? "" : area.area_id).trim();
+  if (id && areaId && id !== areaId) {
+    return {
+      ok: false,
+      code: "orphan_day_area",
+      error: "Area id does not match its area_id.",
+    };
+  }
+  return { ok: true, areaId: areaId || id };
+}
+
+function dayForAreaCheck(day) {
+  const next = day && typeof day === "object" ? { ...day } : day;
+  if (!next || typeof next !== "object" || Array.isArray(next)) return next;
+  const crew = [];
+  if (Array.isArray(day.worker_assignments)) crew.push(...day.worker_assignments);
+  if (Array.isArray(day.workers)) crew.push(...day.workers);
+  if (Array.isArray(day.crew)) crew.push(...day.crew);
+  if (crew.length) next.workers = crew;
+  return next;
+}
+
+function stampResolvedAreaIds(rawDays, resolvedDays) {
+  return rawDays.map((day, index) => {
+    const source = day && typeof day === "object" && !Array.isArray(day) ? day : {};
+    const next = {};
+    for (const key of Object.keys(source)) {
+      if (key === "area_ref" || key === "area_id") continue;
+      next[key] = source[key];
+    }
+    next.area_id = resolvedDays[index] && resolvedDays[index].area_id;
+    return next;
+  });
+}
+
+function resolveAreaContract(raw, options) {
+  if (!Array.isArray(raw.areas) || raw.areas.length === 0) {
+    return {
+      ok: false,
+      code: "invalid_area_contract",
+      error: "An area catalog must contain at least one area.",
+    };
+  }
+  const areaRows = raw.areas;
+  const withRef = areaRows.filter(hasAreaRef);
+  const rawDays = Array.isArray(raw.days) ? raw.days : raw.days;
+  const dayList = Array.isArray(rawDays) ? rawDays : [];
+  const dayHasRef = dayList.some(hasAreaRef);
+  if (withRef.length && withRef.length !== areaRows.length) {
+    return {
+      ok: false,
+      code: "invalid_area_contract",
+      error: "Area document is only partly resolved.",
+    };
+  }
+  if (!withRef.length && dayHasRef) {
+    return {
+      ok: false,
+      code: "invalid_area_contract",
+      error: "Area document is only partly resolved.",
+    };
+  }
+
+  if (withRef.length === areaRows.length) {
+    const preparedAreas = [];
+    for (const area of areaRows) {
+      if (!area || typeof area !== "object" || Array.isArray(area)) {
+        preparedAreas.push(area);
+        continue;
+      }
+      const declared = declaredAreaId(area);
+      if (!declared.ok) return declared;
+      const next = { ...area };
+      delete next.id;
+      if (declared.areaId) next.area_id = declared.areaId;
+      else delete next.area_id;
+      preparedAreas.push(next);
+    }
+    const resolverOptions = {};
+    if (options && typeof options.createId === "function") resolverOptions.createId = options.createId;
+    const resolved = resolveTemporaryAreaRefs(
+      {
+        areas: preparedAreas,
+        days: Array.isArray(rawDays) ? rawDays.map(dayForAreaCheck) : rawDays,
+      },
+      resolverOptions
+    );
+    if (!resolved.ok) return resolved;
+    return {
+      ok: true,
+      areas: resolved.areas,
+      days: stampResolvedAreaIds(dayList, resolved.days),
+    };
+  }
+
+  const catalog = [];
+  for (const area of areaRows) {
+    if (!area || typeof area !== "object" || Array.isArray(area)) {
+      return { ok: false, code: "invalid_area_contract", error: "Each area must be an object." };
+    }
+    const declared = declaredAreaId(area);
+    if (!declared.ok) return declared;
+    if (!AREA_UUID_RE.test(declared.areaId)) {
+      return { ok: false, code: "invalid_area_id", error: "Catalog area id must be a UUID." };
+    }
+    catalog.push({ id: declared.areaId });
+  }
+  const authorized = applyAuthorizedAreaCatalog(
+    Array.isArray(rawDays) ? rawDays.map(dayForAreaCheck) : rawDays,
+    catalog
+  );
+  if (!authorized.ok) return authorized;
+  let minted = false;
+  const syntheticAreas = areaRows.map((area, index) => {
+    const next = { ...area, area_ref: "area_" + (index + 1), area_id: catalog[index].id };
+    delete next.id;
+    return next;
+  });
+  const idToRef = new Map(catalog.map((area, index) => [area.id, "area_" + (index + 1)]));
+  const syntheticDays = dayList.map((day) => {
+    const projected = dayForAreaCheck(day);
+    const areaId = String(projected && projected.area_id == null ? "" : projected.area_id).trim();
+    const areaRef = idToRef.get(areaId);
+    if (!areaRef) return projected;
+    return { ...projected, area_ref: areaRef };
+  });
+  const resolved = resolveTemporaryAreaRefs(
+    {
+      areas: syntheticAreas,
+      days: Array.isArray(rawDays) ? syntheticDays : rawDays,
+    },
+    {
+      createId() {
+        minted = true;
+        return "00000000-0000-4000-8000-000000000099";
+      },
+    }
+  );
+  if (minted) {
+    return {
+      ok: false,
+      code: "invalid_area_id",
+      error: "Canonical area documents cannot mint new ids.",
+    };
+  }
+  if (!resolved.ok) return resolved;
+  return {
+    ok: true,
+    areas: resolved.areas,
+    days: stampResolvedAreaIds(dayList, resolved.days),
+  };
+}
+
+function normalizeDocumentWithAreas(raw, options) {
+  const resolved = resolveAreaContract(raw, options);
+  if (!resolved.ok) throwAreaResult(resolved);
+  const rest = {};
+  for (const key of Object.keys(raw)) {
+    if (key === "areas") continue;
+    rest[key] = raw[key];
+  }
+  rest.days = resolved.days;
+  const base = normalizeDocumentWithoutAreas(rest, { ...options, keepAreaId: true });
+  return {
+    schema_version: base.schema_version,
+    source: base.source,
+    hours_per_day_used: base.hours_per_day_used,
+    start_date: base.start_date,
+    due_date: base.due_date,
+    estimated_days: base.estimated_days,
+    estimated_hours: base.estimated_hours,
+    areas: resolved.areas,
+    days: base.days,
+  };
+}
+
+function normalizeDocumentWithoutAreas(raw, options = {}) {
   const stripped = stripRateFields(raw && typeof raw === "object" ? raw : {});
   const settings = options.settings || {};
   const hpd = resolveHoursPerDayFromSettings({
@@ -623,7 +834,7 @@ function normalizeDocument(raw, options = {}) {
   });
   const startIn = options.startDate || stripped.start_date;
   let days = (Array.isArray(stripped.days) ? stripped.days : [])
-    .map((d, i) => normalizeDay(d, i + 1))
+    .map((d, i) => normalizeDay(d, i + 1, options.keepAreaId === true))
     .filter(Boolean);
   days = renumberDays(sortDaysByNumber(days));
   days = applyScheduleToDays(days, startIn, settings);

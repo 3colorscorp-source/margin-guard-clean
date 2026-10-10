@@ -78,6 +78,35 @@ function membershipIdFromCtx(ctx) {
   return UUID_RE.test(id) ? id : null;
 }
 
+function documentHasAreas(raw) {
+  return !!raw && typeof raw === "object" && !Array.isArray(raw) && Object.prototype.hasOwnProperty.call(raw, "areas");
+}
+
+function normalizeIncomingDocument(raw, options) {
+  try {
+    return { ok: true, document: voice.normalizeDocument(raw, options) };
+  } catch (err) {
+    if (err && err.isAreaContractError) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: err.code || "invalid_area_contract",
+        error: err.message || "Invalid area contract.",
+      };
+    }
+    throw err;
+  }
+}
+
+function areaContractResponse(result) {
+  return json(result.statusCode || 400, {
+    ok: false,
+    persisted: false,
+    error: result.error,
+    code: result.code,
+  });
+}
+
 function publicResponse(doc, settings) {
   const publicScope = voice.buildPublicClientScope(doc);
   return {
@@ -215,12 +244,14 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
     try {
       const row = await loadInternalPlanRow(supabaseReq, tenant.id, quote.id);
       const raw = row && row.document && typeof row.document === "object" ? row.document : { days: [] };
-      const doc = voice.normalizeDocument(raw, {
+      const normalized = normalizeIncomingDocument(raw, {
         startDate: startDate || quote.start_date,
         settings,
         hoursPerDay,
+        createId: d.createId,
       });
-      return json(200, publicResponse(doc, settings));
+      if (!normalized.ok) return areaContractResponse(normalized);
+      return json(200, publicResponse(normalized.document, settings));
     } catch (err) {
       if (isMissingInternalPlanTable(err && err.message)) {
         return json(200, {
@@ -236,10 +267,11 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
   }
 
   const action = String((body && body.action) || "preview").trim().toLowerCase();
-  const incoming = voice.stripRateFields(
-    (body && (body.document || body.internal_operational_plan)) || { days: [] }
+  const rawIncoming = (body && (body.document || body.internal_operational_plan)) || { days: [] };
+  const incoming = documentHasAreas(rawIncoming) ? rawIncoming : voice.stripRateFields(rawIncoming);
+  const validated = voice.validateIncomingDocument(
+    documentHasAreas(rawIncoming) ? voice.stripRateFields(rawIncoming) : incoming
   );
-  const validated = voice.validateIncomingDocument(incoming);
   if (!validated.ok) {
     return json(400, {
       ok: false,
@@ -249,11 +281,14 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
       errors: validated.errors,
     });
   }
-  const draft = voice.normalizeDocument(incoming, {
+  const normalized = normalizeIncomingDocument(incoming, {
     startDate: startDate || incoming.start_date,
     settings,
     hoursPerDay,
+    createId: d.createId,
   });
+  if (!normalized.ok) return areaContractResponse(normalized);
+  const draft = normalized.document;
 
   if (action !== "confirm") {
     return json(200, Object.assign({ persisted: false, action: "preview" }, publicResponse(draft, settings)));

@@ -517,6 +517,18 @@ async function main() {
   }
   passed += areaContractPassed;
 
+  const serverAreas = require("./test-server-operational-plan-areas");
+  const serverAreaPassed = await serverAreas.runServerOperationalPlanAreaTests();
+  if (serverAreaPassed !== serverAreas.EXPECTED) {
+    throw new Error(
+      "scripts/test-server-operational-plan-areas.js expected " +
+        serverAreas.EXPECTED +
+        " server area tests, got " +
+        serverAreaPassed
+    );
+  }
+  passed += serverAreaPassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
