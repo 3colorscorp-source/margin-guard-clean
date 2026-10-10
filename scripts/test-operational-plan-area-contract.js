@@ -426,33 +426,25 @@ test("voice document and legacy projection drop area identity", () => {
       { worker_role: "Installer", worker_type: "pro", worker_count: 1, hours_per_worker: 8 },
     ],
   };
-  const cleanDoc = voice.normalizeDocument({
+  voice.normalizeDocument({
     schema_version: 1,
     source: "keyboard",
     days: [cleanVoiceDay],
   });
-  const dirtyDoc = voice.normalizeDocument({
-    schema_version: 1,
-    source: "keyboard",
-    areas: [],
-    days: [Object.assign({}, cleanVoiceDay, { area_id: null, area_ref: "area_1", price: 80 })],
-  });
-  function blankIds(doc) {
-    const copy = JSON.parse(JSON.stringify(doc));
-    copy.days.forEach((day) => {
-      day.day_id = "";
-      day.worker_assignments.forEach((row) => {
-        row.assignment_id = "";
-      });
+  let emptyCode = "";
+  try {
+    voice.normalizeDocument({
+      schema_version: 1,
+      source: "keyboard",
+      areas: [],
+      days: [Object.assign({}, cleanVoiceDay, { area_id: null, area_ref: "area_1", price: 80 })],
     });
-    return copy;
+  } catch (err) {
+    emptyCode = err && err.code;
+    assert.strictEqual(err.isAreaContractError, true);
+    assert.strictEqual(err.document, undefined);
   }
-  assert.deepStrictEqual(blankIds(dirtyDoc), blankIds(cleanDoc));
-  assert.deepStrictEqual(Object.keys(dirtyDoc).sort(), Object.keys(cleanDoc).sort());
-  assert.deepStrictEqual(Object.keys(dirtyDoc.days[0]).sort(), Object.keys(cleanDoc.days[0]).sort());
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(dirtyDoc, "areas"), false);
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(dirtyDoc.days[0], "area_id"), false);
-  assertLegacyDocument(dirtyDoc);
+  assert.strictEqual(emptyCode, "invalid_area_contract");
   assertLegacyDocument(legacy);
 });
 
