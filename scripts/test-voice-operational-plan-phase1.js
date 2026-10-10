@@ -507,6 +507,16 @@ async function runOwnerInternalPlanPublishHandlerTests() {
 }
 
 async function main() {
+  const laborBreakdown = require("./test-labor-area-breakdown");
+  const areaContractPassed = laborBreakdown.runLaborAreaBreakdownTests();
+  if (areaContractPassed !== 24) {
+    throw new Error(
+      "scripts/test-operational-plan-area-contract.js expected 18 contract tests inside 24 labor-area checks, got " +
+        areaContractPassed
+    );
+  }
+  passed += areaContractPassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
