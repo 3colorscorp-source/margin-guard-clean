@@ -10,8 +10,7 @@ const {
   normDate,
 } = require("./sales-capacity-calendar");
 const {
-  resolveTemporaryAreaRefs,
-  applyAuthorizedAreaCatalog,
+  resolveAreaIdentity,
   UUID_RE: AREA_UUID_RE,
 } = require("./operational-plan-area-contract");
 
@@ -644,10 +643,6 @@ function throwAreaResult(result) {
   throw areaContractError(result && result.code, result && result.error);
 }
 
-function hasAreaRef(value) {
-  return !!value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "area_ref");
-}
-
 function declaredAreaId(area) {
   const id = String(area && area.id == null ? "" : area.id).trim();
   const areaId = String(area && area.area_id == null ? "" : area.area_id).trim();
@@ -694,112 +689,33 @@ function resolveAreaContract(raw, options) {
     };
   }
   const areaRows = raw.areas;
-  const withRef = areaRows.filter(hasAreaRef);
-  const rawDays = Array.isArray(raw.days) ? raw.days : raw.days;
-  const dayList = Array.isArray(rawDays) ? rawDays : [];
-  const dayHasRef = dayList.some(hasAreaRef);
-  if (withRef.length && withRef.length !== areaRows.length) {
-    return {
-      ok: false,
-      code: "invalid_area_contract",
-      error: "Area document is only partly resolved.",
-    };
-  }
-  if (!withRef.length && dayHasRef) {
-    return {
-      ok: false,
-      code: "invalid_area_contract",
-      error: "Area document is only partly resolved.",
-    };
-  }
-
-  if (withRef.length === areaRows.length) {
-    const preparedAreas = [];
-    for (const area of areaRows) {
-      if (!area || typeof area !== "object" || Array.isArray(area)) {
-        preparedAreas.push(area);
-        continue;
-      }
-      const declared = declaredAreaId(area);
-      if (!declared.ok) return declared;
-      const next = { ...area };
-      delete next.id;
-      if (declared.areaId) next.area_id = declared.areaId;
-      else delete next.area_id;
-      preparedAreas.push(next);
-    }
-    const resolverOptions = {};
-    if (options && typeof options.createId === "function") resolverOptions.createId = options.createId;
-    const resolved = resolveTemporaryAreaRefs(
-      {
-        areas: preparedAreas,
-        days: Array.isArray(rawDays) ? rawDays.map(dayForAreaCheck) : rawDays,
-      },
-      resolverOptions
-    );
-    if (!resolved.ok) return resolved;
-    return {
-      ok: true,
-      areas: resolved.areas,
-      days: stampResolvedAreaIds(dayList, resolved.days),
-    };
-  }
-
-  const catalog = [];
+  const rawDays = Array.isArray(raw.days) ? raw.days : [];
+  const preparedAreas = [];
   for (const area of areaRows) {
     if (!area || typeof area !== "object" || Array.isArray(area)) {
-      return { ok: false, code: "invalid_area_contract", error: "Each area must be an object." };
+      preparedAreas.push(area);
+      continue;
     }
     const declared = declaredAreaId(area);
     if (!declared.ok) return declared;
-    if (!AREA_UUID_RE.test(declared.areaId)) {
-      return { ok: false, code: "invalid_area_id", error: "Catalog area id must be a UUID." };
-    }
-    catalog.push({ id: declared.areaId });
+    const next = { ...area };
+    if (declared.areaId) next.area_id = declared.areaId;
+    preparedAreas.push(next);
   }
-  const authorized = applyAuthorizedAreaCatalog(
-    Array.isArray(rawDays) ? rawDays.map(dayForAreaCheck) : rawDays,
-    catalog
-  );
-  if (!authorized.ok) return authorized;
-  let minted = false;
-  const syntheticAreas = areaRows.map((area, index) => {
-    const next = { ...area, area_ref: "area_" + (index + 1), area_id: catalog[index].id };
-    delete next.id;
-    return next;
-  });
-  const idToRef = new Map(catalog.map((area, index) => [area.id, "area_" + (index + 1)]));
-  const syntheticDays = dayList.map((day) => {
-    const projected = dayForAreaCheck(day);
-    const areaId = String(projected && projected.area_id == null ? "" : projected.area_id).trim();
-    const areaRef = idToRef.get(areaId);
-    if (!areaRef) return projected;
-    return { ...projected, area_ref: areaRef };
-  });
-  const resolved = resolveTemporaryAreaRefs(
+  const resolverOptions = {};
+  if (options && typeof options.createId === "function") resolverOptions.createId = options.createId;
+  const resolved = resolveAreaIdentity(
     {
-      areas: syntheticAreas,
-      days: Array.isArray(rawDays) ? syntheticDays : rawDays,
+      areas: preparedAreas,
+      days: rawDays.map(dayForAreaCheck),
     },
-    {
-      createId() {
-        minted = true;
-        return "00000000-0000-4000-8000-000000000099";
-      },
-    }
+    resolverOptions
   );
-  if (minted) {
-    return {
-      ok: false,
-      code: "invalid_area_id",
-      error: "Canonical area documents cannot mint new ids.",
-    };
-  }
   if (!resolved.ok) return resolved;
   return {
     ok: true,
     areas: resolved.areas,
-    days: stampResolvedAreaIds(dayList, resolved.days),
+    days: stampResolvedAreaIds(rawDays, resolved.days),
   };
 }
 

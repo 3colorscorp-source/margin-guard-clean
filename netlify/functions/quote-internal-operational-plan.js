@@ -243,7 +243,15 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
     const quote = await loadOwnedQuote(supabaseReq, ctx, quoteId);
     try {
       const row = await loadInternalPlanRow(supabaseReq, tenant.id, quote.id);
-      const raw = row && row.document && typeof row.document === "object" ? row.document : { days: [] };
+      if (!row) {
+        return json(200, {
+          ok: true,
+          document: null,
+          persisted: false,
+          quote_id: quote.id,
+        });
+      }
+      const raw = row.document && typeof row.document === "object" ? row.document : { days: [] };
       const normalized = normalizeIncomingDocument(raw, {
         startDate: startDate || quote.start_date,
         settings,
@@ -251,7 +259,7 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
         createId: d.createId,
       });
       if (!normalized.ok) return areaContractResponse(normalized);
-      return json(200, publicResponse(normalized.document, settings));
+      return json(200, Object.assign({ quote_id: quote.id }, publicResponse(normalized.document, settings)));
     } catch (err) {
       if (isMissingInternalPlanTable(err && err.message)) {
         return json(200, {
