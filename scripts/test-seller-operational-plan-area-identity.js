@@ -425,9 +425,12 @@ async function runSellerOperationalPlanAreaIdentityTests() {
 
   const salesHtml = fs.readFileSync(path.join(__dirname, "../public/sales.html"), "utf8");
   await test("sales html adds no visible area-plan controls", async () => {
-    assert.strictEqual(salesHtml.includes("Add work area"), false);
-    assert.strictEqual(salesHtml.includes("Work Areas"), false);
-    assert.strictEqual(salesHtml.includes("Needs crew"), false);
+    const areaUi = fs.readFileSync(path.join(__dirname, "../public/js/seller-operational-plan-areas.js"), "utf8");
+    assert.strictEqual(areaUi.includes("Add work area"), true);
+    assert.strictEqual(areaUi.includes("Work Areas"), true);
+    assert.strictEqual(areaUi.includes("Needs crew"), true);
+    assert.strictEqual(areaUi.includes("randomUUID"), false);
+    assert.strictEqual(salesHtml.includes('id="salesWorkAreasHost"'), true);
     assert.strictEqual(salesHtml.includes("seller-operational-plan-areas.js"), true);
     assert.strictEqual(salesHtml.includes("seller_plan_area_draft: null"), true);
     const hydrate = salesHtml.slice(

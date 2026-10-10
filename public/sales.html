@@ -1562,6 +1562,56 @@
     }
   </style>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style id="work-areas-ui">
+    .mg-work-areas { margin: 12px 0 16px; display: grid; gap: 12px; min-width: 0; }
+    .mg-work-areas h3 { margin: 0; font-size: 15px; letter-spacing: .04em; }
+    .mg-work-area, .mg-work-day {
+      min-width: 0;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      background: #141a24;
+      color: #e8eefc;
+      padding: 12px;
+    }
+    .mg-work-area summary { cursor: pointer; font-weight: 650; }
+    .mg-work-area label, .mg-work-day label, .mg-work-areas__create label { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
+    .mg-work-area input, .mg-work-area textarea, .mg-work-area select,
+    .mg-work-day input, .mg-work-day textarea, .mg-work-day select,
+    .mg-work-areas__create input {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      background: #0d121a;
+      color: #e8eefc;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .mg-work-area__actions, .mg-work-day__actions, .mg-work-areas__create { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .mg-work-area__danger { margin-left: auto; }
+    .mg-work-areas__remove { justify-self: start; }
+    .mg-work-areas__badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #2a2418; color: #f3d7a1; }
+    .mg-work-day__needs, .mg-work-area__status { color: #f0c674; }
+    .mg-work-area button:focus-visible, .mg-work-area input:focus-visible, .mg-work-area select:focus-visible, .mg-work-area textarea:focus-visible,
+    .mg-work-day button:focus-visible, .mg-work-day input:focus-visible, .mg-work-day select:focus-visible,
+    .mg-work-areas button:focus-visible, .mg-work-areas input:focus-visible {
+      outline: 2px solid #8fb4ff;
+      outline-offset: 2px;
+    }
+    #voicePlanPreviewModal .modal-card { max-height: 90vh; overflow: auto; }
+    .mg-work-areas, .sales-operational__body { overflow-x: hidden; }
+    @media (max-width: 800px), (max-height: 500px) {
+      .mg-work-areas { grid-template-columns: 1fr; }
+      .mg-work-area button, .mg-work-day button, .mg-work-areas button { min-height: 44px; min-width: 44px; }
+      .mg-work-area input, .mg-work-area textarea, .mg-work-area select,
+      .mg-work-day input, .mg-work-day select, .mg-work-areas__create input { font-size: 16px; min-height: 44px; }
+      .mg-work-day__move, .mg-work-day__move select { width: 100%; }
+      .mg-work-area__danger, .mg-work-areas__remove { margin-left: 0; margin-top: 8px; }
+    }
+    @media (max-width: 430px) {
+      .mg-work-area, .mg-work-day { padding: 10px; }
+    }
+  </style>
 </head>
 <body data-sales-dual-auth="true" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Vendedor">
   <script>
@@ -2018,6 +2068,7 @@
                       </div>
                     </div>
                     <div class="sales-op-metrics-inline" id="salesOperationalMetrics" aria-live="polite"></div>
+                    <div id="salesWorkAreasHost"></div>
                     <div id="salesOperationalTimelineHost"></div>
                     <div class="inline-actions" style="margin-top:10px;">
                       <button type="button" class="btn primary" id="btnAddOperationalDay">Add day</button>
@@ -5651,9 +5702,13 @@
         if (state.labor_manual_override == null) {
           state.labor_manual_override = false;
         }
-        state.laborAreas = window.MgLaborAreas
-          ? window.MgLaborAreas.sanitizeClientAreas(state.laborAreas)
-          : (Array.isArray(state.laborAreas) ? state.laborAreas : []);
+        if (state.labor_from_work_areas === true) {
+          state.laborAreas = Array.isArray(state.laborAreas) ? state.laborAreas : [];
+        } else {
+          state.laborAreas = window.MgLaborAreas
+            ? window.MgLaborAreas.sanitizeClientAreas(state.laborAreas)
+            : (Array.isArray(state.laborAreas) ? state.laborAreas : []);
+        }
         state.laborAreaPublic = Array.isArray(state.laborAreaPublic) ? state.laborAreaPublic : [];
         if (!state.seller_plan_area_draft || typeof state.seller_plan_area_draft !== 'object') {
           state.seller_plan_area_draft = null;
@@ -5743,6 +5798,13 @@
       function attachInternalPlanPublishFields(out, state, settings, hoursPerDay) {
         const voice = window.MgVoiceOperationalPlan;
         const raw = state && state.internal_operational_plan;
+        const areaApi = workAreasApi();
+        if (areaApi && areaApi.documentHasAreas(raw)) {
+          const next = Object.assign({}, out || {});
+          next.internal_operational_plan = raw;
+          next.operational_plan = areaApi.legacyPlanFromDocument(raw);
+          return next;
+        }
         if (!voice || !raw || typeof raw !== 'object') return out;
         const doc = voice.normalizeDocument(voice.stripRateFields(raw), {
           startDate: state.startDate || (out && out.start_date),
@@ -5882,8 +5944,9 @@
         const wrap = document.getElementById('salesLaborAutoSyncWrap');
         const note = document.getElementById('salesLaborSyncNote');
         const warn = document.getElementById('salesLaborManualWarn');
-        const areasOn = Array.isArray(state && state.laborAreas) && state.laborAreas.length > 0;
-        const active = !areasOn && isLaborAutoSyncActive(state);
+        const areaMode = workAreasApi() && workAreasApi().detectMode(state) === 'work-areas';
+        const areasOn = !areaMode && Array.isArray(state && state.laborAreas) && state.laborAreas.length > 0;
+        const active = areaMode ? !state.labor_manual_override && state.labor_auto_sync_from_plan !== false : (!areasOn && isLaborAutoSyncActive(state));
         if (autoSync) {
           autoSync.checked = active;
           autoSync.disabled = areasOn;
@@ -5891,13 +5954,15 @@
         if (wrap) wrap.style.opacity = areasOn || (state.labor_manual_override && !active) ? '0.85' : '1';
         if (note) {
           note.hidden = false;
-          note.textContent = areasOn
+          note.textContent = areaMode
+            ? 'Labor rows are derived from Work Areas. Edit crew in the Operational Plan.'
+            : (areasOn
             ? 'Operational Plan auto-sync is paused while this quote uses areas. Assign each labor line to an area.'
             : (active
               ? 'Labor days are synced from the Operational Plan.'
               : (state.labor_manual_override
                 ? 'Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again.'
-                : 'Add Operational Plan days to auto-sync labor worker-days.'));
+                : 'Add Operational Plan days to auto-sync labor worker-days.')));
         }
         if (warn) warn.style.display = !areasOn && state.labor_manual_override && !active ? 'block' : 'none';
       }
@@ -6456,6 +6521,143 @@
 
       window.renderSalesOpCrewAvailability = renderSalesOpCrewAvailability;
 
+      let workAreaClickAt = 0;
+      let workAreaConfirmRun = null;
+
+      function workAreasApi() {
+        return window.MgSellerOperationalPlanAreas || null;
+      }
+
+      function renderWorkAreasHost(state) {
+        const host = document.getElementById('salesWorkAreasHost');
+        const api = workAreasApi();
+        if (!host || !api) return;
+        host.innerHTML = api.renderWorkAreas(state || loadSalesState());
+        const mode = api.detectMode(state || loadSalesState());
+        const timeline = document.getElementById('salesOperationalTimelineHost');
+        const addDay = document.getElementById('btnAddOperationalDay');
+        if (timeline) timeline.hidden = mode === 'work-areas';
+        if (addDay) addDay.hidden = mode === 'work-areas';
+        const laborHost = document.getElementById('salesLaborAreasHost');
+        if (laborHost) laborHost.hidden = mode === 'work-areas';
+      }
+
+      function commitWorkAreaResult(state, result) {
+        const api = workAreasApi();
+        if (!api || !result || !result.ok) {
+          const note = document.querySelector('[data-wa-note]');
+          if (note) note.textContent = (result && result.error) || 'The work area was not changed.';
+          return false;
+        }
+        state.internal_operational_plan = result.document;
+        state.work_areas_ui = result.work_areas_ui || 'active';
+        if (result.labor_manual_override != null) state.labor_manual_override = result.labor_manual_override;
+        if (result.labor_auto_sync_from_plan != null) state.labor_auto_sync_from_plan = result.labor_auto_sync_from_plan;
+        if (state.work_areas_ui === 'global') {
+          state.labor_from_work_areas = false;
+          state.laborAreas = [];
+          state.operational_plan = api.legacyPlanFromDocument(result.document);
+        } else if (!state.labor_manual_override) {
+          const projected = api.projectLabor(result.document, loadSettings());
+          state.labor_from_work_areas = true;
+          state.workers = projected.workers.length
+            ? projected.workers
+            : [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
+          state.laborAreas = projected.laborAreas;
+          state.operational_plan = api.legacyPlanFromDocument(result.document);
+          if (result.invalidatesMoney) {
+            state.laborAreaPublic = [];
+            state._work_area_labor_fp = api.laborFingerprint(result.document);
+          }
+        }
+        saveSalesState(state);
+        return true;
+      }
+
+      function readWorkAreaCard(card) {
+        const scope = card.querySelector('[data-wa-field="scope"]');
+        const name = card.querySelector('[data-wa-field="name"]');
+        return {
+          key: card.getAttribute('data-area-key'),
+          name: name ? name.value : '',
+          scope: scope ? scope.value : ''
+        };
+      }
+
+      function onWorkAreaHostEvent(event) {
+        const api = workAreasApi();
+        if (!api) return;
+        const target = event.target;
+        if (!target || !target.closest) return;
+        const actionEl = target.closest('[data-wa-action]');
+        const field = target.closest('[data-wa-field]');
+        if (!actionEl && !field) return;
+        if (actionEl && event.type === 'click') event.preventDefault();
+        const now = Date.now();
+        if (event.type === 'click' && now - workAreaClickAt < 450) return;
+        if (event.type === 'click') workAreaClickAt = now;
+        const state = loadSalesState();
+        let doc = api.workingDocument(state);
+        let result = null;
+        if (actionEl && event.type === 'click') {
+          const action = actionEl.getAttribute('data-wa-action');
+          if (action === 'activate') {
+            state.work_areas_ui = 'active';
+            saveSalesState(state);
+            refreshSellerFromStandalonePreservingRenderedCurrency();
+            return;
+          }
+          if (action === 'add-area') {
+            const name = document.getElementById('waNewAreaName');
+            const scope = document.getElementById('waNewAreaScope');
+            result = api.addArea(doc, { name: name ? name.value : '', scope: scope ? scope.value : '' });
+          }
+          const card = actionEl.closest('.mg-work-area');
+          const key = card ? card.getAttribute('data-area-key') : '';
+          const dayId = actionEl.getAttribute('data-day-id') || (actionEl.closest('.mg-work-day') && actionEl.closest('.mg-work-day').getAttribute('data-day-id'));
+          if (action === 'rename' && card) {
+            const fields = readWorkAreaCard(card);
+            result = api.renameArea(doc, key, fields.name);
+            if (result.ok) result = api.editScope(result.document, key, fields.scope);
+          }
+          if (action === 'move-up') result = api.reorderArea(doc, key, -1);
+          if (action === 'move-down') result = api.reorderArea(doc, key, 1);
+          if (action === 'add-day') result = api.addDay(doc, key);
+          if (action === 'copy-day') result = api.copyDay(doc, dayId);
+          if (action === 'delete-day') result = api.deleteDay(doc, dayId);
+          if (action === 'delete-area') result = api.deleteArea(doc, key, { confirm: window.confirm('Delete this empty work area?') });
+          if (action === 'remove-all') {
+            result = api.removeAllAreas(doc, state, { confirm: window.confirm('Remove all work areas and return to one labor total? Days, scope, and crew stay.') });
+          }
+        }
+        if (field && (event.type === 'change' || event.type === 'focusout')) {
+          const card = field.closest('.mg-work-area');
+          const day = field.closest('.mg-work-day');
+          const key = card ? card.getAttribute('data-area-key') : '';
+          const which = field.getAttribute('data-wa-field');
+          if (!day && which === 'name') result = api.renameArea(doc, key, field.value);
+          if (!day && which === 'scope') result = api.editScope(doc, key, field.value);
+          if (day && which === 'move_area' && field.value && field.value !== key) {
+            result = api.moveDay(doc, day.getAttribute('data-day-id'), field.value);
+          } else if (day && which !== 'move_area') {
+            const patch = {};
+            patch[which] = which === 'worker_count' || which === 'hours_per_worker' ? Number(field.value) : field.value;
+            result = api.updateDay(doc, day.getAttribute('data-day-id'), patch);
+          }
+        }
+        if (!result) return;
+        if (commitWorkAreaResult(state, result)) refreshSellerFromStandalonePreservingRenderedCurrency();
+      }
+
+      function bindWorkAreasHost() {
+        const host = document.getElementById('salesWorkAreasHost');
+        if (!host || host.dataset.bound === '1') return;
+        host.dataset.bound = '1';
+        host.addEventListener('click', onWorkAreaHostEvent);
+        host.addEventListener('change', onWorkAreaHostEvent);
+        host.addEventListener('focusout', onWorkAreaHostEvent);
+      }
+
       function renderSalesOperationalPlanStandalone() {
         const timelineHost = document.getElementById('salesOperationalTimelineHost');
         const legacyHost = document.getElementById('salesOperationalDaysHost');
@@ -6464,7 +6666,10 @@
         const dayCountEl = document.getElementById('salesOpPlanDayCount');
         const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
         const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
-        if (!timelineHost) return;
+        if (!timelineHost) {
+          renderWorkAreasHost(loadSalesState());
+          return;
+        }
 
         const state = loadSalesState();
         const settings = loadSettings();
@@ -6551,6 +6756,7 @@
         }
 
         if (legacyHost) legacyHost.innerHTML = '';
+        renderWorkAreasHost(state);
         renderSalesOpProposalSummary(state, settings, uiMetrics);
         renderSalesOpCalendarPreview(state, settings, plan, metrics);
         syncSellerOperationalTargetFinishDisplay(state, settings, metrics);
@@ -7010,11 +7216,87 @@
         setVoicePlanPreviewStatus('', false);
       }
 
+      function openWorkAreasReviewModal(state) {
+        const api = workAreasApi();
+        const modal = document.getElementById('voicePlanPreviewModal');
+        if (!api || !modal) return;
+        const doc = api.workingDocument(state);
+        const issues = api.inspectDocument(doc, state);
+        voicePlanPreviewSession = { workAreas: true, snapshot: JSON.parse(JSON.stringify(state)) };
+        const clientEl = document.getElementById('voicePlanClientPreview');
+        const internalEl = document.getElementById('voicePlanInternalPreview');
+        const editor = document.getElementById('voicePlanEditorHost');
+        if (clientEl) clientEl.textContent = api.publicScopeText(doc) || 'No client-facing scope yet.';
+        if (internalEl) internalEl.textContent = api.internalReviewText(doc) || 'No internal plan yet.';
+        if (editor) editor.innerHTML = '<p>Edit work areas in the Operational Plan. This review does not publish or reprice.</p>';
+        const confirmBtn = document.getElementById('voicePlanPreviewConfirm');
+        if (confirmBtn) confirmBtn.disabled = issues.length > 0;
+        setVoicePlanPreviewStatus(issues.length ? issues[0].message : '', issues.length > 0);
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      async function applyWorkAreasConfirm() {
+        const api = workAreasApi();
+        if (!api || !voicePlanPreviewSession || !voicePlanPreviewSession.workAreas) return;
+        if (!workAreaConfirmRun) workAreaConfirmRun = api.createAsyncLock();
+        await workAreaConfirmRun(async function () {
+          const before = loadSalesState();
+          const snapshot = JSON.parse(JSON.stringify(before));
+          const doc = api.workingDocument(before);
+          const issues = api.inspectDocument(doc, before);
+          if (issues.length) {
+            setVoicePlanPreviewStatus(issues[0].message, true);
+            return { ok: false };
+          }
+          if (!doc.areas || !doc.areas.length) {
+            setVoicePlanPreviewStatus('Add a work area before confirming.', true);
+            return { ok: false };
+          }
+          setVoicePlanConfirmBusy(true);
+          try {
+            const preview = await previewSellerOperationalPlanAreas(doc, { commit: false });
+            if (!preview.ok || !preview.document) throw new Error('preview');
+            const applied = api.applyConfirmedWorkAreas({
+              state: snapshot,
+              document: preview.document,
+              settings: loadSettings()
+            });
+            if (!applied.ok) throw new Error('apply');
+            if (applied.state.quoteId) {
+              let persisted = await persistVoicePlanDocument(applied.state.quoteId, applied.state.internal_operational_plan);
+              if (!voicePlanPersistSucceeded(persisted.response, persisted.data) &&
+                  persisted.data && persisted.data.code === 'sent_quote_confirmation_required') {
+                const proceed = window.confirm(persisted.data.error || 'This quote was already sent or viewed. Confirm to update the public quote.');
+                if (!proceed) throw new Error('cancelled');
+                persisted = await persistVoicePlanDocument(applied.state.quoteId, applied.state.internal_operational_plan, { confirm_sent_update: true });
+              }
+              if (!voicePlanPersistSucceeded(persisted.response, persisted.data)) throw new Error('persist');
+            }
+            saveSalesState(applied.state);
+            setVoicePlanConfirmBusy(false);
+            closeVoicePlanPreviewModal();
+            refreshSellerFromStandalonePreservingRenderedCurrency();
+            return { ok: true, published: false, priced: false };
+          } catch (_err) {
+            saveSalesState(snapshot);
+            setVoicePlanPreviewStatus('The operational plan was not changed.', true);
+            setVoicePlanConfirmBusy(false);
+            refreshSellerFromStandalonePreservingRenderedCurrency();
+            return { ok: false };
+          }
+        });
+      }
+
       function openVoicePlanPreviewModal() {
         const voice = getVoicePlanApi();
         const modal = document.getElementById('voicePlanPreviewModal');
         if (!voice || !modal) return;
         const state = loadSalesState();
+        const areaApi = workAreasApi();
+        if (areaApi && areaApi.detectMode(state) === 'work-areas') {
+          openWorkAreasReviewModal(state);
+          return;
+        }
         const settings = loadSettings();
         const confirmed = state.internal_operational_plan && typeof state.internal_operational_plan === 'object'
           ? voice.cloneJson(state.internal_operational_plan)
@@ -7181,8 +7463,22 @@
           confirmBtn.dataset.bound = '1';
           confirmBtn.addEventListener('click', function (event) {
             event.preventDefault();
+            if (voicePlanPreviewSession && voicePlanPreviewSession.workAreas) {
+              applyWorkAreasConfirm();
+              return;
+            }
             applyVoicePlanConfirm();
           }, true);
+        }
+        if (!document.body.dataset.voicePlanEscape) {
+          document.body.dataset.voicePlanEscape = '1';
+          document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') return;
+            const modal = document.getElementById('voicePlanPreviewModal');
+            if (!modal || modal.getAttribute('aria-hidden') === 'true') return;
+            event.preventDefault();
+            closeVoicePlanPreviewModal();
+          });
         }
         const micBtn = document.getElementById('voicePlanMicToggle');
         if (micBtn && !micBtn.dataset.bound) {
@@ -7271,6 +7567,7 @@
       }
 
       function bindSalesOperationalPlanStandalone() {
+        bindWorkAreasHost();
         bindVoicePlanPreviewStandalone();
         const api = getOperationalPlanApi();
         if (!api) return;
@@ -9331,8 +9628,14 @@
       }
 
       function laborCost(worker, settings) {
-        const days = workerDaysAsInteger(worker);
         const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
+        if (worker && worker.display_unit && Number(worker.hours) > 0) {
+          const directRate = worker.type === 'helper'
+            ? Number(settings.baseHelper || 0)
+            : Number(settings.baseInstaller || 0);
+          return Number(worker.hours) * directRate;
+        }
+        const days = workerDaysAsInteger(worker);
         const fallbackRate = worker.type === 'helper'
           ? Number(settings.baseHelper || 0)
           : Number(settings.baseInstaller || 0);
@@ -9377,29 +9680,40 @@
         const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         updateLaborSyncChrome(state);
 
+        const areaApiMode = workAreasApi();
+        const workAreaMode = areaApiMode && areaApiMode.detectMode(state) === 'work-areas' && !state.labor_manual_override;
         const areas = Array.isArray(state.laborAreas) ? state.laborAreas : [];
         const areaHead = document.getElementById('salesLaborAreaHead');
         if (areaHead) areaHead.hidden = areas.length === 0;
+        const unitsHead = document.querySelector('.sales-labor-th--units');
+        if (unitsHead) {
+          const showHours = workAreaMode && areaApiMode.projectLabor(areaApiMode.workingDocument(state), settings).mode === 'hour';
+          unitsHead.textContent = showHours ? 'Hours' : 'Days';
+        }
         const areaApi = window.MgLaborAreas;
         body.innerHTML = state.workers.map((worker, index) => {
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
           const rateValue = fallbackRate;
-          const daysVal = workerDaysAsInteger(worker);
-          const unitsAttrs = autoSync
+          const daysVal = workAreaMode && worker.display_unit === 'hours'
+            ? worker.display_units
+            : (workAreaMode && worker.display_units != null ? worker.display_units : workerDaysAsInteger(worker));
+          const unitsAttrs = (autoSync || workAreaMode)
             ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
             : '';
-          const rowClass = autoSync ? 'sales-labor-row--synced' : '';
-          const areaCell = areas.length && areaApi
+          const rowClass = (autoSync || workAreaMode) ? 'sales-labor-row--synced' : '';
+          const areaCell = workAreaMode
+            ? `<td class="sales-labor-td sales-labor-td--area">${escapeHtml(worker.name || '')}</td>`
+            : (areas.length && areaApi
             ? `<td class="sales-labor-td sales-labor-td--area">${areaApi.areaSelectHtml(areas, worker.area_id || '')}</td>`
-            : '';
+            : '');
           return `
             <tr data-index="${index}"${rowClass ? ' class="' + rowClass + '"' : ''}>
               ${areaCell}
-              <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" ${autoSync ? 'readonly tabindex="-1"' : ''} /></td>
+              <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" ${(autoSync || workAreaMode) ? 'readonly tabindex="-1"' : ''} /></td>
               <td class="sales-labor-td sales-labor-td--type">
-                <select data-key="type" ${autoSync ? 'disabled' : ''}>
+                <select data-key="type" ${(autoSync || workAreaMode) ? 'disabled' : ''}>
                   <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Pro</option>
                   <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
                 </select>
@@ -9409,8 +9723,8 @@
               <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${sellerMoney(laborCost(worker, settings), settings, state)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
-                  <button class="btn ghost" type="button" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ''}>Copy</button>
-                  <button class="btn danger" type="button" data-action="delete" ${autoSync ? 'disabled title="Edit crew in Operational Plan"' : ''}>Delete</button>
+                  <button class="btn ghost" type="button" data-action="copy" ${(autoSync || workAreaMode) ? 'disabled title="Edit crew in the Operational Plan"' : ''}>Copy</button>
+                  <button class="btn danger" type="button" data-action="delete" ${(autoSync || workAreaMode) ? 'disabled title="Edit crew in the Operational Plan"' : ''}>Delete</button>
                 </div>
               </td>
             </tr>
@@ -9418,7 +9732,8 @@
         }).join('');
 
         const areaHost = document.getElementById('salesLaborAreasHost');
-        if (areaHost && window.MgLaborAreas) {
+        if (workAreaMode && areaHost) areaHost.hidden = true;
+        if (!workAreaMode && areaHost && window.MgLaborAreas) {
           window.MgLaborAreas.mount(areaHost, {
             areas: state.laborAreas,
             workers: state.workers,
@@ -9465,6 +9780,11 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           const state = loadSalesState();
+          const areaGuard = workAreasApi();
+          if (areaGuard && areaGuard.detectMode(state) === 'work-areas' && state.labor_from_work_areas) {
+            if (!window.confirm('Manual labor turns off Work Areas sync for this whole quote. The plan areas stay. Continue?')) return;
+            state.labor_from_work_areas = false;
+          }
           markLaborManualOverride(state);
           const firstArea = Array.isArray(state.laborAreas) && state.laborAreas[0] ? state.laborAreas[0].id : '';
           state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '', area_id: firstArea });
@@ -9485,7 +9805,17 @@
             const state = loadSalesState();
             if (autoSyncToggle.checked) {
               enableLaborAutoSync(state);
+              if (workAreasApi() && workAreasApi().detectMode(state) === 'work-areas') {
+                state.labor_from_work_areas = true;
+              }
             } else {
+              if (workAreasApi() && workAreasApi().detectMode(state) === 'work-areas') {
+                if (!window.confirm('Manual labor turns off Work Areas sync for this whole quote. The plan areas stay. Continue?')) {
+                  autoSyncToggle.checked = true;
+                  return;
+                }
+                state.labor_from_work_areas = false;
+              }
               markLaborManualOverride(state);
             }
             saveSalesState(state);
@@ -9501,6 +9831,7 @@
           if (index < 0 || !key) return null;
           const state = loadSalesState();
           if (!Array.isArray(state.workers) || !state.workers[index]) return null;
+          if (state.labor_from_work_areas && !state.labor_manual_override) return null;
           if (isWorkerLaborQtyDataKey(key) || key === 'type' || key === 'name') {
             markLaborManualOverride(state);
           }
@@ -9715,6 +10046,8 @@
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
           labor_manual_override: false,
+          work_areas_ui: 'active',
+          labor_from_work_areas: false,
           _sellerDraftId: createSellerDraftId(),
           _sellerPublishedDraftId: '',
           _sellerPublishFingerprint: '',
@@ -12818,7 +13151,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         state.seller_plan_area_draft = api.bindDraftToQuote(applied.draft, publishData.quote_id || state.quoteId || '');
       }
 
-      async function previewSellerOperationalPlanAreas(temporaryDocument) {
+      async function previewSellerOperationalPlanAreas(temporaryDocument, options) {
         var api = window.MgSellerOperationalPlanAreas;
         var before = loadSalesState();
         var confirmed = {
@@ -12843,6 +13176,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         if (!response.ok) return { ok: false, confirmed: confirmed.document };
         var applied = api.applyPreviewResult(confirmed, data);
         if (!applied.ok) return { ok: false, confirmed: confirmed.document };
+        if (options && options.commit === false) {
+          return { ok: true, document: applied.draft.document, published: false, priced: false };
+        }
         var state = loadSalesState();
         state.internal_operational_plan = applied.draft.document;
         state.seller_plan_area_draft = applied.draft;
@@ -12882,6 +13218,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         });
         var hydrated = api.applyHydrationResult(current, decision);
         if (!hydrated.applied) return;
+        if (api.documentHasAreas(hydrated.state.internal_operational_plan)) {
+          hydrated.state.work_areas_ui = 'active';
+        }
         saveSalesState(hydrated.state);
       }
 
