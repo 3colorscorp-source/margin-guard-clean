@@ -532,10 +532,12 @@ async function main() {
   const identityRel = "scripts/test-seller-operational-plan-area-identity.js";
   const gatesRel = "scripts/test-seller-operational-plan-pr3a-gates.js";
   const workAreasRel = "scripts/test-seller-operational-plan-work-areas-ui.js";
+  const multiAreaQuoteRel = "scripts/test-multi-area-quote-v1.js";
   console.log(identityRel);
   console.log(gatesRel);
   console.log(workAreasRel);
-  for (const rel of [identityRel, gatesRel, workAreasRel]) {
+  console.log(multiAreaQuoteRel);
+  for (const rel of [identityRel, gatesRel, workAreasRel, multiAreaQuoteRel]) {
     if (!fs.existsSync(path.join(ROOT, rel))) {
       throw new Error(rel + " is missing");
     }
@@ -570,6 +572,16 @@ async function main() {
   }
   passed += workAreasPassed;
 
+  const multiAreaQuote = require("./test-multi-area-quote-v1");
+  if (typeof multiAreaQuote.runMultiAreaQuoteV1Tests !== "function" || !Number.isInteger(multiAreaQuote.EXPECTED) || multiAreaQuote.EXPECTED <= 0) {
+    throw new Error(multiAreaQuoteRel + " did not export a valid summary");
+  }
+  const multiAreaQuotePassed = await multiAreaQuote.runMultiAreaQuoteV1Tests();
+  if (!Number.isInteger(multiAreaQuotePassed) || multiAreaQuotePassed <= 0 || multiAreaQuotePassed !== multiAreaQuote.EXPECTED) {
+    throw new Error(multiAreaQuoteRel + " expected " + multiAreaQuote.EXPECTED + " tests, got " + multiAreaQuotePassed);
+  }
+  passed += multiAreaQuotePassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
@@ -581,6 +593,7 @@ async function main() {
     "public/js/seller-operational-plan-areas.js",
     "scripts/test-seller-operational-plan-pr3a-gates.js",
     "scripts/test-seller-operational-plan-work-areas-ui.js",
+    "scripts/test-multi-area-quote-v1.js",
     "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/estimate-send-helpers.js",

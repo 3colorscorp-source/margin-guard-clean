@@ -518,6 +518,53 @@
     return { ok: true, document: next, invalidatesMoney: invalidates };
   }
 
+  function replaceDayAssignments(doc, dayId, assignments) {
+    var next = withAreas(doc);
+    var dayIndex = next.days.findIndex(function (day) {
+      return day && day.day_id === dayId;
+    });
+    if (dayIndex < 0) return { ok: false, code: "missing_day", document: next, invalidatesMoney: false };
+    var ids = idFactory(next);
+    next.days[dayIndex].worker_assignments = (Array.isArray(assignments) ? assignments : [])
+      .map(function (asg) {
+        var type = String(asg && asg.worker_type || "");
+        if (type !== "helper" && type !== "pro" && type !== "installer") return null;
+        return {
+          assignment_id: String(asg.assignment_id || "").trim() || ids("asg"),
+          worker_role: type === "helper" ? "Assistant" : "Installer",
+          worker_type: type === "helper" ? "helper" : "pro",
+          worker_count: Number(asg.worker_count),
+          hours_per_worker: Number(asg.hours_per_worker),
+        };
+      })
+      .filter(Boolean);
+    return { ok: true, document: next, invalidatesMoney: true };
+  }
+
+  function addDayAssignment(doc, dayId) {
+    var next = withAreas(doc);
+    var dayIndex = next.days.findIndex(function (day) {
+      return day && day.day_id === dayId;
+    });
+    if (dayIndex < 0) return { ok: false, code: "missing_day", document: next, invalidatesMoney: false };
+    var list = Array.isArray(next.days[dayIndex].worker_assignments) ? next.days[dayIndex].worker_assignments : [];
+    list.push({ assignment_id: idFactory(next)("asg"), worker_role: "", worker_type: "", worker_count: "", hours_per_worker: "" });
+    next.days[dayIndex].worker_assignments = list;
+    return { ok: true, document: next, invalidatesMoney: true };
+  }
+
+  function deleteDayAssignment(doc, dayId, assignmentId) {
+    var next = withAreas(doc);
+    var dayIndex = next.days.findIndex(function (day) {
+      return day && day.day_id === dayId;
+    });
+    if (dayIndex < 0) return { ok: false, code: "missing_day", document: next, invalidatesMoney: false };
+    next.days[dayIndex].worker_assignments = (next.days[dayIndex].worker_assignments || []).filter(function (asg) {
+      return String(asg && asg.assignment_id || "") !== String(assignmentId || "");
+    });
+    return { ok: true, document: next, invalidatesMoney: true };
+  }
+
   function deleteDay(doc, dayId) {
     var next = withAreas(doc);
     var before = next.areas.length;
@@ -878,12 +925,13 @@
         var status = areaStatus(doc, area);
         var dayHtml = days
           .map(function (day) {
-            var crew = (day.worker_assignments && day.worker_assignments[0]) || {
+            var crews = day.worker_assignments && day.worker_assignments.length ? day.worker_assignments : [{
+              assignment_id: "",
               worker_type: "",
               worker_role: "",
               worker_count: "",
               hours_per_worker: "",
-            };
+            }];
             var options = (doc.areas || [])
               .map(function (item) {
                 var itemKey = areaRefOf(item) || areaIdOf(item);
@@ -892,6 +940,22 @@
               })
               .join("");
             var needs = dayCrewValid(day) ? "" : '<p class="mg-work-day__needs">Needs crew</p>';
+            var crewHtml = crews.map(function (crew, crewIndex) {
+              return (
+                '<div class="mg-work-assignment" data-assignment-id="' + escapeHtml(crew.assignment_id || "") + '">' +
+                '<label>Crew<select data-wa-field="worker_type">' +
+                '<option value="">Choose crew</option>' +
+                '<option value="pro"' + (crew.worker_type === "pro" ? " selected" : "") + '>Installer</option>' +
+                '<option value="helper"' + (crew.worker_type === "helper" ? " selected" : "") + '>Assistant</option></select></label>' +
+                '<label>Worker count<input data-wa-field="worker_count" type="number" min="1" step="1" inputmode="numeric" value="' +
+                escapeHtml(crew.worker_count) + '" /></label>' +
+                '<label>Hours per worker<input data-wa-field="hours_per_worker" type="number" min="0.25" step="0.25" inputmode="decimal" value="' +
+                escapeHtml(crew.hours_per_worker) + '" /></label>' +
+                (crew.assignment_id ? '<button type="button" class="btn danger" data-wa-action="delete-worker" data-assignment-id="' +
+                  escapeHtml(crew.assignment_id) + '">Remove crew</button>' : '') +
+                '</div>'
+              );
+            }).join("");
             return (
               '<article class="mg-work-day" data-day-id="' +
               escapeHtml(day.day_id) +
@@ -906,20 +970,8 @@
               '<label>Internal task<input data-wa-field="task" value="' +
               escapeHtml((day.internal_tasks && day.internal_tasks[0] && day.internal_tasks[0].label) || "") +
               '" /></label>' +
-              '<label>Crew<select data-wa-field="worker_type">' +
-              '<option value="">Choose crew</option>' +
-              '<option value="pro"' +
-              (crew.worker_type === "pro" ? " selected" : "") +
-              ">Installer</option>" +
-              '<option value="helper"' +
-              (crew.worker_type === "helper" ? " selected" : "") +
-              ">Assistant</option></select></label>" +
-              '<label>Worker count<input data-wa-field="worker_count" type="number" min="1" step="1" inputmode="numeric" value="' +
-              escapeHtml(crew.worker_count) +
-              '" /></label>' +
-              '<label>Hours per worker<input data-wa-field="hours_per_worker" type="number" min="0.25" step="0.25" inputmode="decimal" value="' +
-              escapeHtml(crew.hours_per_worker) +
-              '" /></label>' +
+              crewHtml +
+              '<button type="button" class="btn" data-wa-action="add-worker" data-day-id="' + escapeHtml(day.day_id) + '">Add crew</button>' +
               '<label class="mg-work-day__move">Move day to<select data-wa-field="move_area">' +
               options +
               "</select></label>" +
@@ -938,53 +990,55 @@
           '<article class="mg-work-area" data-area-key="' +
           escapeHtml(key) +
           '">' +
-          "<details open>" +
-          "<summary>" +
-          escapeHtml(area.name) +
-          " · " +
-          days.length +
-          " days · " +
-          areaPersonHours(doc, area) +
-          " person-hours · " +
-          status +
-          "</summary>" +
-          '<label>Name<input data-wa-field="name" maxlength="80" value="' +
-          escapeHtml(area.name) +
-          '" /></label>' +
-          '<label>Scope<textarea data-wa-field="scope" maxlength="4000">' +
-          escapeHtml(area.scope || "") +
-          "</textarea></label>" +
-          '<p class="mg-work-area__status">' +
-          escapeHtml(status) +
-          (status === "Empty area" ? ". This area stays in the plan and will not be quoted." : "") +
-          "</p>" +
-          '<div class="mg-work-area__actions">' +
-          '<button type="button" class="btn" data-wa-action="rename">Rename / Edit</button>' +
+          '<div class="mg-work-area__summary"><div class="mg-work-area__summary-copy">' +
+          '<h4>' + escapeHtml(area.name) + '</h4>' +
+          '<p>' + days.length + ' days · ' + areaPersonHours(doc, area) + ' person-hours · ' + escapeHtml(status) + '</p>' +
+          '</div><div class="mg-work-area__actions">' +
+          '<button type="button" class="btn primary" data-wa-action="edit-area">Open area</button>' +
           '<button type="button" class="btn" data-wa-action="move-up"' +
           (index === 0 ? " disabled" : "") +
           ">Move up</button>" +
           '<button type="button" class="btn" data-wa-action="move-down"' +
           (index === doc.areas.length - 1 ? " disabled" : "") +
           ">Move down</button>" +
-          '<button type="button" class="btn" data-wa-action="add-day">Add day</button>' +
           '<button type="button" class="btn danger mg-work-area__danger" data-wa-action="delete-area" aria-label="Delete ' +
           escapeHtml(area.name) +
           '">Delete</button>' +
-          "</div>" +
+          '</div></div>' +
+          '<div class="mg-work-area-editor" data-wa-editor aria-hidden="true" role="dialog" aria-modal="true" aria-label="Edit ' +
+          escapeHtml(area.name) + '">' +
+          '<div class="mg-work-area-editor__card"><div class="mg-work-area-editor__header">' +
+          '<h3>' + escapeHtml(area.name) + '</h3>' +
+          '<button type="button" class="icon-btn" data-wa-action="close-area" aria-label="Close area">X</button>' +
+          '</div><div class="mg-work-area-editor__body">' +
+          '<label>Name<input data-wa-field="name" maxlength="80" value="' + escapeHtml(area.name) + '" /></label>' +
+          '<label>Scope of Work<textarea data-wa-field="scope" maxlength="4000" rows="7">' + escapeHtml(area.scope || "") + '</textarea></label>' +
+          '<p class="mg-work-area__status">' + escapeHtml(status) +
+          (status === "Empty area" ? ". This area stays in the plan and will not be quoted." : "") + '</p>' +
+          '<div class="mg-work-area__actions"><button type="button" class="btn primary" data-wa-action="add-day">Add day</button></div>' +
           dayHtml +
-          "</details></article>"
+          '</div><div class="mg-work-area-editor__footer">' +
+          '<button type="button" class="btn mg-work-area-editor__add-next" data-wa-action="open-add-area">+ Add New Area</button>' +
+          '<button type="button" class="btn primary" data-wa-action="save-area">Save Area</button>' +
+          '</div></div></div></article>'
         );
       })
       .join("");
     return (
       '<section class="mg-work-areas" aria-label="Work Areas">' +
-      "<h3>Work Areas</h3>" +
-      cards +
-      '<form class="mg-work-areas__create" data-wa-action="add-form">' +
-      '<label>New work area<input id="waNewAreaName" maxlength="80" placeholder="Area name" /></label>' +
-      '<label>Scope<input id="waNewAreaScope" maxlength="4000" placeholder="Scope" /></label>' +
-      '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="add-area">+ Add work area</button>' +
-      "</form>" +
+      '<div class="mg-work-area__summary"><h3>Multi-Area Quote</h3>' +
+      '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="open-add-area">+ Add New Area</button></div>' +
+      (cards || '<p class="mg-work-areas__empty">No areas yet. Add the first area to build this quote.</p>') +
+      '<div class="mg-work-area-editor mg-new-area-modal" data-wa-new-modal aria-hidden="true" role="dialog" aria-modal="true" aria-label="Add new area">' +
+      '<div class="mg-work-area-editor__card"><div class="mg-work-area-editor__header"><h3>Add New Area</h3>' +
+      '<button type="button" class="icon-btn" data-wa-action="close-add-area" aria-label="Close">X</button></div>' +
+      '<div class="mg-work-area-editor__body"><form class="mg-work-areas__create" data-wa-action="add-form">' +
+      '<label>Area name<input id="waNewAreaName" maxlength="80" placeholder="Kitchen Backsplash" /></label>' +
+      '<label>Scope of Work<textarea id="waNewAreaScope" maxlength="4000" rows="7" placeholder="Describe the complete client-facing scope for this area."></textarea></label>' +
+      '</form></div><div class="mg-work-area-editor__footer">' +
+      '<button type="button" class="btn" data-wa-action="close-add-area">Cancel</button>' +
+      '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="add-area">Save Area</button>' +
+      '</div></div></div>' +
       '<button type="button" class="btn danger mg-work-area__danger mg-work-areas__remove" data-wa-action="remove-all">Remove all areas</button>' +
       '<p class="mg-work-areas__note" data-wa-note></p>' +
       "</section>"
@@ -1048,12 +1102,16 @@
     reorderArea: reorderArea,
     addDay: addDay,
     updateDay: updateDay,
+    replaceDayAssignments: replaceDayAssignments,
+    addDayAssignment: addDayAssignment,
+    deleteDayAssignment: deleteDayAssignment,
     moveDay: moveDay,
     copyDay: copyDay,
     deleteDay: deleteDay,
     deleteArea: deleteArea,
     removeAllAreas: removeAllAreas,
     areaStatus: areaStatus,
+    areaPersonHours: areaPersonHours,
     personHours: personHours,
     inspectDocument: inspectDocument,
     projectLabor: projectLabor,
