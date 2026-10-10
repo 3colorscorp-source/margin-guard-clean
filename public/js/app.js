@@ -9180,6 +9180,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         renderOwner();
       };
     }
+    if ($("ownerConfirmMultiAreaQuote")) {
+      $("ownerConfirmMultiAreaQuote").onclick = () => {
+        const entry = window.MgOwnerMultiAreaEntry;
+        if (!entry || typeof entry.arm !== "function") return;
+        const armed = entry.arm();
+        if (!armed || !armed.ok || armed.href !== entry.ENTRY_PATH) return;
+        window.location.assign(entry.ENTRY_PATH);
+      };
+    }
     if ($("ownerCancelNewQuote")) $("ownerCancelNewQuote").onclick = () => hideOwnerNewQuoteModal();
     if ($("btnExportPdf")) $("btnExportPdf").onclick = () => void exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);

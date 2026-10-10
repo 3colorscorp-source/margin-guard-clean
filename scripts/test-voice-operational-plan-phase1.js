@@ -533,11 +533,13 @@ async function main() {
   const gatesRel = "scripts/test-seller-operational-plan-pr3a-gates.js";
   const workAreasRel = "scripts/test-seller-operational-plan-work-areas-ui.js";
   const multiAreaQuoteRel = "scripts/test-multi-area-quote-v1.js";
+  const ownerEntryRel = "scripts/test-owner-new-quote-multi-area-entry.js";
   console.log(identityRel);
   console.log(gatesRel);
   console.log(workAreasRel);
   console.log(multiAreaQuoteRel);
-  for (const rel of [identityRel, gatesRel, workAreasRel, multiAreaQuoteRel]) {
+  console.log(ownerEntryRel);
+  for (const rel of [identityRel, gatesRel, workAreasRel, multiAreaQuoteRel, ownerEntryRel]) {
     if (!fs.existsSync(path.join(ROOT, rel))) {
       throw new Error(rel + " is missing");
     }
@@ -582,6 +584,16 @@ async function main() {
   }
   passed += multiAreaQuotePassed;
 
+  const ownerEntry = require("./test-owner-new-quote-multi-area-entry");
+  if (typeof ownerEntry.runOwnerNewQuoteMultiAreaEntryTests !== "function" || !Number.isInteger(ownerEntry.EXPECTED) || ownerEntry.EXPECTED <= 0) {
+    throw new Error(ownerEntryRel + " did not export a valid summary");
+  }
+  const ownerEntryPassed = await ownerEntry.runOwnerNewQuoteMultiAreaEntryTests();
+  if (!Number.isInteger(ownerEntryPassed) || ownerEntryPassed <= 0 || ownerEntryPassed !== ownerEntry.EXPECTED) {
+    throw new Error(ownerEntryRel + " expected " + ownerEntry.EXPECTED + " tests, got " + ownerEntryPassed);
+  }
+  passed += ownerEntryPassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
@@ -594,6 +606,8 @@ async function main() {
     "scripts/test-seller-operational-plan-pr3a-gates.js",
     "scripts/test-seller-operational-plan-work-areas-ui.js",
     "scripts/test-multi-area-quote-v1.js",
+    "scripts/test-owner-new-quote-multi-area-entry.js",
+    "public/js/owner-multi-area-entry.js",
     "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/estimate-send-helpers.js",

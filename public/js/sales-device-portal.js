@@ -317,6 +317,23 @@
         }
       }
     }
+    const entry = window.MgOwnerMultiAreaEntry;
+    if (entry && typeof entry.consume === "function" && typeof window.performStandaloneNewQuoteReset === "function") {
+      let portal = "";
+      try {
+        portal = new URLSearchParams(window.location.search || "").get("portal") || "";
+      } catch (_entryErr) {
+        portal = "";
+      }
+      const opened = entry.consume({
+        portal: portal,
+        authMode: document.documentElement.dataset.authMode || "",
+        portalMode: window.MG_SALES_PORTAL_MODE || ""
+      });
+      if (opened && opened.reset === true && opened.quoteMode === "multi_area") {
+        window.performStandaloneNewQuoteReset({ quoteMode: "multi_area" });
+      }
+    }
   }
 
   function ensureSellerNotice() {
