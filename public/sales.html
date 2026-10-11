@@ -7800,17 +7800,17 @@
         return replaced.document;
       }
 
-      function applyNamedAreaPlan(document, applied) {
+      function applyNamedAreaPlan(plan, applied) {
         const api = workAreasApi();
         const state = loadSalesState();
-        state.internal_operational_plan = document;
+        state.internal_operational_plan = plan;
         state.quote_mode = 'multi_area';
         state.work_areas_ui = 'active';
         state.labor_from_work_areas = true;
-        if (api && api.legacyPlanFromDocument) state.operational_plan = api.legacyPlanFromDocument(document);
-        if (api && api.publicScopeText) state.messageToClient = api.publicScopeText(document);
+        if (api && api.legacyPlanFromDocument) state.operational_plan = api.legacyPlanFromDocument(plan);
+        if (api && api.publicScopeText) state.messageToClient = api.publicScopeText(plan);
         if (api && api.projectLabor) {
-          const projected = api.projectLabor(document, loadSettings());
+          const projected = api.projectLabor(plan, loadSettings());
           if (projected && projected.workers && projected.workers.length) {
             state.workers = projected.workers;
             state.laborAreas = projected.laborAreas;
