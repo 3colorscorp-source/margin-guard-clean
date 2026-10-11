@@ -1591,23 +1591,66 @@
     .mg-work-area-editor__card {
       width: min(920px, 100%);
       max-height: min(90vh, 920px);
-      overflow-y: auto;
-      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       border: 1px solid rgba(34,197,94,.35);
       border-radius: 18px;
       background: #0b1320;
       box-shadow: 0 28px 80px rgba(0,0,0,.55);
     }
-    .mg-work-area-editor__header, .mg-work-area-editor__footer { position: sticky; z-index: 2; display: flex; gap: 10px; align-items: center; padding: 14px 16px; background: rgba(11,19,32,.97); }
+    .mg-work-area-editor__header, .mg-work-area-editor__footer { position: static; z-index: 2; flex: 0 0 auto; display: flex; gap: 10px; align-items: center; padding: 14px 16px; background: rgba(11,19,32,.97); }
     .mg-work-area-editor__header { top: 0; justify-content: space-between; border-bottom: 1px solid rgba(148,163,184,.18); }
     .mg-work-area-editor__header h3 { margin: 0; font-size: 18px; }
-    .mg-work-area-editor__body { padding: 16px; }
+    .mg-work-area-editor__body { padding: 16px; overflow-x: hidden; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
     .mg-work-area-editor__footer { bottom: 0; justify-content: flex-end; border-top: 1px solid rgba(148,163,184,.18); }
     .mg-work-area-editor__footer .mg-work-area-editor__add-next { margin-right: auto; }
     .mg-work-areas__empty { margin: 0; color: var(--muted); }
     .mg-new-area-modal .mg-work-areas__create { display: grid; }
     .mg-work-area summary { cursor: pointer; font-weight: 650; }
     .mg-work-area label, .mg-work-day label, .mg-work-areas__create label { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
+    .mg-new-area-modal .mg-work-area { border: 0; background: transparent; padding: 0; }
+    .mg-area-voice, .mg-area-days, .mg-work-area-editor__card { min-width: 0; max-width: 100%; }
+    .mg-area-voice__langs, .mg-area-voice__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+    .mg-area-voice__langs label { flex: 1 1 140px; }
+    .mg-area-voice__actions .btn { flex: 1 1 140px; min-width: 0; }
+    .mg-area-voice__status { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+    .mg-area-voice__status.is-error { color: #f0c674; }
+    .mg-work-area-editor .mg-area-dictation {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-height: 132px;
+      max-height: min(280px, 36vh);
+      box-sizing: border-box;
+      margin: 0;
+      padding: 14px 15px;
+      resize: vertical;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: pre-wrap;
+      appearance: none;
+      -webkit-appearance: none;
+      font: inherit;
+      font-weight: 500;
+      line-height: 1.52;
+      color: var(--text);
+      caret-color: var(--green);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(6, 10, 20, 0.82)),
+        #0b1320;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(0, 0, 0, 0.18);
+    }
+    .mg-work-area-editor .mg-area-dictation::placeholder { color: rgba(232, 238, 252, 0.38); }
+    .mg-work-area-editor .mg-area-dictation:focus {
+      border-color: rgba(34, 197, 94, 0.55);
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      outline: none;
+    }
     .mg-work-area input, .mg-work-area textarea, .mg-work-area select,
     .mg-work-day input, .mg-work-day textarea, .mg-work-day select,
     .mg-work-areas__create input {
@@ -1635,6 +1678,9 @@
     }
     #voicePlanPreviewModal .modal-card { max-height: 90vh; overflow: auto; }
     .mg-work-areas, .sales-operational__body { overflow-x: hidden; }
+    @media (max-height: 500px) {
+      .mg-work-area-editor .mg-area-dictation { min-height: 72px; max-height: 96px; }
+    }
     @media (max-width: 800px), (max-height: 500px) {
       .mg-work-areas { grid-template-columns: 1fr; }
       .mg-work-area button, .mg-work-day button, .mg-work-areas button { min-height: 44px; min-width: 44px; }
@@ -6567,6 +6613,7 @@
 
       let workAreaClickAt = 0;
       let workAreaConfirmRun = null;
+      const areaVoiceSessions = new WeakMap();
 
       function workAreasApi() {
         return window.MgSellerOperationalPlanAreas || null;
@@ -6668,6 +6715,212 @@
         };
       }
 
+      function areaVoiceStatus(editor, message, isError) {
+        const status = editor && editor.querySelector('[data-wa-voice-status]');
+        if (!status) return;
+        status.textContent = String(message || '');
+        status.classList.toggle('is-error', !!isError);
+      }
+
+      function ensureAreaVoice(editor) {
+        let session = areaVoiceSessions.get(editor);
+        if (session) return session;
+        const voice = window.MgVoiceOperationalPlan;
+        const binder = voice && typeof voice.bindSpeechDictation === 'function'
+          ? voice.bindSpeechDictation({
+            textarea: editor.querySelector('[data-wa-field="transcript"]'),
+            newButton: editor.querySelector('[data-wa-action="dictate-new"]'),
+            continueButton: editor.querySelector('[data-wa-action="dictate-continue"]'),
+            languageSelect: editor.querySelector('[data-wa-field="dictation_language"]'),
+            onStatus: function (message, isError) { areaVoiceStatus(editor, message, isError); }
+          })
+          : null;
+        session = {
+          generation: 0,
+          binder: binder,
+          controller: null,
+          pendingDocument: null,
+          pendingKey: '',
+          snapshot: null
+        };
+        areaVoiceSessions.set(editor, session);
+        if (binder && !binder.speechAvailable()) {
+          areaVoiceStatus(editor, 'Voice recognition is not available. Type the instructions.', false);
+        }
+        return session;
+      }
+
+      function discardAreaVoice(editor) {
+        const session = editor ? areaVoiceSessions.get(editor) : null;
+        if (!session) return;
+        session.generation += 1;
+        if (session.controller) {
+          try { session.controller.abort(); } catch (_abortErr) {}
+          session.controller = null;
+        }
+        if (session.binder) session.binder.cancel();
+        session.pendingDocument = null;
+      }
+
+      function paintAreaReview(editor, doc, key) {
+        const api = workAreasApi();
+        if (!api || !editor) return;
+        const html = api.renderWorkAreas({
+          work_areas_ui: 'active',
+          labor_from_work_areas: true,
+          quote_mode: 'multi_area',
+          internal_operational_plan: doc
+        });
+        const holder = document.createElement('div');
+        holder.innerHTML = html;
+        const source = holder.querySelector('[data-area-key="' + String(key).replace(/"/g, '') + '"] [data-wa-days]');
+        const target = editor.querySelector('[data-wa-days]');
+        if (source && target) target.innerHTML = source.innerHTML;
+        const scope = editor.querySelector('[data-wa-field="scope"]');
+        const area = (doc.areas || []).filter(function (item) {
+          return item && (item.area_ref === key || item.id === key);
+        })[0];
+        if (scope && area) scope.value = area.scope || '';
+      }
+
+      function syncReviewFields(api, pending, root, key) {
+        if (!api || !pending || !root) return pending;
+        const name = root.querySelector('[data-wa-field="name"]');
+        const scope = root.querySelector('[data-wa-field="scope"]');
+        let next = pending;
+        if (name) {
+          const renamed = api.renameArea(next, key, name.value);
+          if (renamed.ok) next = renamed.document;
+        }
+        if (scope) {
+          const edited = api.editScope(next, key, scope.value);
+          if (edited.ok) next = edited.document;
+        }
+        root.querySelectorAll('.mg-work-day').forEach(function (day) {
+          const dayId = day.getAttribute('data-day-id');
+          const patch = {};
+          ['client_scope', 'task'].forEach(function (fieldName) {
+            const input = day.querySelector('[data-wa-field="' + fieldName + '"]');
+            if (input) patch[fieldName] = input.value;
+          });
+          const updated = api.updateDay(next, dayId, patch);
+          if (updated.ok) next = updated.document;
+          const assignments = Array.from(day.querySelectorAll('.mg-work-assignment')).map(function (row) {
+            const type = row.querySelector('[data-wa-field="worker_type"]');
+            const count = row.querySelector('[data-wa-field="worker_count"]');
+            const hours = row.querySelector('[data-wa-field="hours_per_worker"]');
+            return {
+              assignment_id: row.getAttribute('data-assignment-id') || '',
+              worker_type: type ? type.value : '',
+              worker_count: count ? Number(count.value) : 0,
+              hours_per_worker: hours ? Number(hours.value) : 0
+            };
+          });
+          const crew = api.replaceDayAssignments(next, dayId, assignments);
+          if (crew.ok) next = crew.document;
+        });
+        return next;
+      }
+
+      async function interpretAreaFromEditor(editor) {
+        const api = workAreasApi();
+        if (!api || !editor) return;
+        const session = ensureAreaVoice(editor);
+        if (session.binder) session.binder.stop();
+        session.generation += 1;
+        const generation = session.generation;
+        const transcriptEl = editor.querySelector('[data-wa-field="transcript"]');
+        const transcript = String(transcriptEl && transcriptEl.value || '').trim();
+        if (transcript.length < 3) {
+          areaVoiceStatus(editor, 'Dictate or type instructions first.', true);
+          return;
+        }
+        const card = editor.closest('.mg-work-area');
+        const saved = api.workingDocument(loadSalesState());
+        const base = session.snapshot || saved;
+        let areaKey = (card && card.getAttribute('data-area-key')) || session.pendingKey || '';
+        let working = base;
+        if (!areaKey) {
+          const name = editor.querySelector('[data-wa-field="name"]');
+          const created = api.addArea(working, { name: name ? name.value : '', scope: '' });
+          if (!created.ok) {
+            areaVoiceStatus(editor, created.error || 'A work area needs a name.', true);
+            return;
+          }
+          working = created.document;
+          areaKey = created.area_ref;
+          session.pendingKey = areaKey;
+          if (card) card.setAttribute('data-area-key', areaKey);
+        }
+        const requestAreaKey = areaKey;
+        const language = editor.querySelector('[data-wa-field="client_language"]');
+        const clientLanguage = String(language && language.value || 'en') === 'es' ? 'es' : 'en';
+        const controller = new AbortController();
+        session.controller = controller;
+        areaVoiceStatus(editor, 'Interpreting this area only. Nothing is published or priced.', false);
+        try {
+          const response = await fetch('/.netlify/functions/voice-operational-plan-command', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              transcript: transcript,
+              current_document: api.areaRequestDocument(working, areaKey),
+              client_language: clientLanguage,
+              interpretation_scope: 'area',
+              start_date: String((document.getElementById('salesStartDate') && document.getElementById('salesStartDate').value) || '')
+            }),
+            signal: controller.signal
+          });
+          let data = {};
+          try { data = await response.json(); } catch (_parseErr) {}
+          if (session.generation !== generation) return;
+          const still = (editor.closest('.mg-work-area') && editor.closest('.mg-work-area').getAttribute('data-area-key')) || session.pendingKey || '';
+          if (still !== requestAreaKey) return;
+          if (!response.ok || !data || data.ok !== true || !data.proposed_document) {
+            throw new Error((data && data.error) || 'The instructions could not be interpreted.');
+          }
+          const applied = api.acceptAreaInterpretation({
+            document: working,
+            proposedDays: data.proposed_document.days || [],
+            requestGeneration: generation,
+            activeGeneration: session.generation,
+            requestAreaKey: requestAreaKey,
+            activeAreaKey: still
+          });
+          if (!applied.ok || applied.ignored) return;
+          session.pendingDocument = applied.document;
+          session.pendingKey = requestAreaKey;
+          paintAreaReview(editor, applied.document, requestAreaKey);
+          areaVoiceStatus(editor, 'Review this area. Save Area stores only this area.', false);
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          if (session.generation !== generation) return;
+          areaVoiceStatus(editor, err && err.message ? err.message : 'Voice interpretation failed.', true);
+        } finally {
+          if (session.controller === controller) session.controller = null;
+        }
+      }
+
+      function handleAreaVoiceAction(action, actionEl) {
+        const editor = actionEl.closest('[data-wa-editor]') || actionEl.closest('[data-wa-new-modal]');
+        if (!editor) return;
+        const session = ensureAreaVoice(editor);
+        const api = workAreasApi();
+        if (!session.snapshot && api) session.snapshot = api.workingDocument(loadSalesState());
+        if (action === 'dictate-new' && session.binder) session.binder.startNew();
+        if (action === 'dictate-continue' && session.binder) session.binder.continueDictation();
+        if (action === 'clear-transcript' && session.binder) {
+          session.binder.clear();
+          areaVoiceStatus(editor, '', false);
+        }
+        if (action === 'interpret-area') interpretAreaFromEditor(editor);
+        if (action === 'close-area' || action === 'close-add-area') {
+          discardAreaVoice(editor);
+          editor.setAttribute('aria-hidden', 'true');
+        }
+      }
+
       function onWorkAreaHostEvent(event) {
         const api = workAreasApi();
         if (!api) return;
@@ -6676,7 +6929,15 @@
         const actionEl = target.closest('[data-wa-action]');
         const field = target.closest('[data-wa-field]');
         if (!actionEl && !field) return;
-        if (actionEl && event.type === 'click') event.preventDefault();
+        if (actionEl && event.type === 'click') {
+          const earlyAction = actionEl.getAttribute('data-wa-action');
+          if (earlyAction === 'dictate-new' || earlyAction === 'dictate-continue' || earlyAction === 'clear-transcript' || earlyAction === 'interpret-area' || earlyAction === 'close-area' || earlyAction === 'close-add-area') {
+            event.preventDefault();
+            handleAreaVoiceAction(earlyAction, actionEl);
+            return;
+          }
+          event.preventDefault();
+        }
         const now = Date.now();
         if (event.type === 'click' && now - workAreaClickAt < 450) return;
         if (event.type === 'click') workAreaClickAt = now;
@@ -6690,27 +6951,40 @@
           const action = actionEl.getAttribute('data-wa-action');
           if (action === 'edit-area') {
             const editor = actionEl.closest('.mg-work-area') && actionEl.closest('.mg-work-area').querySelector('[data-wa-editor]');
-            if (editor) editor.setAttribute('aria-hidden', 'false');
-            return;
-          }
-          if (action === 'close-area') {
-            const editor = actionEl.closest('[data-wa-editor]');
-            if (editor) editor.setAttribute('aria-hidden', 'true');
+            if (editor) {
+              editor.setAttribute('aria-hidden', 'false');
+              const session = ensureAreaVoice(editor);
+              session.snapshot = api.workingDocument(loadSalesState());
+              session.pendingKey = actionEl.closest('.mg-work-area').getAttribute('data-area-key') || '';
+            }
             return;
           }
           if (action === 'open-add-area') {
             const currentEditor = actionEl.closest('[data-wa-editor]');
             if (!currentEditor) {
               const modal = document.querySelector('[data-wa-new-modal]');
-              if (modal) modal.setAttribute('aria-hidden', 'false');
+              if (modal) {
+                modal.setAttribute('aria-hidden', 'false');
+                const session = ensureAreaVoice(modal);
+                session.snapshot = api.workingDocument(loadSalesState());
+              }
               return;
             }
             openNewAreaAfterCommit = true;
           }
-          if (action === 'close-add-area') {
-            const modal = actionEl.closest('[data-wa-new-modal]');
-            if (modal) modal.setAttribute('aria-hidden', 'true');
-            return;
+          if (action === 'add-area') {
+            const modal = document.querySelector('[data-wa-new-modal]');
+            const session = modal ? areaVoiceSessions.get(modal) : null;
+            if (session && session.pendingDocument && session.pendingKey) {
+              const synced = syncReviewFields(api, session.pendingDocument, modal, session.pendingKey);
+              result = api.commitAreaSlice(doc, session.pendingKey, synced);
+              if (result && result.ok) openAreaAfterCommit = session.pendingKey;
+            } else {
+              const name = document.getElementById('waNewAreaName');
+              const scope = document.getElementById('waNewAreaScope');
+              result = api.addArea(doc, { name: name ? name.value : '', scope: scope ? scope.value : '' });
+              if (result && result.ok) openAreaAfterCommit = result.area_ref || '';
+            }
           }
           if (action === 'activate') {
             state.work_areas_ui = 'active';
@@ -6719,12 +6993,6 @@
             refreshSellerFromStandalonePreservingRenderedCurrency();
             return;
           }
-          if (action === 'add-area') {
-            const name = document.getElementById('waNewAreaName');
-            const scope = document.getElementById('waNewAreaScope');
-            result = api.addArea(doc, { name: name ? name.value : '', scope: scope ? scope.value : '' });
-            if (result && result.ok) openAreaAfterCommit = result.area_ref || '';
-          }
           const card = actionEl.closest('.mg-work-area');
           const key = card ? card.getAttribute('data-area-key') : '';
           const dayId = actionEl.getAttribute('data-day-id') || (actionEl.closest('.mg-work-day') && actionEl.closest('.mg-work-day').getAttribute('data-day-id'));
@@ -6732,9 +7000,16 @@
             openAreaAfterCommit = key;
           }
           if (card && ['save-area', 'open-add-area', 'add-day', 'copy-day', 'delete-day', 'add-worker', 'delete-worker'].includes(action)) {
-            result = captureWorkAreaCard(api, doc, card);
-            if (!result.ok) return;
-            doc = result.document;
+            const editor = actionEl.closest('[data-wa-editor]');
+            const session = editor ? areaVoiceSessions.get(editor) : null;
+            if ((action === 'save-area' || action === 'open-add-area') && session && session.pendingDocument) {
+              const synced = syncReviewFields(api, session.pendingDocument, card, key);
+              result = api.commitAreaSlice(doc, key, synced);
+            } else {
+              result = captureWorkAreaCard(api, doc, card);
+              if (!result.ok) return;
+              doc = result.document;
+            }
           }
           if (action === 'save-area') closeAreaAfterCommit = true;
           if (action === 'move-up') result = api.reorderArea(doc, key, -1);
@@ -6809,7 +7084,10 @@
         document.addEventListener('keydown', function (event) {
           if (event.key !== 'Escape') return;
           const openEditor = host.querySelector('.mg-work-area-editor[aria-hidden="false"]');
-          if (openEditor) openEditor.setAttribute('aria-hidden', 'true');
+          if (openEditor) {
+            discardAreaVoice(openEditor);
+            openEditor.setAttribute('aria-hidden', 'true');
+          }
         });
       }
 
@@ -7452,6 +7730,8 @@
           openWorkAreasReviewModal(state);
           return;
         }
+        const capture = modal.querySelector('.voice-plan-capture');
+        if (capture) capture.hidden = false;
         const settings = loadSettings();
         const confirmed = state.internal_operational_plan && typeof state.internal_operational_plan === 'object'
           ? voice.cloneJson(state.internal_operational_plan)

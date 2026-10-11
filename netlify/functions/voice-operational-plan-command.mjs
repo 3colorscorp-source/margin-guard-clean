@@ -389,7 +389,64 @@ function reconcileSingleInsertedDay(proposed, current, transcript) {
   return { ...(proposed || {}), days: result };
 }
 
-function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "" }) {
+function stripDiacritics(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function transcriptDayText(transcript, dayNumber) {
+  const normalized = stripDiacritics(transcript);
+  const pattern = /(?:^|[\n.;])\s*(?:dia|day)\s+(\d+)\s*[:.\-]\s*([\s\S]*?)(?=(?:[\n.;]\s*(?:dia|day)\s+\d+\s*[:.\-])|$)/gi;
+  let match;
+  while ((match = pattern.exec(normalized))) {
+    if (Number(match[1]) === Number(dayNumber)) return match[2] || "";
+  }
+  return null;
+}
+
+function mentionsCrew(text) {
+  return /\b(installer|assistant|helper|worker|instalador|ayudante|trabajador|crew|cuadrilla)\b/i.test(stripDiacritics(text));
+}
+
+function statedHourValues(text) {
+  const found = [];
+  const source = stripDiacritics(text);
+  const pattern = /\b(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hour|hours|hora|horas)\b/gi;
+  let match;
+  while ((match = pattern.exec(source))) {
+    const hours = Number(String(match[1]).replace(",", "."));
+    if (Number.isFinite(hours) && hours > 0 && !found.includes(hours)) found.push(hours);
+  }
+  return found;
+}
+
+function mentionsHours(text) {
+  return statedHourValues(text).length > 0;
+}
+
+function omitUndictatedCrew(transcript, document) {
+  const source = document && typeof document === "object" ? document : {};
+  return {
+    ...source,
+    days: (Array.isArray(source.days) ? source.days : []).map((day) => {
+      const chunk = transcriptDayText(transcript, day && day.day_number);
+      const text = chunk == null ? String(transcript || "") : chunk;
+      if (mentionsCrew(text) && mentionsHours(text)) {
+        const stated = statedHourValues(text);
+        if (stated.length !== 1) return day;
+        return {
+          ...(day || {}),
+          worker_assignments: (Array.isArray(day && day.worker_assignments) ? day.worker_assignments : []).map((asg) => ({
+            ...(asg || {}),
+            hours_per_worker: stated[0],
+          })),
+        };
+      }
+      return { ...(day || {}), worker_assignments: [] };
+    }),
+  };
+}
+
+function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "", areaScope = false }) {
   const targetLanguage = clientLanguage === "es" ? "Spanish" : "English";
   const lines = [
     `Tenant hours_per_day: ${hoursPerDay}`,
@@ -401,6 +458,13 @@ function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "e
     transcript,
     "END_FIELD_DICTATION",
   ];
+  if (areaScope) {
+    lines.push(
+      "AREA_CONTEXT",
+      "Interpret only this one work area. Do not invent Installer, Assistant, worker counts, or hours. Leave worker_assignments empty unless the transcript states both the crew and the hours for that day. Do not include prices, costs, rates, margins, overhead, reserve, or internal ids.",
+      "END_AREA_CONTEXT"
+    );
+  }
   if (correction) {
     lines.push("CORRECTION_REQUIREMENTS", correction, "END_CORRECTION_REQUIREMENTS");
   }
@@ -426,7 +490,7 @@ async function loadSettingsForTenant(tenantId, request = supabaseRequest) {
     : {};
 }
 
-async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "", fetchImpl = fetch, getEnv = envValue }) {
+async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "", areaScope = false, fetchImpl = fetch, getEnv = envValue }) {
   const base = getEnv("OPENAI_BASE_URL") || "https://api.openai.com";
   const apiKey = getEnv("OPENAI_API_KEY");
   if (!apiKey && !getEnv("OPENAI_BASE_URL")) {
@@ -449,7 +513,7 @@ async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "
       body: JSON.stringify({
         model: getEnv("MG_VOICE_PLAN_OPENAI_MODEL") || DEFAULT_MODEL,
         instructions: SYSTEM_INSTRUCTIONS,
-        input: buildModelInput({ transcript, current, hoursPerDay, clientLanguage, correction }),
+        input: buildModelInput({ transcript, current, hoursPerDay, clientLanguage, correction, areaScope }),
         text: {
           format: {
             type: "json_schema",
@@ -507,6 +571,13 @@ export function createHandler(deps = {}) {
     } catch (_err) {
       return jsonResponse(400, { ok: false, code: "invalid_json", error: "Invalid JSON body." });
     }
+    if (body && Object.prototype.hasOwnProperty.call(body, "tenant_id")) {
+      return jsonResponse(400, {
+        ok: false,
+        code: "tenant_id_rejected",
+        error: "tenant_id is not accepted from the browser.",
+      });
+    }
     const transcript = String(body?.transcript || "").trim();
     if (transcript.length < 3 || transcript.length > MAX_TRANSCRIPT_CHARS) {
       return jsonResponse(400, {
@@ -537,19 +608,22 @@ export function createHandler(deps = {}) {
       const settings = await loadSettings(tenantId);
       const hoursPerDay = voice.resolveHoursPerDayFromSettings(settings);
       const clientLanguage = String(body?.client_language || "en").toLowerCase() === "es" ? "es" : "en";
+      const areaScope = body?.interpretation_scope === "area";
       const startDate = String(body?.start_date || rawCurrent.start_date || "").slice(0, 10);
       const current = voice.normalizeDocument(rawCurrent, {
         startDate,
         settings,
         hoursPerDay,
+        preserveEmptyCrew: areaScope,
       });
       const prepareModelProposal = (result) => {
         const stabilized = stabilizeProposedDocument(result?.document, current);
         const cleaned = cleanProposedInternalTasks(stabilized);
         return synchronizeChangedClientScopes(cleaned, current);
       };
-      let modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage });
+      let modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage, areaScope });
       let proposedRaw = prepareModelProposal(modelResult);
+      if (areaScope) proposedRaw = omitUndictatedCrew(transcript, proposedRaw);
       let incoming = voice.validateIncomingDocument(proposedRaw);
       if (!incoming.ok) {
         return jsonResponse(422, {
@@ -568,8 +642,9 @@ export function createHandler(deps = {}) {
           "Only a newly inserted day receives an empty day_id. Shift later day_number values while preserving their IDs and contents.",
           "Do not remove any existing day because the transcript did not explicitly request deletion.",
         ].join(" ");
-        modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage, correction });
+        modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage, areaScope, correction });
         proposedRaw = prepareModelProposal(modelResult);
+        if (areaScope) proposedRaw = omitUndictatedCrew(transcript, proposedRaw);
         incoming = voice.validateIncomingDocument(proposedRaw);
         if (!incoming.ok) {
           return jsonResponse(422, {
@@ -607,7 +682,7 @@ export function createHandler(deps = {}) {
       const source = current.days.length ? "mixed" : "voice";
       const proposed = voice.normalizeDocument(
         { ...proposedRaw, schema_version: 1, source },
-        { startDate, settings, hoursPerDay }
+        { startDate, settings, hoursPerDay, preserveEmptyCrew: areaScope }
       );
       const finalValidation = voice.validateIncomingDocument(proposed);
       if (!finalValidation.ok) {
@@ -636,10 +711,14 @@ export function createHandler(deps = {}) {
           .filter(Boolean)
           .slice(0, 12),
         public_client_scope: voice.buildPublicClientScope(proposed),
-        labor_preview: {
-          hours: proposed.estimated_hours,
-          derived_cost: voice.previewLaborCost(proposed.days, settings),
-        },
+        interpretation_scope: areaScope ? "area" : "plan",
+        priced: false,
+        labor_preview: areaScope
+          ? { hours: proposed.estimated_hours, priced: false }
+          : {
+              hours: proposed.estimated_hours,
+              derived_cost: voice.previewLaborCost(proposed.days, settings),
+            },
       });
     } catch (err) {
       const status = Number(err?.statusCode || (err?.isGuardError ? err.statusCode : 500)) || 500;
@@ -673,6 +752,7 @@ export {
   explicitInsertedDayNumbers,
   reconcileSingleInsertedDay,
   buildModelInput,
+  omitUndictatedCrew,
   openAiResponsesUrl,
   callOpenAi,
 };

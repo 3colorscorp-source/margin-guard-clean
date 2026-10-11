@@ -912,6 +912,142 @@
     };
   }
 
+  function bindSpeechDictation(options) {
+    const opts = options || {};
+    const capture = createVoiceDictationCapture({ maxChars: opts.maxChars || MAX_DICTATION_CHARS });
+    let recognition = null;
+    let generation = 0;
+    let listening = false;
+
+    function speechCtor() {
+      if (typeof opts.Recognition === "function") return opts.Recognition;
+      const host = opts.window || (typeof window !== "undefined" ? window : null);
+      return host && (host.SpeechRecognition || host.webkitSpeechRecognition) || null;
+    }
+
+    function textareaOf() {
+      return opts.textarea || null;
+    }
+
+    function setListeningUi(on, activeButton) {
+      listening = !!on;
+      [opts.newButton, opts.continueButton].forEach(function (button) {
+        if (!button) return;
+        const active = on && button === activeButton;
+        if (button.classList) {
+          button.classList.toggle("is-listening", active);
+        }
+        if (active) button.textContent = "Stop";
+      });
+      if (!on) {
+        if (opts.newButton) opts.newButton.textContent = "New dictation";
+        if (opts.continueButton) opts.continueButton.textContent = "Continue dictation";
+      }
+      if (opts.newButton) opts.newButton.disabled = on ? opts.newButton !== activeButton : !speechCtor();
+      if (opts.continueButton) opts.continueButton.disabled = on ? opts.continueButton !== activeButton : !speechCtor();
+    }
+
+    function status(message, isError) {
+      if (typeof opts.onStatus === "function") opts.onStatus(message, !!isError);
+    }
+
+    function finish(recognitionInstance) {
+      if (recognition !== recognitionInstance) return;
+      capture.end();
+      recognition = null;
+      const field = textareaOf();
+      if (field) field.readOnly = false;
+      setListeningUi(false, null);
+      status("Dictation stopped. Review the text, then choose Interpret area.", false);
+    }
+
+    function start(append) {
+      const Recognition = speechCtor();
+      const field = textareaOf();
+      if (!Recognition || !field) {
+        status("Voice recognition is not available. Type the instructions.", true);
+        return { ok: false, speech: false };
+      }
+      if (recognition) {
+        capture.requestStop();
+        try { recognition.stop(); } catch (_err) {}
+        return { ok: true, stopped: true };
+      }
+      if (!append) field.value = "";
+      const instance = new Recognition();
+      recognition = instance;
+      generation = capture.start(String(field.value || "").trim());
+      field.readOnly = true;
+      if (typeof field.blur === "function") field.blur();
+      instance.lang = String((opts.languageSelect && opts.languageSelect.value) || "es-US");
+      instance.continuous = true;
+      instance.interimResults = prefersInterimSpeechResults(opts.userAgent);
+      const activeButton = append ? opts.continueButton : opts.newButton;
+      instance.onstart = function () {
+        setListeningUi(true, activeButton);
+        status("Listening… describe this area.", false);
+      };
+      instance.onresult = function (event) {
+        if (recognition !== instance) return;
+        const folded = capture.applyEvent(event, generation);
+        if (!folded || folded.ignored) return;
+        field.value = folded.text;
+      };
+      instance.onerror = function (event) {
+        const code = String(event && event.error || "unknown");
+        if (code !== "aborted" && code !== "no-speech") {
+          status("Microphone error: " + code + ". You can type the instructions instead.", true);
+        }
+      };
+      instance.onend = function () {
+        finish(instance);
+      };
+      try {
+        instance.start();
+      } catch (_err) {
+        capture.stop();
+        recognition = null;
+        field.readOnly = false;
+        setListeningUi(false, null);
+        status("The microphone could not start. Type the instructions.", true);
+        return { ok: false, speech: true };
+      }
+      return { ok: true, speech: true };
+    }
+
+    return {
+      startNew: function () { return start(false); },
+      continueDictation: function () { return start(true); },
+      stop: function () {
+        if (!recognition) return { ok: true, stopped: false };
+        capture.requestStop();
+        try { recognition.stop(); } catch (_err) {}
+        return { ok: true, stopped: true };
+      },
+      cancel: function () {
+        capture.cancel();
+        const current = recognition;
+        recognition = null;
+        generation += 1;
+        const field = textareaOf();
+        if (field) field.readOnly = false;
+        if (current) {
+          try { current.stop(); } catch (_err) {}
+        }
+        setListeningUi(false, null);
+        return { ok: true };
+      },
+      clear: function () {
+        const field = textareaOf();
+        if (field) field.value = "";
+        capture.cancel();
+        return { ok: true };
+      },
+      speechAvailable: function () { return !!speechCtor(); },
+      isListening: function () { return listening; },
+    };
+  }
+
   const api = {
     SCHEMA_VERSION: SCHEMA_VERSION,
     DOCUMENT_LIMITS: DOCUMENT_LIMITS,
@@ -948,6 +1084,7 @@
     makeSpeechRecognitionEvent: makeSpeechRecognitionEvent,
     prefersInterimSpeechResults: prefersInterimSpeechResults,
     createVoiceDictationCapture: createVoiceDictationCapture,
+    bindSpeechDictation: bindSpeechDictation,
   };
 
   global.MgVoiceOperationalPlan = api;

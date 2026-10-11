@@ -594,6 +594,18 @@ async function main() {
   }
   passed += ownerEntryPassed;
 
+  const areaVoiceRel = "scripts/test-multi-area-voice-scope-v1.js";
+  console.log(areaVoiceRel);
+  const areaVoice = require("./test-multi-area-voice-scope-v1");
+  if (typeof areaVoice.runMultiAreaVoiceScopeTests !== "function" || !Number.isInteger(areaVoice.EXPECTED) || areaVoice.EXPECTED <= 0) {
+    throw new Error(areaVoiceRel + " did not export a valid summary");
+  }
+  const areaVoicePassed = await areaVoice.runMultiAreaVoiceScopeTests();
+  if (!Number.isInteger(areaVoicePassed) || areaVoicePassed <= 0 || areaVoicePassed !== areaVoice.EXPECTED) {
+    throw new Error(areaVoiceRel + " expected " + areaVoice.EXPECTED + " tests, got " + areaVoicePassed);
+  }
+  passed += areaVoicePassed;
+
   [
     "netlify/functions/_lib/voice-operational-plan.js",
     "netlify/functions/_lib/quote-internal-operational-plan-store.js",
@@ -607,6 +619,7 @@ async function main() {
     "scripts/test-seller-operational-plan-work-areas-ui.js",
     "scripts/test-multi-area-quote-v1.js",
     "scripts/test-owner-new-quote-multi-area-entry.js",
+    "scripts/test-multi-area-voice-scope-v1.js",
     "public/js/owner-multi-area-entry.js",
     "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
