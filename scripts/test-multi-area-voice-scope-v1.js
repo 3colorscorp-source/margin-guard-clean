@@ -217,6 +217,8 @@ async function runMultiAreaVoiceScopeTests() {
   ok("Interpret area calls the existing endpoint", interpretSlice.includes("/.netlify/functions/voice-operational-plan-command") && interpretSlice.includes('interpretation_scope: \'area\''));
   ok("Interpret area does not publish, send, or price", !/publish-public-quote|send-quote|calculateQuotePublishFinancials|previewLaborCost|tenant_id/.test(interpretSlice));
   ok("Single Quote still uses the global reset", sales.includes("quoteMode === 'multi_area' ? 'active' : 'global'") && sales.includes("Interpret and preview"));
+  ok("Single Quote hides Add work area", !areas.renderWorkAreas({ quote_mode: "single", work_areas_ui: "global" }).includes("Add work area"));
+  ok("Single Quote hides the labor Add area button", sales.includes("allowAdd: state.quote_mode !== 'single'"));
   ok("Confirm and apply source does not call send-quote", !/send-quote|publish-public-quote|calculateQuotePublishFinancials/.test(sliceBetween(sales, "async function applyWorkAreasConfirm", "function openVoicePlanPreviewModal")));
   const confirmed = areas.applyConfirmedWorkAreas({
     state: { quoteId: "", _sellerDraftId: "sd_test" },
@@ -311,7 +313,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 58;
+const EXPECTED = 60;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 

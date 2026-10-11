@@ -140,7 +140,9 @@
       '<div class="mg-labor-areas__head"><h3>Areas</h3>' +
       "<p>Optional. Leave this empty to price the quote as one labor total. Names are free.</p></div>" +
       cards +
-      '<button type="button" class="btn" data-area-action="add">Add area</button>';
+      (model && model.allowAdd === false
+        ? ""
+        : '<button type="button" class="btn" data-area-action="add">Add area</button>');
     host.dataset.bound = "1";
     host._mgAreas = areas;
     host._mgWorkers = workers;
