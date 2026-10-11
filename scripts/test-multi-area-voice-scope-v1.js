@@ -138,6 +138,7 @@ async function runMultiAreaVoiceScopeTests() {
   ok("multi adds Area name on the same review modal", sales.includes('id="voicePlanAreaNameField" hidden') && sales.includes('id="voicePlanAreaName"') && sales.includes(">Area name") && sales.includes("Interpret and preview"));
   ok("Add area opens the same quote review", sales.includes("openVoicePlanPreviewModal({ newArea: true })"));
   ok("multi confirm applies a blank area name", sales.includes('id="voicePlanPreviewFooterStatus"') && sales.includes("areaName = 'Work area'") && sales.includes("const storedPlan = namedArea || applied") && !sales.includes("Enter an area name before confirming."));
+  ok("named area confirm keeps the page document", sales.includes("function applyNamedAreaPlan(plan, applied)") && sales.includes("document.getElementById('salesMessageToClient')"));
   const filed = areas.addArea({ schema_version: 1, source: "keyboard", areas: [], days: [] }, { name: "Work area", scope: "" });
   const replaced = areas.replaceAreaPlan(filed.document, filed.area_ref, [{
     day_number: 1,
@@ -322,7 +323,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 62;
+const EXPECTED = 63;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 
