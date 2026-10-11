@@ -9833,6 +9833,7 @@
                     areas: saved.laborAreas,
                     workers: saved.workers,
                     subtotals: priced,
+                    allowAdd: saved.quote_mode !== 'single',
                     onCommit: host._mgOnCommit
                   });
                 }
@@ -10270,6 +10271,7 @@
             areas: state.laborAreas,
             workers: state.workers,
             subtotals: state.laborAreaPublic,
+            allowAdd: state.quote_mode !== 'single',
             onCommit: function (next) {
               const current = loadSalesState();
               current.laborAreas = next.areas;

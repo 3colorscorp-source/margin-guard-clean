@@ -1063,6 +1063,7 @@
       );
     }
     if (mode === "global") {
+      if (state && state.quote_mode === "single") return "";
       return (
         '<section class="mg-work-areas mg-work-areas--global" aria-label="Work Areas">' +
         '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="activate">+ Add work area</button>' +
