@@ -137,6 +137,15 @@ async function runMultiAreaVoiceScopeTests() {
   ok("area modal does not open a second dictation screen", !rendered.includes("Voice dictation") && !rendered.includes("Interpret area") && !rendered.includes(">Instructions<textarea"));
   ok("multi adds Area name on the same review modal", sales.includes('id="voicePlanAreaNameField" hidden') && sales.includes('id="voicePlanAreaName"') && sales.includes(">Area name") && sales.includes("Interpret and preview"));
   ok("Add area opens the same quote review", sales.includes("openVoicePlanPreviewModal({ newArea: true })"));
+  ok("multi confirm applies a blank area name", sales.includes('id="voicePlanPreviewFooterStatus"') && sales.includes("areaName = 'Work area'") && sales.includes("const storedPlan = namedArea || applied") && !sales.includes("Enter an area name before confirming."));
+  const filed = areas.addArea({ schema_version: 1, source: "keyboard", areas: [], days: [] }, { name: "Work area", scope: "" });
+  const replaced = areas.replaceAreaPlan(filed.document, filed.area_ref, [{
+    day_number: 1,
+    client_scope: "Protect work area",
+    internal_tasks: [{ label: "Protect work area" }],
+    worker_assignments: [{ worker_role: "Assistant", worker_type: "helper", worker_count: 1, hours_per_worker: 8 }],
+  }]);
+  eq("a blank area name still files the interpreted day", replaced.ok && replaced.document.areas.length === 1 && replaced.document.days.length === 1 && replaced.document.areas[0].name === "Work area", true);
   ok("area modal keeps Name, Scope of Work, and crew", rendered.includes(">Name<input") && rendered.includes("Scope of Work") && rendered.includes("Worker count") && rendered.includes("Hours per worker") && rendered.includes("Add day"));
   ok("Save Area and Add New Area stay in the production footer", rendered.includes('data-wa-action="save-area"') && rendered.includes("+ Add New Area") && !rendered.includes('data-wa-action="cancel-area"'));
   ok("Review stays outside the area renderer", !rendered.includes("btnReviewConfirmOperationalPlan"));
@@ -313,7 +322,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 60;
+const EXPECTED = 62;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 
