@@ -892,6 +892,177 @@
     return out;
   }
 
+  var PUBLIC_LEAK = /\b(rate|rates|cost|costs|overhead|reserve|margin|tarifa|tarifas|costo|costos|margen|worker_count|hours_per_worker|area_id|area_ref|internal_notes|assignment_id|task_id)\b|\$\s?\d/i;
+
+  function publicClientScope(text, fallback) {
+    var clean = String(text || "").trim();
+    if (!clean || PUBLIC_LEAK.test(clean)) {
+      var safe = String(fallback || "").replace(PUBLIC_LEAK, "").trim();
+      if (!safe) return "Complete the planned work for this day.";
+      return safe.slice(0, 2000);
+    }
+    return clean.slice(0, 2000);
+  }
+
+  function copyPublicAssignments(seed, ids) {
+    return (Array.isArray(seed) ? seed : []).map(function (asg) {
+      if (!assignmentValid(asg)) return null;
+      var type = workerTypeKey(asg) === "helper" ? "helper" : "pro";
+      return {
+        assignment_id: ids("asg"),
+        worker_role: type === "helper" ? "Assistant" : "Installer",
+        worker_type: type,
+        worker_count: Math.floor(Number(asg.worker_count)),
+        hours_per_worker: round2(Number(asg.hours_per_worker)),
+      };
+    }).filter(Boolean);
+  }
+
+  function replaceAreaPlan(doc, key, days) {
+    var next = withAreas(doc);
+    var index = findArea(next, key);
+    if (index < 0) {
+      return { ok: false, code: "missing_area", document: next, published: false, priced: false };
+    }
+    var area = next.areas[index];
+    var ids = idFactory(next);
+    var sequence = 0;
+    var added = (Array.isArray(days) ? days : []).map(function (seed) {
+      sequence += 1;
+      var tasks = (Array.isArray(seed && seed.internal_tasks) ? seed.internal_tasks : []).map(function (task) {
+        var label = String(task && task.label != null ? task.label : task || "").trim();
+        return { task_id: ids("task"), label: label.slice(0, 500) };
+      }).filter(function (task) { return task.label; });
+      var fallback = tasks.map(function (task) { return task.label; }).join("; ");
+      var day = {
+        day_id: ids("day"),
+        day_number: Number(seed && seed.day_number) || sequence,
+        client_scope: publicClientScope(seed && seed.client_scope, fallback),
+        internal_tasks: tasks.length ? tasks : [{ task_id: ids("task"), label: fallback || "Planned work" }],
+        worker_assignments: copyPublicAssignments(seed && seed.worker_assignments, ids),
+      };
+      return linkDayToArea(day, area);
+    });
+    var rebuilt = [];
+    var inserted = false;
+    next.days.forEach(function (day) {
+      if (!dayMatchesArea(day, area)) {
+        rebuilt.push(day);
+        return;
+      }
+      if (!inserted) {
+        added.forEach(function (item) { rebuilt.push(item); });
+        inserted = true;
+      }
+    });
+    if (!inserted) added.forEach(function (item) { rebuilt.push(item); });
+    next.days = rebuilt;
+    renumberDays(next);
+    area.scope = deriveAreaScope(area, daysForArea(next, area)).slice(0, 4000);
+    return {
+      ok: true,
+      document: next,
+      areaKey: areaRefOf(area) || areaIdOf(area),
+      published: false,
+      priced: false,
+      invalidatesMoney: true,
+    };
+  }
+
+  function acceptAreaInterpretation(input) {
+    var current = input || {};
+    var document = current.document;
+    if (current.requestGeneration !== current.activeGeneration || current.requestAreaKey !== current.activeAreaKey) {
+      return { ok: false, ignored: true, document: document, published: false, priced: false };
+    }
+    return replaceAreaPlan(document, current.activeAreaKey, current.proposedDays);
+  }
+
+  function restoreAreaSnapshot(snapshot) {
+    return { ok: true, document: clone(snapshot), published: false, priced: false };
+  }
+
+  function areaRequestDocument(doc, key) {
+    var current = withAreas(doc);
+    var index = findArea(current, key);
+    var days = index < 0 ? [] : daysForArea(current, current.areas[index]).map(function (day) {
+      return {
+        day_id: day.day_id,
+        day_number: day.day_number,
+        client_scope: String(day.client_scope || ""),
+        internal_tasks: (day.internal_tasks || []).map(function (task) {
+          return { task_id: task.task_id, label: task.label };
+        }),
+        worker_assignments: (day.worker_assignments || []).map(function (asg) {
+          return {
+            assignment_id: asg.assignment_id,
+            worker_role: asg.worker_role,
+            worker_type: asg.worker_type,
+            worker_count: asg.worker_count,
+            hours_per_worker: asg.hours_per_worker,
+          };
+        }),
+      };
+    });
+    return { schema_version: 1, source: days.length ? "mixed" : "voice", days: days };
+  }
+
+  function commitAreaSlice(saved, areaKey, pending) {
+    var source = withAreas(pending);
+    var sourceIndex = findArea(source, areaKey);
+    if (sourceIndex < 0) {
+      return { ok: false, code: "missing_area", document: withAreas(saved), published: false, priced: false };
+    }
+    var sourceArea = source.areas[sourceIndex];
+    var next = withAreas(saved);
+    var targetIndex = findArea(next, areaKey);
+    if (targetIndex < 0) {
+      next.areas.push({
+        area_ref: areaRefOf(sourceArea) || undefined,
+        id: areaIdOf(sourceArea) || undefined,
+        name: sourceArea.name,
+        scope: sourceArea.scope,
+        sort_order: next.areas.length,
+      });
+      if (!areaRefOf(sourceArea)) delete next.areas[next.areas.length - 1].area_ref;
+      if (!areaIdOf(sourceArea)) delete next.areas[next.areas.length - 1].id;
+      targetIndex = next.areas.length - 1;
+    } else {
+      next.areas[targetIndex].name = sourceArea.name;
+      next.areas[targetIndex].scope = sourceArea.scope;
+    }
+    var target = next.areas[targetIndex];
+    var kept = next.days.filter(function (day) {
+      return !dayMatchesArea(day, target);
+    });
+    var moved = daysForArea(source, sourceArea).map(function (day) {
+      return linkDayToArea(clone(day), target);
+    });
+    next.days = kept.concat(moved);
+    renumberDays(next);
+    rewriteSort(next);
+    return { ok: true, document: next, published: false, priced: false, invalidatesMoney: true, work_areas_ui: "active" };
+  }
+
+  function areaVoiceControlsHtml() {
+    return (
+      '<div class="mg-area-voice">' +
+      '<label>Instructions<textarea class="mg-area-dictation" data-wa-field="transcript" maxlength="6000" rows="7" placeholder="Day 1: protect floors, walls, and kitchen cabinets."></textarea></label>' +
+      '<div class="mg-area-voice__langs">' +
+      '<label>Dictation language<select data-wa-field="dictation_language"><option value="es-US">Español</option><option value="en-US">English</option></select></label>' +
+      '<label>Client document<select data-wa-field="client_language"><option value="en" selected>English</option><option value="es">Español</option></select></label>' +
+      '</div>' +
+      '<div class="mg-area-voice__actions">' +
+      '<button type="button" class="btn" data-wa-action="dictate-new">New dictation</button>' +
+      '<button type="button" class="btn" data-wa-action="dictate-continue">Continue dictation</button>' +
+      '<button type="button" class="btn primary" data-wa-action="interpret-area">Interpret area</button>' +
+      '<button type="button" class="btn ghost" data-wa-action="clear-transcript">Clear transcript</button>' +
+      '</div>' +
+      '<p class="mg-area-voice__status" data-wa-voice-status role="status"></p>' +
+      '</div>'
+    );
+  }
+
   function escapeHtml(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -1016,7 +1187,8 @@
           '<p class="mg-work-area__status">' + escapeHtml(status) +
           (status === "Empty area" ? ". This area stays in the plan and will not be quoted." : "") + '</p>' +
           '<div class="mg-work-area__actions"><button type="button" class="btn primary" data-wa-action="add-day">Add day</button></div>' +
-          dayHtml +
+          '<div class="mg-area-days" data-wa-days>' + dayHtml + '</div>' +
+          areaVoiceControlsHtml() +
           '</div><div class="mg-work-area-editor__footer">' +
           '<button type="button" class="btn mg-work-area-editor__add-next" data-wa-action="open-add-area">+ Add New Area</button>' +
           '<button type="button" class="btn primary" data-wa-action="save-area">Save Area</button>' +
@@ -1033,9 +1205,12 @@
       '<div class="mg-work-area-editor__card"><div class="mg-work-area-editor__header"><h3>Add New Area</h3>' +
       '<button type="button" class="icon-btn" data-wa-action="close-add-area" aria-label="Close">X</button></div>' +
       '<div class="mg-work-area-editor__body"><form class="mg-work-areas__create" data-wa-action="add-form">' +
-      '<label>Area name<input id="waNewAreaName" maxlength="80" placeholder="Kitchen Backsplash" /></label>' +
-      '<label>Scope of Work<textarea id="waNewAreaScope" maxlength="4000" rows="7" placeholder="Describe the complete client-facing scope for this area."></textarea></label>' +
-      '</form></div><div class="mg-work-area-editor__footer">' +
+      '<div class="mg-work-area" data-wa-new-card>' +
+      '<label>Area name<input id="waNewAreaName" data-wa-field="name" maxlength="80" placeholder="Kitchen Backsplash" /></label>' +
+      '<label>Scope of Work<textarea id="waNewAreaScope" data-wa-field="scope" maxlength="4000" rows="7" placeholder="Describe the complete client-facing scope for this area."></textarea></label>' +
+      '<div class="mg-area-days" data-wa-days data-wa-pending-review></div>' +
+      areaVoiceControlsHtml() +
+      '</div></form></div><div class="mg-work-area-editor__footer">' +
       '<button type="button" class="btn" data-wa-action="close-add-area">Cancel</button>' +
       '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="add-area">Save Area</button>' +
       '</div></div></div>' +
@@ -1121,6 +1296,11 @@
     applyConfirmedWorkAreas: applyConfirmedWorkAreas,
     legacyPlanFromDocument: legacyPlanFromDocument,
     renderWorkAreas: renderWorkAreas,
+    replaceAreaPlan: replaceAreaPlan,
+    acceptAreaInterpretation: acceptAreaInterpretation,
+    restoreAreaSnapshot: restoreAreaSnapshot,
+    areaRequestDocument: areaRequestDocument,
+    commitAreaSlice: commitAreaSlice,
     createActionLock: createActionLock,
     createAsyncLock: createAsyncLock,
     deriveAreaScope: deriveAreaScope,

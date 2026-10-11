@@ -350,7 +350,7 @@ function normalizeStringList(raw, maxItem = 400, maxItems = 24) {
   return out;
 }
 
-function normalizeDay(row, fallbackNumber, keepAreaId) {
+function normalizeDay(row, fallbackNumber, keepAreaId, options) {
   if (!row || typeof row !== "object") return null;
   const day_number = Math.max(1, Math.floor(num(row.day_number, fallbackNumber)));
   const internal_tasks = (Array.isArray(row.internal_tasks) ? row.internal_tasks : [])
@@ -373,7 +373,8 @@ function normalizeDay(row, fallbackNumber, keepAreaId) {
   if (!internal_tasks.length && !worker_assignments.length && !str(row.client_scope, 2000) && !str(row.phase, 240)) {
     return null;
   }
-  if (!worker_assignments.length) {
+  const preserveEmptyCrew = !!(options && options.preserveEmptyCrew);
+  if (!worker_assignments.length && !preserveEmptyCrew) {
     worker_assignments.push({
       assignment_id: newStableId("asg"),
       worker_role: "Installer",
@@ -750,7 +751,9 @@ function normalizeDocumentWithoutAreas(raw, options = {}) {
   });
   const startIn = options.startDate || stripped.start_date;
   let days = (Array.isArray(stripped.days) ? stripped.days : [])
-    .map((d, i) => normalizeDay(d, i + 1, options.keepAreaId === true))
+    .map((d, i) => normalizeDay(d, i + 1, options.keepAreaId === true, {
+      preserveEmptyCrew: options.preserveEmptyCrew === true,
+    }))
     .filter(Boolean);
   days = renumberDays(sortDaysByNumber(days));
   days = applyScheduleToDays(days, startIn, settings);
