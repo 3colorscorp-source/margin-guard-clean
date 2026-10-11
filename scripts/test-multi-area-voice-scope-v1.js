@@ -136,6 +136,7 @@ async function runMultiAreaVoiceScopeTests() {
   ok("the review modal keeps the same language labels", sales.includes("Dictation language") && sales.includes("Client document"));
   ok("area modal does not open a second dictation screen", !rendered.includes("Voice dictation") && !rendered.includes("Interpret area") && !rendered.includes(">Instructions<textarea"));
   ok("multi adds Area name on the same review modal", sales.includes('id="voicePlanAreaNameField" hidden') && sales.includes('id="voicePlanAreaName"') && sales.includes(">Area name") && sales.includes("Interpret and preview"));
+  ok("Add area opens the same quote review", sales.includes("openVoicePlanPreviewModal({ newArea: true })"));
   ok("area modal keeps Name, Scope of Work, and crew", rendered.includes(">Name<input") && rendered.includes("Scope of Work") && rendered.includes("Worker count") && rendered.includes("Hours per worker") && rendered.includes("Add day"));
   ok("Save Area and Add New Area stay in the production footer", rendered.includes('data-wa-action="save-area"') && rendered.includes("+ Add New Area") && !rendered.includes('data-wa-action="cancel-area"'));
   ok("Review stays outside the area renderer", !rendered.includes("btnReviewConfirmOperationalPlan"));
@@ -310,7 +311,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 57;
+const EXPECTED = 58;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 
