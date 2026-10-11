@@ -6969,12 +6969,7 @@
           if (action === 'open-add-area') {
             const currentEditor = actionEl.closest('[data-wa-editor]');
             if (!currentEditor) {
-              const modal = document.querySelector('[data-wa-new-modal]');
-              if (modal) {
-                modal.setAttribute('aria-hidden', 'false');
-                const session = ensureAreaVoice(modal);
-                session.snapshot = api.workingDocument(loadSalesState());
-              }
+              openVoicePlanPreviewModal({ newArea: true });
               return;
             }
             openNewAreaAfterCommit = true;
@@ -7074,8 +7069,7 @@
           }
           if (openNewAreaAfterCommit) {
             requestAnimationFrame(function () {
-              const modal = document.querySelector('[data-wa-new-modal]');
-              if (modal) modal.setAttribute('aria-hidden', 'false');
+              openVoicePlanPreviewModal({ newArea: true });
             });
           }
           if (closeAreaAfterCommit) return;
@@ -7806,20 +7800,29 @@
         saveSalesState(state);
       }
 
-      function openVoicePlanPreviewModal() {
+      function openVoicePlanPreviewModal(options) {
         const voice = getVoicePlanApi();
         const modal = document.getElementById('voicePlanPreviewModal');
         if (!voice || !modal) return;
         const state = loadSalesState();
+        const addingArea = !!(options && options.newArea);
         syncVoicePlanAreaName(state);
+        if (addingArea) {
+          const field = document.getElementById('voicePlanAreaNameField');
+          const input = document.getElementById('voicePlanAreaName');
+          if (field) field.hidden = false;
+          if (input) input.value = '';
+        }
         const capture = modal.querySelector('.voice-plan-capture');
         if (capture) capture.hidden = false;
         const settings = loadSettings();
         const confirmed = state.internal_operational_plan && typeof state.internal_operational_plan === 'object'
           ? voice.cloneJson(state.internal_operational_plan)
           : { schema_version: 1, source: 'keyboard', days: [] };
-        const draft = voicePlanSeedDraft(state, settings);
-        voicePlanPreviewSession = { confirmed: confirmed, draft: draft };
+        const draft = addingArea
+          ? { schema_version: 1, source: 'keyboard', days: [] }
+          : voicePlanSeedDraft(state, settings);
+        voicePlanPreviewSession = { confirmed: confirmed, draft: draft, newArea: addingArea };
         const transcript = document.getElementById('voicePlanTranscript');
         if (transcript) transcript.value = '';
         setVoicePlanConfirmBusy(false);
@@ -7836,6 +7839,10 @@
         renderVoicePlanEditor(draft.days || []);
         refreshVoicePlanPreviewColumns();
         modal.setAttribute('aria-hidden', 'false');
+        if (addingArea) {
+          const input = document.getElementById('voicePlanAreaName');
+          if (input) input.focus();
+        }
       }
 
       function applyConfirmedVoicePlanToState(voice, applied) {
@@ -7926,6 +7933,10 @@
         });
         const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
         const applied = result.applied;
+        if (voicePlanPreviewSession.newArea && !String((document.getElementById('voicePlanAreaName') || {}).value || '').trim()) {
+          setVoicePlanPreviewStatus('Enter an area name before confirming.', true);
+          return;
+        }
         const namedArea = fileVoicePlanUnderAreaName(applied);
         const storedPlan = namedArea || applied;
         if (!state.quoteId) {
