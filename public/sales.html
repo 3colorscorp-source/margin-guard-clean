@@ -1611,9 +1611,11 @@
     .mg-work-area label, .mg-work-day label, .mg-work-areas__create label { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
     .mg-new-area-modal .mg-work-area { border: 0; background: transparent; padding: 0; }
     .mg-area-voice, .mg-area-days, .mg-work-area-editor__card { min-width: 0; max-width: 100%; }
-    .mg-area-voice__langs, .mg-area-voice__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
-    .mg-area-voice__langs label { flex: 1 1 140px; }
-    .mg-area-voice__actions .btn { flex: 1 1 140px; min-width: 0; }
+    .mg-work-area-editor .voice-plan-capture { margin-top: 12px; }
+    .mg-work-area-editor .voice-plan-capture label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+    .mg-work-area-editor .voice-plan-capture select { width: auto; min-width: 120px; }
+    .mg-area-voice__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .mg-area-voice__actions .btn { flex: 0 1 auto; min-width: 0; }
     .mg-area-voice__status { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
     .mg-area-voice__status.is-error { color: #f0c674; }
     .mg-work-area-editor .mg-area-dictation {
@@ -2324,6 +2326,11 @@
         <button type="button" class="icon-btn" id="voicePlanPreviewClose" aria-label="Close">X</button>
       </div>
       <div class="modal-body">
+        <div class="field" id="voicePlanAreaNameField" hidden>
+          <label for="voicePlanAreaName">Area name
+            <input id="voicePlanAreaName" maxlength="80" placeholder="Kitchen Backsplash" autocomplete="off" />
+          </label>
+        </div>
         <section class="voice-plan-capture" aria-labelledby="voicePlanCaptureTitle">
           <div class="voice-plan-capture__head">
             <strong id="voicePlanCaptureTitle">Voice dictation</strong>
@@ -7720,16 +7727,91 @@
         });
       }
 
+      function voicePlanIsMulti(state) {
+        return !!(state && (state.quote_mode === 'multi_area' || state.work_areas_ui === 'active'));
+      }
+
+      function syncVoicePlanAreaName(state) {
+        const field = document.getElementById('voicePlanAreaNameField');
+        const input = document.getElementById('voicePlanAreaName');
+        const multi = voicePlanIsMulti(state);
+        if (field) field.hidden = !multi;
+        if (!input) return multi;
+        if (!multi) {
+          input.value = '';
+          return false;
+        }
+        const api = workAreasApi();
+        const doc = api && api.workingDocument(state);
+        const areas = doc && Array.isArray(doc.areas) ? doc.areas : [];
+        input.value = areas.length === 1 ? String(areas[0].name || '') : '';
+        return true;
+      }
+
+      function fileVoicePlanUnderAreaName(applied) {
+        const field = document.getElementById('voicePlanAreaNameField');
+        const input = document.getElementById('voicePlanAreaName');
+        if (!field || field.hidden || !input) return null;
+        const areaName = String(input.value || '').trim();
+        if (!areaName) return null;
+        const api = workAreasApi();
+        if (!api) return null;
+        const state = loadSalesState();
+        let doc = api.workingDocument(state);
+        const match = (doc.areas || []).find(function (area) {
+          return String(area.name || '').trim().toLowerCase() === areaName.toLowerCase();
+        });
+        let key = '';
+        if (match) {
+          key = match.area_ref || match.id || '';
+        } else {
+          const added = api.addArea(doc, { name: areaName, scope: '' });
+          if (!added.ok) return null;
+          doc = added.document;
+          key = added.area_ref;
+        }
+        doc.days = (doc.days || []).filter(function (day) {
+          const ref = day.area_ref || day.area_id || '';
+          return ref && ref !== key;
+        });
+        const days = (applied && applied.days || []).map(function (day) {
+          return {
+            day_number: day.day_number,
+            client_scope: day.client_scope,
+            internal_tasks: day.internal_tasks,
+            worker_assignments: day.worker_assignments
+          };
+        });
+        const replaced = api.replaceAreaPlan(doc, key, days);
+        if (!replaced.ok) return null;
+        replaced.document.start_date = applied.start_date || replaced.document.start_date;
+        replaced.document.due_date = applied.due_date || replaced.document.due_date;
+        return replaced.document;
+      }
+
+      function applyNamedAreaPlan(document, applied) {
+        const api = workAreasApi();
+        const state = loadSalesState();
+        state.internal_operational_plan = document;
+        state.quote_mode = 'multi_area';
+        state.work_areas_ui = 'active';
+        state.labor_from_work_areas = true;
+        if (api && api.legacyPlanFromDocument) state.operational_plan = api.legacyPlanFromDocument(document);
+        if (api && api.publicScopeText) state.messageToClient = api.publicScopeText(document);
+        state.startDate = (applied && applied.start_date) || state.startDate;
+        state.targetFinishDate = (applied && applied.due_date) || state.targetFinishDate;
+        state.dueDate = (applied && applied.due_date) || state.dueDate;
+        const msg = document.getElementById('salesMessageToClient');
+        if (msg && state.messageToClient) msg.value = state.messageToClient;
+        saveSalesState(state);
+      }
+
       function openVoicePlanPreviewModal() {
         const voice = getVoicePlanApi();
         const modal = document.getElementById('voicePlanPreviewModal');
         if (!voice || !modal) return;
         const state = loadSalesState();
-        const areaApi = workAreasApi();
-        if (areaApi && areaApi.detectMode(state) === 'work-areas') {
-          openWorkAreasReviewModal(state);
-          return;
-        }
+        syncVoicePlanAreaName(state);
         const capture = modal.querySelector('.voice-plan-capture');
         if (capture) capture.hidden = false;
         const settings = loadSettings();
@@ -7844,8 +7926,11 @@
         });
         const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
         const applied = result.applied;
+        const namedArea = fileVoicePlanUnderAreaName(applied);
+        const storedPlan = namedArea || applied;
         if (!state.quoteId) {
-          applyConfirmedVoicePlanToState(voice, applied);
+          if (namedArea) applyNamedAreaPlan(namedArea, applied);
+          else applyConfirmedVoicePlanToState(voice, applied);
           closeVoicePlanPreviewModal();
           refreshSellerFromStandalonePreservingRenderedCurrency();
           return;
@@ -7853,7 +7938,7 @@
         setVoicePlanConfirmBusy(true);
         setVoicePlanPreviewStatus('Saving…', false);
         try {
-          let persisted = await persistVoicePlanDocument(state.quoteId, applied);
+          let persisted = await persistVoicePlanDocument(state.quoteId, storedPlan);
           if (!voicePlanPersistSucceeded(persisted.response, persisted.data) &&
               persisted.data && persisted.data.code === 'sent_quote_confirmation_required') {
             const proceed = window.confirm(
@@ -7864,10 +7949,11 @@
               setVoicePlanPreviewStatus('Confirmation cancelled. The quote was not changed.', true);
               return;
             }
-            persisted = await persistVoicePlanDocument(state.quoteId, applied, { confirm_sent_update: true });
+            persisted = await persistVoicePlanDocument(state.quoteId, storedPlan, { confirm_sent_update: true });
           }
           if (voicePlanPersistSucceeded(persisted.response, persisted.data)) {
-            applyConfirmedVoicePlanToState(voice, applied);
+            if (namedArea) applyNamedAreaPlan(namedArea, applied);
+            else applyConfirmedVoicePlanToState(voice, applied);
             setVoicePlanConfirmBusy(false);
             closeVoicePlanPreviewModal();
             refreshSellerFromStandalonePreservingRenderedCurrency();
