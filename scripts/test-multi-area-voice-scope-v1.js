@@ -132,9 +132,10 @@ async function runMultiAreaVoiceScopeTests() {
     labor_from_work_areas: true,
     internal_operational_plan: baseDoc(),
   });
-  ok("area modal has a premium dictation textarea", rendered.includes('class="mg-area-dictation"') && rendered.includes('maxlength="6000"'));
-  ok("area modal offers the same language labels as the existing voice modal", rendered.includes("Dictation language") && rendered.includes("Client document"));
-  ok("area modal offers New, Continue, Interpret, and Clear", rendered.includes("New dictation") && rendered.includes("Continue dictation") && rendered.includes("Interpret area") && rendered.includes("Clear transcript"));
+  ok("the review modal keeps the same dictation textarea", sales.includes('id="voicePlanTranscript"') && sales.includes('maxlength="6000"'));
+  ok("the review modal keeps the same language labels", sales.includes("Dictation language") && sales.includes("Client document"));
+  ok("area modal does not open a second dictation screen", !rendered.includes("Voice dictation") && !rendered.includes("Interpret area") && !rendered.includes(">Instructions<textarea"));
+  ok("multi adds Area name on the same review modal", sales.includes('id="voicePlanAreaNameField" hidden') && sales.includes('id="voicePlanAreaName"') && sales.includes(">Area name") && sales.includes("Interpret and preview"));
   ok("area modal keeps Name, Scope of Work, and crew", rendered.includes(">Name<input") && rendered.includes("Scope of Work") && rendered.includes("Worker count") && rendered.includes("Hours per worker") && rendered.includes("Add day"));
   ok("Save Area and Add New Area stay in the production footer", rendered.includes('data-wa-action="save-area"') && rendered.includes("+ Add New Area") && !rendered.includes('data-wa-action="cancel-area"'));
   ok("Review stays outside the area renderer", !rendered.includes("btnReviewConfirmOperationalPlan"));
@@ -309,7 +310,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 56;
+const EXPECTED = 57;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 

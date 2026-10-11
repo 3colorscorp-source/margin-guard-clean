@@ -1044,25 +1044,6 @@
     return { ok: true, document: next, published: false, priced: false, invalidatesMoney: true, work_areas_ui: "active" };
   }
 
-  function areaVoiceControlsHtml() {
-    return (
-      '<div class="mg-area-voice">' +
-      '<label>Instructions<textarea class="mg-area-dictation" data-wa-field="transcript" maxlength="6000" rows="7" placeholder="Day 1: protect floors, walls, and kitchen cabinets."></textarea></label>' +
-      '<div class="mg-area-voice__langs">' +
-      '<label>Dictation language<select data-wa-field="dictation_language"><option value="es-US">Español</option><option value="en-US">English</option></select></label>' +
-      '<label>Client document<select data-wa-field="client_language"><option value="en" selected>English</option><option value="es">Español</option></select></label>' +
-      '</div>' +
-      '<div class="mg-area-voice__actions">' +
-      '<button type="button" class="btn" data-wa-action="dictate-new">New dictation</button>' +
-      '<button type="button" class="btn" data-wa-action="dictate-continue">Continue dictation</button>' +
-      '<button type="button" class="btn primary" data-wa-action="interpret-area">Interpret area</button>' +
-      '<button type="button" class="btn ghost" data-wa-action="clear-transcript">Clear transcript</button>' +
-      '</div>' +
-      '<p class="mg-area-voice__status" data-wa-voice-status role="status"></p>' +
-      '</div>'
-    );
-  }
-
   function escapeHtml(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -1188,7 +1169,6 @@
           (status === "Empty area" ? ". This area stays in the plan and will not be quoted." : "") + '</p>' +
           '<div class="mg-work-area__actions"><button type="button" class="btn primary" data-wa-action="add-day">Add day</button></div>' +
           '<div class="mg-area-days" data-wa-days>' + dayHtml + '</div>' +
-          areaVoiceControlsHtml() +
           '</div><div class="mg-work-area-editor__footer">' +
           '<button type="button" class="btn mg-work-area-editor__add-next" data-wa-action="open-add-area">+ Add New Area</button>' +
           '<button type="button" class="btn primary" data-wa-action="save-area">Save Area</button>' +
@@ -1209,7 +1189,6 @@
       '<label>Area name<input id="waNewAreaName" data-wa-field="name" maxlength="80" placeholder="Kitchen Backsplash" /></label>' +
       '<label>Scope of Work<textarea id="waNewAreaScope" data-wa-field="scope" maxlength="4000" rows="7" placeholder="Describe the complete client-facing scope for this area."></textarea></label>' +
       '<div class="mg-area-days" data-wa-days data-wa-pending-review></div>' +
-      areaVoiceControlsHtml() +
       '</div></form></div><div class="mg-work-area-editor__footer">' +
       '<button type="button" class="btn" data-wa-action="close-add-area">Cancel</button>' +
       '<button type="button" class="btn primary mg-work-areas__add" data-wa-action="add-area">Save Area</button>' +

@@ -958,7 +958,7 @@
       const field = textareaOf();
       if (field) field.readOnly = false;
       setListeningUi(false, null);
-      status("Dictation stopped. Review the text, then choose Interpret area.", false);
+      status("Dictation stopped. Review the text, then choose Interpret and preview.", false);
     }
 
     function start(append) {
