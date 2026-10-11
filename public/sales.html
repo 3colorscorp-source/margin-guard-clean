@@ -1300,6 +1300,10 @@
     .voice-plan-preview-status.is-error {
       color: #f3b4b4;
     }
+    .voice-plan-preview-modal .modal-footer #voicePlanPreviewFooterStatus {
+      margin: 0 auto 0 0;
+      align-self: center;
+    }
     @media (max-width: 740px) {
       .voice-plan-dual,
       .voice-plan-grid {
@@ -2371,6 +2375,7 @@
         <div class="voice-plan-preview-status" id="voicePlanPreviewStatus" role="status" aria-live="polite" hidden></div>
       </div>
       <div class="modal-footer">
+        <span class="voice-plan-preview-status" id="voicePlanPreviewFooterStatus" role="status" hidden></span>
         <button type="button" class="btn" id="voicePlanPreviewCancel">Cancel</button>
         <button type="button" class="btn primary" id="voicePlanPreviewConfirm">Confirm and apply</button>
       </div>
@@ -7423,13 +7428,14 @@
       }
 
       function setVoicePlanPreviewStatus(message, isError) {
-        const el = document.getElementById('voicePlanPreviewStatus');
-        if (!el) return;
         const text = String(message || '').trim();
-        el.textContent = text;
-        el.hidden = !text;
-        if (isError) el.classList.add('is-error');
-        else el.classList.remove('is-error');
+        [document.getElementById('voicePlanPreviewStatus'), document.getElementById('voicePlanPreviewFooterStatus')].forEach(function (el) {
+          if (!el) return;
+          el.textContent = text;
+          el.hidden = !text;
+          if (isError) el.classList.add('is-error');
+          else el.classList.remove('is-error');
+        });
       }
 
       function setVoicePlanConfirmBusy(busy) {
@@ -7745,13 +7751,24 @@
       function fileVoicePlanUnderAreaName(applied) {
         const field = document.getElementById('voicePlanAreaNameField');
         const input = document.getElementById('voicePlanAreaName');
-        if (!field || field.hidden || !input) return null;
-        const areaName = String(input.value || '').trim();
-        if (!areaName) return null;
+        if (!field || field.hidden) return null;
         const api = workAreasApi();
         if (!api) return null;
         const state = loadSalesState();
         let doc = api.workingDocument(state);
+        let areaName = String(input && input.value || '').trim();
+        if (!areaName) {
+          const used = (doc.areas || []).map(function (area) {
+            return String(area.name || '').trim().toLowerCase();
+          });
+          areaName = 'Work area';
+          let sequence = 2;
+          while (used.indexOf(areaName.toLowerCase()) >= 0) {
+            areaName = 'Work area ' + sequence;
+            sequence += 1;
+          }
+          if (input) input.value = areaName;
+        }
         const match = (doc.areas || []).find(function (area) {
           return String(area.name || '').trim().toLowerCase() === areaName.toLowerCase();
         });
@@ -7792,6 +7809,13 @@
         state.labor_from_work_areas = true;
         if (api && api.legacyPlanFromDocument) state.operational_plan = api.legacyPlanFromDocument(document);
         if (api && api.publicScopeText) state.messageToClient = api.publicScopeText(document);
+        if (api && api.projectLabor) {
+          const projected = api.projectLabor(document, loadSettings());
+          if (projected && projected.workers && projected.workers.length) {
+            state.workers = projected.workers;
+            state.laborAreas = projected.laborAreas;
+          }
+        }
         state.startDate = (applied && applied.start_date) || state.startDate;
         state.targetFinishDate = (applied && applied.due_date) || state.targetFinishDate;
         state.dueDate = (applied && applied.due_date) || state.dueDate;
@@ -7933,10 +7957,6 @@
         });
         const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
         const applied = result.applied;
-        if (voicePlanPreviewSession.newArea && !String((document.getElementById('voicePlanAreaName') || {}).value || '').trim()) {
-          setVoicePlanPreviewStatus('Enter an area name before confirming.', true);
-          return;
-        }
         const namedArea = fileVoicePlanUnderAreaName(applied);
         const storedPlan = namedArea || applied;
         if (!state.quoteId) {
@@ -7963,7 +7983,8 @@
             persisted = await persistVoicePlanDocument(state.quoteId, storedPlan, { confirm_sent_update: true });
           }
           if (voicePlanPersistSucceeded(persisted.response, persisted.data)) {
-            if (namedArea) applyNamedAreaPlan(namedArea, applied);
+            const savedDoc = persisted.data && persisted.data.document;
+            if (namedArea) applyNamedAreaPlan(savedDoc && Array.isArray(savedDoc.areas) && savedDoc.areas.length ? savedDoc : namedArea, applied);
             else applyConfirmedVoicePlanToState(voice, applied);
             setVoicePlanConfirmBusy(false);
             closeVoicePlanPreviewModal();
@@ -7999,7 +8020,10 @@
               applyWorkAreasConfirm();
               return;
             }
-            applyVoicePlanConfirm();
+            applyVoicePlanConfirm().catch(function (err) {
+              setVoicePlanConfirmBusy(false);
+              setVoicePlanPreviewStatus(err && err.message ? err.message : 'The operational plan was not changed.', true);
+            });
           }, true);
         }
         if (!document.body.dataset.voicePlanEscape) {
