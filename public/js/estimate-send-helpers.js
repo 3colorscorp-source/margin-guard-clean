@@ -31,6 +31,18 @@
     }
     return "";
   }
+  function uniquePublicScopeLines(scope) {
+    const seen = Object.create(null);
+    const lines = [];
+    String(scope || "").split(/\r?\n/).forEach(function (line) {
+      const clean = line.trim();
+      if (!clean || seen[clean]) return;
+      seen[clean] = true;
+      lines.push(clean);
+    });
+    return lines;
+  }
+
   function resolvePublicPdfScopeItems(data) {
     data = data && typeof data === "object" ? data : {};
     const raw =
@@ -588,10 +600,7 @@
     drawSectionTitle('Scope of Work');
     laborAreas.forEach(function (area) {
       const title = String(area && area.name || 'Area').trim() || 'Area';
-      const scopeLines = String(area && area.scope || '')
-        .split(/\r?\n+/)
-        .map(function (line) { return line.trim(); })
-        .filter(Boolean);
+      const scopeLines = uniquePublicScopeLines(area && area.scope);
       ensureSpace(32);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
@@ -880,6 +889,7 @@
     formatPdfLicenseLine,
     hexToRgbTuple,
     isInvalidPublishBusinessNameCandidate,
-    resolvePublicPdfScopeItems
+    resolvePublicPdfScopeItems,
+    uniquePublicScopeLines
   };
 })();

@@ -120,10 +120,57 @@ async function runMultiAreaQuoteV1Tests() {
   ok("publish still creates one public URL from one token", publish.includes("estimate-public.html?token=") && !/area.*public_token/i.test(publish));
   ok("publish computes one protected quote before the area breakdown", publish.indexOf("calculateQuotePublishFinancials") < publish.indexOf("buildLaborAreaBreakdown"));
 
+  const areaApi = require("../public/js/seller-operational-plan-areas.js");
+  const repeatedScope = [
+    "Protect work area, floors, and walls if necessary.",
+    "Install tile.",
+    "Grout and clean the entire work area.",
+  ].join("\n");
+  const repeatedWithSpace = repeatedScope.replace("necessary.", "necessary. ");
+  eq(
+    "area scope keeps each repeated day line once",
+    areaApi.deriveAreaScope({ scope: "" }, [
+      { client_scope: repeatedScope },
+      { client_scope: repeatedWithSpace },
+      { client_scope: repeatedScope },
+    ]),
+    repeatedScope
+  );
+  eq(
+    "area scope keeps a line that belongs to only one day",
+    areaApi.deriveAreaScope({ scope: repeatedScope }, [
+      { client_scope: repeatedScope },
+      { client_scope: repeatedWithSpace },
+      { client_scope: "Complete planned work for day 1 including floor demolition." },
+    ]),
+    repeatedScope + "\nComplete planned work for day 1 including floor demolition."
+  );
+  eq(
+    "distinct day lines all stay on the area",
+    areaApi.deriveAreaScope({ scope: "" }, [
+      { client_scope: "Preparation of walls." },
+      { client_scope: "Waterproofing of shower floor." },
+      { client_scope: "Installation of tile on the floor." },
+    ]),
+    "Preparation of walls.\nWaterproofing of shower floor.\nInstallation of tile on the floor."
+  );
+  ok(
+    "public estimate shows each scope line once",
+    publicBuilder.includes("function uniquePublicScopeLines(scope)") &&
+      publicBuilder.includes('uniquePublicScopeLines(area && area.scope).join("\\n")')
+  );
+  ok(
+    "estimate PDFs show each scope line once",
+    pdf.includes("function uniquePublicScopeLines(scope)") &&
+      pdf.includes("uniquePublicScopeLines(area && area.scope)") &&
+      sales.includes("function uniquePublicScopeLines(scope)") &&
+      sales.includes("const scopeLines = uniquePublicScopeLines(area && area.scope)")
+  );
+
   return passed;
 }
 
-const EXPECTED = 30;
+const EXPECTED = 35;
 
 module.exports = { runMultiAreaQuoteV1Tests, EXPECTED };
 
