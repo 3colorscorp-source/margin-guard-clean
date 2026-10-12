@@ -289,6 +289,13 @@
     ) {
       return "The operational plan could not be saved, so the quote was not sent. Please try again.";
     }
+    if (
+      /unresolved_area_ref|invalid_area_id|invalid_area_contract|labor_area_mismatch|orphan_day_area|orphan_worker_area|area_without_labor|duplicate_area_id|canonical preview document/.test(
+        blob
+      )
+    ) {
+      return "The work areas could not be prepared for sending. Please try again.";
+    }
     if (/quote_insert_failed/.test(blob) || /couldn't save the quote/i.test(raw)) {
       return "We couldn't save the quote. Please try again.";
     }
