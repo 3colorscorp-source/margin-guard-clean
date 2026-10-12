@@ -319,7 +319,8 @@
       totalFormatted: H.formatUsd(rowTotal),
       depositRequired: rowDeposit,
       depositFormatted: H.formatUsd(rowDeposit),
-      estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || ""
+      estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || "",
+      laborAreas: Array.isArray(publishData.labor_areas) ? publishData.labor_areas : (Array.isArray(payload.laborAreas) ? payload.laborAreas : [])
     };
 
     console.log("PDF payload before rebuild", {

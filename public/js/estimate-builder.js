@@ -834,6 +834,7 @@
       projectName: safe(next.title || next.project_name) || "Estimate",
       projectAddress: next.project_address || next.job_site,
       scope_of_work: next.scope_of_work,
+      laborAreas: Array.isArray(next.labor_areas) ? next.labor_areas : [],
       terms: next.terms,
       total: next.total,
       depositRequired: next.deposit_required,
