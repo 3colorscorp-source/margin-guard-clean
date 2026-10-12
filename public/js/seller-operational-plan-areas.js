@@ -761,9 +761,11 @@
   function deriveAreaScope(area, days) {
     var lines = [];
     function push(text) {
-      var clean = String(text || "").trim();
-      if (!clean || lines.indexOf(clean) >= 0) return;
-      lines.push(clean);
+      String(text || "").split(/\r?\n/).forEach(function (line) {
+        var clean = line.trim();
+        if (!clean || lines.indexOf(clean) >= 0) return;
+        lines.push(clean);
+      });
     }
     push(area && area.scope);
     (days || []).forEach(function (day) {

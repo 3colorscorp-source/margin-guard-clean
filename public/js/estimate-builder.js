@@ -1230,6 +1230,18 @@
     `;
   }
 
+  function uniquePublicScopeLines(scope) {
+    const seen = Object.create(null);
+    const lines = [];
+    String(scope || "").split(/\r?\n/).forEach(function (line) {
+      const clean = line.trim();
+      if (!clean || seen[clean]) return;
+      seen[clean] = true;
+      lines.push(clean);
+    });
+    return lines;
+  }
+
   function renderScopeOfWork(next) {
     const section = $("publicEstimateScopeSection");
     const wrap = $("publicEstimateScope");
@@ -1242,7 +1254,7 @@
       wrap.innerHTML = areas
         .map(function (area) {
           const name = escapeHtml(area && area.name ? area.name : "Area");
-          const scope = escapeHtml(area && area.scope ? area.scope : "");
+          const scope = escapeHtml(uniquePublicScopeLines(area && area.scope).join("\n"));
           const sell = money(area && area.sell_subtotal, next.currency);
           return (
             '<div class="mg-public-area">' +
