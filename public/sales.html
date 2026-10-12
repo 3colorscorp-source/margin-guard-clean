@@ -7960,8 +7960,14 @@
         const namedArea = fileVoicePlanUnderAreaName(applied);
         const storedPlan = namedArea || applied;
         if (!state.quoteId) {
-          if (namedArea) applyNamedAreaPlan(namedArea, applied);
-          else applyConfirmedVoicePlanToState(voice, applied);
+          if (namedArea) {
+            const preview = await previewSellerOperationalPlanAreas(namedArea, { commit: false });
+            if (!preview.ok || !preview.document) {
+              setVoicePlanPreviewStatus('The operational plan could not be saved. Please try again.', true);
+              return;
+            }
+            applyNamedAreaPlan(preview.document, applied);
+          } else applyConfirmedVoicePlanToState(voice, applied);
           closeVoicePlanPreviewModal();
           refreshSellerFromStandalonePreservingRenderedCurrency();
           return;
@@ -12483,6 +12489,39 @@ async function openSellerSendModal(event) {
     return cid;
   }
 
+  async function ensureCanonicalAreaPlanForPublish(state, settings) {
+    const api = workAreasApi();
+    const current = state && typeof state === 'object' ? state : loadSalesState();
+    if (!api || !api.documentHasAreas(current.internal_operational_plan)) return current;
+    const bundleOk = typeof api.validatePublishBundle === 'function' && typeof api.isCanonicalAreaDocument === 'function'
+      && api.isCanonicalAreaDocument(current.internal_operational_plan)
+      && api.validatePublishBundle({
+        document: current.internal_operational_plan,
+        laborAreas: current.laborAreas,
+        workers: current.workers
+      }).ok;
+    if (bundleOk) return current;
+    const preview = await previewSellerOperationalPlanAreas(current.internal_operational_plan, { commit: false });
+    if (!preview.ok || !preview.document) {
+      const err = new Error('Publish requires the canonical preview document.');
+      err.code = 'unresolved_area_ref';
+      throw err;
+    }
+    const applied = api.applyConfirmedWorkAreas({
+      state: current,
+      document: preview.document,
+      settings: settings || loadSettings()
+    });
+    if (!applied.ok) {
+      const err = new Error('Publish requires the canonical preview document.');
+      err.code = 'unresolved_area_ref';
+      throw err;
+    }
+    if (current.quote_mode) applied.state.quote_mode = current.quote_mode;
+    saveSalesState(applied.state);
+    return applied.state;
+  }
+
   function buildPublishPublicQuoteBody(opts) {
     const payload = opts.payload && typeof opts.payload === 'object' ? opts.payload : {};
     const stateFresh = opts.stateFresh && typeof opts.stateFresh === 'object' ? opts.stateFresh : {};
@@ -12583,7 +12622,7 @@ async function openSellerSendModal(event) {
 
     await fillSendModal();
     const payload = JSON.parse(modal.dataset.payload || '{}');
-    const stateFresh = loadSalesState();
+    let stateFresh = loadSalesState();
     if (typeof window.resolveSellerPublishWorkers === 'function') {
       window.resolveSellerPublishWorkers(stateFresh, settings);
     }
@@ -12631,6 +12670,7 @@ async function openSellerSendModal(event) {
     sellerPublishInFlight = true;
     try {
       const branding = await getBranding(true);
+      stateFresh = await ensureCanonicalAreaPlanForPublish(stateFresh, settings);
       const publishBody = buildPublishPublicQuoteBody({
         payload,
         stateFresh,
@@ -12851,7 +12891,7 @@ async function runSellerSend(event) {
 
       await fillSendModal();
       payload = JSON.parse(modal.dataset.payload || '{}');
-      const stateFresh = loadSalesState();
+      let stateFresh = await ensureCanonicalAreaPlanForPublish(loadSalesState(), settings);
       if (typeof window.resolveSellerPublishWorkers === 'function') {
         window.resolveSellerPublishWorkers(stateFresh, settings);
       }

@@ -139,6 +139,10 @@ async function runMultiAreaVoiceScopeTests() {
   ok("Add area opens the same quote review", sales.includes("openVoicePlanPreviewModal({ newArea: true })"));
   ok("multi confirm applies a blank area name", sales.includes('id="voicePlanPreviewFooterStatus"') && sales.includes("areaName = 'Work area'") && sales.includes("const storedPlan = namedArea || applied") && !sales.includes("Enter an area name before confirming."));
   ok("named area confirm keeps the page document", sales.includes("function applyNamedAreaPlan(plan, applied)") && sales.includes("document.getElementById('salesMessageToClient')"));
+  ok("multi confirm previews canonical area ids before saving", sales.includes("previewSellerOperationalPlanAreas(namedArea, { commit: false })"));
+  const sendAt = sales.indexOf("let stateFresh = await ensureCanonicalAreaPlanForPublish");
+  const publishAt = sales.indexOf("buildPublishPublicQuoteBody({", sendAt);
+  ok("send prepares canonical area ids before publish", sendAt >= 0 && publishAt > sendAt);
   const filed = areas.addArea({ schema_version: 1, source: "keyboard", areas: [], days: [] }, { name: "Work area", scope: "" });
   const replaced = areas.replaceAreaPlan(filed.document, filed.area_ref, [{
     day_number: 1,
@@ -147,6 +151,28 @@ async function runMultiAreaVoiceScopeTests() {
     worker_assignments: [{ worker_role: "Assistant", worker_type: "helper", worker_count: 1, hours_per_worker: 8 }],
   }]);
   eq("a blank area name still files the interpreted day", replaced.ok && replaced.document.areas.length === 1 && replaced.document.days.length === 1 && replaced.document.areas[0].name === "Work area", true);
+  const publishApi = require("../netlify/functions/publish-public-quote.js");
+  const serverVoice = require("../netlify/functions/_lib/voice-operational-plan.js");
+  const blockedSend = publishApi._test.assertCanonicalOperationalPlanAreas({
+    internal_operational_plan: replaced.document,
+    labor_areas: [],
+    workers: [],
+  });
+  eq("publish rejects a temporary area_ref plan", blockedSend.ok, false);
+  eq("publish rejection is unresolved_area_ref", blockedSend.code, "unresolved_area_ref");
+  const canonicalPlan = serverVoice.normalizeDocument(replaced.document, {
+    startDate: "2026-10-12",
+    settings: { hoursPerDay: 8 },
+    hoursPerDay: 8,
+    createId: function () { return require("crypto").randomUUID(); },
+  });
+  const projectedLabor = areas.projectLabor(canonicalPlan, { hoursPerDay: 8, pricingMode: "hour" });
+  const allowedSend = publishApi._test.assertCanonicalOperationalPlanAreas({
+    internal_operational_plan: canonicalPlan,
+    labor_areas: projectedLabor.laborAreas,
+    workers: projectedLabor.workers,
+  });
+  eq("publish accepts the previewed area plan", allowedSend.ok, true);
   ok("area modal keeps Name, Scope of Work, and crew", rendered.includes(">Name<input") && rendered.includes("Scope of Work") && rendered.includes("Worker count") && rendered.includes("Hours per worker") && rendered.includes("Add day"));
   ok("Save Area and Add New Area stay in the production footer", rendered.includes('data-wa-action="save-area"') && rendered.includes("+ Add New Area") && !rendered.includes('data-wa-action="cancel-area"'));
   ok("Review stays outside the area renderer", !rendered.includes("btnReviewConfirmOperationalPlan"));
@@ -323,7 +349,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 63;
+const EXPECTED = 68;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 
