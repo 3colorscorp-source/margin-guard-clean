@@ -114,7 +114,8 @@ async function runMultiAreaQuoteV1Tests() {
   eq("stored breakdown projects to the same two public areas", publicAreasFromBreakdown(built.breakdown).length, 2);
 
   ok("public estimate renders each area scope and subtotal", publicBuilder.includes("area.scope") && publicBuilder.includes("area.sell_subtotal"));
-  ok("PDF renders each area scope and subtotal", pdf.includes("area && area.scope") && pdf.includes("area && area.sell_subtotal"));
+  ok("PDF renders each area scope and subtotal", pdf.includes("area && area.scope") && pdf.includes("doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' })"));
+  ok("public PDF download keeps the modal area subtotals", publicBuilder.includes("laborAreas: Array.isArray(next.labor_areas)") && sales.includes("doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' })"));
   ok("public estimate fetch is tenant-bound", getPublic.includes("tenant_id=not.is.null") && getPublic.includes("labor_area_breakdown"));
   ok("publish still creates one public URL from one token", publish.includes("estimate-public.html?token=") && !/area.*public_token/i.test(publish));
   ok("publish computes one protected quote before the area breakdown", publish.indexOf("calculateQuotePublishFinancials") < publish.indexOf("buildLaborAreaBreakdown"));
@@ -122,7 +123,7 @@ async function runMultiAreaQuoteV1Tests() {
   return passed;
 }
 
-const EXPECTED = 29;
+const EXPECTED = 30;
 
 module.exports = { runMultiAreaQuoteV1Tests, EXPECTED };
 
