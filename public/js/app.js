@@ -4864,25 +4864,49 @@ Thank you.`
     return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback;
   }
 
+  function bankSummaryRecord(summary) {
+    if (!summary || typeof summary !== "object") return null;
+    if (
+      summary.operating_balance != null ||
+      summary.profit_balance != null ||
+      summary.savings_balance != null ||
+      summary.tax_reserve_balance != null ||
+      summary.cash_on_hand != null
+    ) {
+      return summary;
+    }
+    if (summary.summary && typeof summary.summary === "object") return summary.summary;
+    return null;
+  }
+
+  function bankSummaryBalances(summary) {
+    const source = bankSummaryRecord(summary);
+    if (!source) return null;
+    return {
+      expensesBalance: bankBalanceOrFallback(source.operating_balance, 0),
+      profitBalance: bankBalanceOrFallback(source.profit_balance, 0),
+      savingsBalance: bankBalanceOrFallback(source.savings_balance, 0),
+      taxBalance: bankBalanceOrFallback(source.tax_reserve_balance, 0),
+      bankSnapshotAt: source.last_sync_at || source.computed_at || new Date().toISOString()
+    };
+  }
+
   /**
    * Business Settings has no cash inputs. Sync and Save mapping must write the
    * server bucket balances into mg_dashboard_v2 or the Dashboard keeps the old snapshot.
    */
   function applyBankFinancialSummary(summary) {
-    if (!summary || typeof summary !== "object") return false;
+    const balances = bankSummaryBalances(summary);
+    if (!balances) return false;
     try {
-      window.__mgLastFinancialSummary = summary;
+      window.__mgLastFinancialSummary = bankSummaryRecord(summary);
     } catch (_err) {
       /* ignore */
     }
     const current = loadDashboard();
     const next = {
       ...current,
-      expensesBalance: bankBalanceOrFallback(summary.operating_balance, current.expensesBalance),
-      profitBalance: bankBalanceOrFallback(summary.profit_balance, current.profitBalance),
-      savingsBalance: bankBalanceOrFallback(summary.savings_balance, current.savingsBalance),
-      taxBalance: bankBalanceOrFallback(summary.tax_reserve_balance, current.taxBalance),
-      bankSnapshotAt: summary.last_sync_at || summary.computed_at || new Date().toISOString()
+      ...balances
     };
     const unchanged = ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "bankSnapshotAt"]
       .every((key) => String(current[key] ?? "") === String(next[key] ?? ""));
@@ -7302,11 +7326,25 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       $("operatingMonthly").value = "";
     }
 
-    const refresh = () => {
-      state.expensesBalance = num("expensesBalance", 0);
-      state.profitBalance = num("profitBalance", 0);
-      state.savingsBalance = num("savingsBalance", 0);
-      state.taxBalance = num("taxBalance", 0);
+    const refresh = (ev) => {
+      const manualEdit = Boolean(ev && ev.isTrusted);
+      const bank = manualEdit ? null : bankSummaryBalances(window.__mgLastFinancialSummary);
+      if (bank) {
+        state.expensesBalance = bank.expensesBalance;
+        state.profitBalance = bank.profitBalance;
+        state.savingsBalance = bank.savingsBalance;
+        state.taxBalance = bank.taxBalance;
+        state.bankSnapshotAt = state.bankSnapshotAt || bank.bankSnapshotAt;
+        setNum("expensesBalance", state.expensesBalance);
+        setNum("profitBalance", state.profitBalance);
+        setNum("savingsBalance", state.savingsBalance);
+        setNum("taxBalance", state.taxBalance);
+      } else {
+        state.expensesBalance = num("expensesBalance", state.expensesBalance);
+        state.profitBalance = num("profitBalance", state.profitBalance);
+        state.savingsBalance = num("savingsBalance", state.savingsBalance);
+        state.taxBalance = num("taxBalance", state.taxBalance);
+      }
       const totalCash = state.expensesBalance + state.profitBalance + state.savingsBalance + state.taxBalance;
       const metrics = computeDashboardCommandMetrics(state, totalCash);
       const overheadMonthly = metrics.available ? metrics.overheadMonthly : null;
@@ -7806,8 +7844,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const el = $(id);
       if (!el) return;
       el.oninput = (ev) => {
-        if (ev && ev.isTrusted && id !== "operatingMonthly") state.bankSnapshotAt = "";
-        refresh();
+        if (ev && ev.isTrusted && id !== "operatingMonthly") {
+          state.bankSnapshotAt = "";
+          window.__mgLastFinancialSummary = null;
+        }
+        refresh(ev);
       };
     });
 
