@@ -10,6 +10,7 @@
 const {
   usdMinorFromBalance,
   usdAvailableMajorUnits,
+  readUsdBalanceForAccount,
 } = require("../netlify/functions/sync-tenant-financial-summary");
 
 let failed = 0;
@@ -83,9 +84,64 @@ assert(
   usdAvailableMajorUnits({}) === null
 );
 
-if (failed) {
-  console.log("\n" + passed + " passed, " + failed + " failed");
-  process.exit(1);
+function cashAccount(status, extraRefresh) {
+  return {
+    balance_refresh: Object.assign(
+      {
+        status: status,
+        last_attempted_at: 100,
+        next_refresh_available_at: 2000,
+      },
+      extraRefresh || {}
+    ),
+    balance: {
+      type: "cash",
+      as_of: 100,
+      current: { usd: 55004 },
+      cash: { available: { usd: 14004 } },
+    },
+  };
 }
 
-console.log("\n" + passed + " passed, 0 failed");
+async function readWith(account, refresh) {
+  return readUsdBalanceForAccount("fca_test", "", {
+    stripeGet: async () => account,
+    stripeRefreshBalanceOnly: refresh || (async () => account),
+    sleep: async () => {},
+    nowUnix: () => 1500,
+  });
+}
+
+async function main() {
+  const pending = await readWith(cashAccount("pending"));
+  assert(
+    "pending refresh with a usable balance returns that amount",
+    pending && pending.amount === 140.04
+  );
+  assert(
+    "pending refresh is reported as refresh_pending true",
+    pending && pending.refresh_pending === true
+  );
+
+  const succeeded = await readWith(cashAccount("succeeded"));
+  assert(
+    "succeeded refresh returns the available balance",
+    succeeded && succeeded.amount === 140.04
+  );
+  assert(
+    "succeeded refresh is reported as refresh_pending false",
+    succeeded && succeeded.refresh_pending === false
+  );
+
+  if (failed) {
+    console.log("\n" + passed + " passed, " + failed + " failed");
+    process.exit(1);
+  }
+
+  console.log("\n" + passed + " passed, 0 failed");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

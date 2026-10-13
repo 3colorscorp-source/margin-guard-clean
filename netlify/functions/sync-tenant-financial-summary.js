@@ -207,16 +207,40 @@ function stillUpdatingError() {
   return err;
 }
 
-async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
-  const before = await stripeGet(
+function normalizeBalanceRead(result) {
+  if (
+    result &&
+    typeof result === "object" &&
+    !Array.isArray(result) &&
+    Object.prototype.hasOwnProperty.call(result, "amount")
+  ) {
+    return {
+      amount: result.amount,
+      refresh_pending: result.refresh_pending === true,
+    };
+  }
+  return { amount: result, refresh_pending: false };
+}
+
+async function readUsdBalanceForAccount(fcaId, expectedCustomerId, deps = {}) {
+  const getAccount = deps.stripeGet || stripeGet;
+  const refreshBalance = deps.stripeRefreshBalanceOnly || stripeRefreshBalanceOnly;
+  const wait = deps.sleep || sleep;
+  const nowUnix = typeof deps.nowUnix === "function"
+    ? deps.nowUnix
+    : () => Math.floor(Date.now() / 1000);
+
+  const before = await getAccount(
     `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
   );
   assertAccountCustomer(before, expectedCustomerId);
   const beforeAsOf = balanceAsOf(before);
   const beforeAttempt = refreshAttemptedAt(before);
   const beforeStatus = before?.balance_refresh?.status;
-  const refreshNotDue = nextRefreshAt(before) > Math.floor(Date.now() / 1000);
+  const refreshNotDue = nextRefreshAt(before) > nowUnix();
   const alreadyPending = beforeStatus === "pending";
+  let lastUsable = usdAvailableMajorUnits(before);
+  let lastStatus = beforeStatus;
 
   // A second Sync must not start another refresh while Bank of America is
   // still answering the first one. Restarting keeps the status on pending.
@@ -224,7 +248,7 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   let refreshError = null;
   if (!alreadyPending && !refreshNotDue) {
     try {
-      await stripeRefreshBalanceOnly(fcaId);
+      await refreshBalance(fcaId);
       started = true;
     } catch (err) {
       refreshError = err;
@@ -235,10 +259,10 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   const maxAttempts = 5;
   for (let i = 0; i < maxAttempts; i += 1) {
     if (i > 0) {
-      await sleep(800);
+      await wait(800);
     }
 
-    const account = await stripeGet(
+    const account = await getAccount(
       `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
     );
     assertAccountCustomer(account, expectedCustomerId);
@@ -246,21 +270,28 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
     const asOf = balanceAsOf(account);
     const attempted = refreshAttemptedAt(account);
     const newer = asOf > beforeAsOf || attempted > beforeAttempt;
+    lastStatus = status;
     if (status === "pending") {
       sawPending = true;
     }
     const posted = usdAvailableMajorUnits(account);
+    if (posted != null) {
+      lastUsable = posted;
+    }
     const usable = status === "succeeded" && posted != null;
     const fromThisRefresh = newer || sawPending;
     const latestAlreadyThere = !started && (refreshNotDue || refreshError);
     if (usable && (fromThisRefresh || latestAlreadyThere)) {
-      return posted;
+      return { amount: posted, refresh_pending: false };
     }
     if (status === "failed" && newer) {
       throw new Error("Bank balance refresh failed. Try Sync again in a minute.");
     }
   }
 
+  if (lastStatus === "pending" && lastUsable != null) {
+    return { amount: lastUsable, refresh_pending: true };
+  }
   if (refreshError && !sawPending) {
     const detail = refreshError.message || "Bank balance refresh failed";
     throw new Error(`Bank balance could not be refreshed. ${detail}`);
@@ -382,15 +413,20 @@ function createHandler(deps = {}) {
       tax_reserve: 0,
     };
 
+    const refreshState = {};
     await Promise.all(
       BUCKET_KEYS.map(async (key) => {
         const fcaId = bucketToFca[key];
         if (!fcaId || !fcaId.startsWith("fca_")) {
           return;
         }
-        amounts[key] = await readBalance(fcaId, customerId);
+        const read = normalizeBalanceRead(await readBalance(fcaId, customerId));
+        amounts[key] = read.amount;
+        refreshState[key] = read.refresh_pending;
       })
     );
+    const pending_buckets = BUCKET_KEYS.filter((key) => refreshState[key] === true);
+    const refresh_pending = pending_buckets.length > 0;
 
     const operating_balance = amounts.operating;
     const savings_balance = amounts.savings;
@@ -445,6 +481,8 @@ function createHandler(deps = {}) {
         cash_on_hand,
         last_sync_at: payload.last_sync_at,
         computed_at: payload.computed_at,
+        refresh_pending,
+        pending_buckets,
       },
       cookieHeaders
     );
@@ -463,3 +501,4 @@ exports.createHandler = createHandler;
 exports.handler = createHandler();
 exports.usdMinorFromBalance = usdMinorFromBalance;
 exports.usdAvailableMajorUnits = usdAvailableMajorUnits;
+exports.readUsdBalanceForAccount = readUsdBalanceForAccount;
