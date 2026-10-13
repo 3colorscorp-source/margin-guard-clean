@@ -329,7 +329,15 @@
           }
           await applySummaryToDashboard(data);
           paintSummaryInline(root, data);
-          setStatus(root, "Sync complete. Dashboard cash balances updated.", "");
+          if (data.refresh_pending === true) {
+            setStatus(
+              root,
+              "Latest bank balance loaded. The bank refresh is still processing; Sync again later for the newest update.",
+              ""
+            );
+          } else {
+            setStatus(root, "Sync complete. Dashboard cash balances updated.", "");
+          }
         } catch (err) {
           setStatus(root, err.message || "Sync failed", "err");
         } finally {
