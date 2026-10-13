@@ -167,13 +167,33 @@ function usdAvailableMajorUnits(accountOrWrapper) {
   return minor / 100;
 }
 
-async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
-  await stripeRefreshBalanceOnly(fcaId);
+function assertAccountCustomer(account, expectedCustomerId) {
+  const cust = accountHolderCustomerId(account);
+  if (cust && expectedCustomerId && cust !== String(expectedCustomerId)) {
+    throw new Error("Linked account does not belong to this tenant");
+  }
+}
 
-  const maxAttempts = 12;
+async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
+  const before = await stripeGet(
+    `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
+  );
+  assertAccountCustomer(before, expectedCustomerId);
+  const known = usdAvailableMajorUnits(before);
+
+  try {
+    await stripeRefreshBalanceOnly(fcaId);
+  } catch (err) {
+    if (known != null) {
+      return known;
+    }
+    throw err;
+  }
+
+  const maxAttempts = known != null ? 2 : 6;
   for (let i = 0; i < maxAttempts; i += 1) {
     if (i > 0) {
-      await sleep(400 + i * 200);
+      await sleep(500);
     }
 
     const subRes = await tryGetAccountBalanceSubresource(fcaId);
@@ -187,24 +207,21 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
     const account = await stripeGet(
       `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
     );
-
-    const cust = accountHolderCustomerId(account);
-    if (cust && cust !== String(expectedCustomerId)) {
-      throw new Error("Linked account does not belong to this tenant");
-    }
-
-    const refresh = account?.balance_refresh;
-    if (refresh?.status === "failed") {
-      return 0;
-    }
+    assertAccountCustomer(account, expectedCustomerId);
 
     const usd = usdAvailableMajorUnits(account);
     if (usd != null) {
       return usd;
     }
+    if (account?.balance_refresh?.status === "failed" && known != null) {
+      return known;
+    }
   }
 
-  return 0;
+  if (known != null) {
+    return known;
+  }
+  throw new Error("Bank did not return a balance. Try Sync again in a minute.");
 }
 
 function createHandler(deps = {}) {
@@ -262,10 +279,14 @@ function createHandler(deps = {}) {
       if (connIds.length) {
         const connIn = connIds.map(encodeURIComponent).join(",");
         const connRows = await requestFn(
-          `tenant_bank_connections?id=in.(${connIn})&tenant_id=eq.${tid}&status=eq.active&select=id`
+          `tenant_bank_connections?id=in.(${connIn})&tenant_id=eq.${tid}&select=id,status`
         );
+        const usableStatus = new Set(["active", "pending", "requires_action"]);
         activeConnIds = new Set(
-          (Array.isArray(connRows) ? connRows : []).map((c) => c?.id).filter(Boolean)
+          (Array.isArray(connRows) ? connRows : [])
+            .filter((c) => usableStatus.has(String(c?.status || "")))
+            .map((c) => c?.id)
+            .filter(Boolean)
         );
       }
       accountsById = Object.fromEntries(
@@ -294,6 +315,20 @@ function createHandler(deps = {}) {
       if (BUCKET_KEYS.includes(b)) {
         bucketToFca[b] = fca.trim();
       }
+    }
+
+    const mappedCount = mappings.filter(
+      (row) => BUCKET_KEYS.includes(row?.bucket) && row?.tenant_bank_account_id
+    ).length;
+    if (mappedCount > 0 && !Object.keys(bucketToFca).length) {
+      return json(
+        409,
+        {
+          error:
+            "Mapped bank accounts could not be synced. Reconnect the bank, then try Sync again.",
+        },
+        cookieHeaders
+      );
     }
 
     const amounts = {
