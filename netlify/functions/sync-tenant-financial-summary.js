@@ -121,38 +121,42 @@ function accountHolderCustomerId(account) {
 /**
  * Amounts from balance hash: smallest currency unit (e.g. cents for USD).
  */
+function currencyMinor(bag) {
+  if (!bag || typeof bag !== "object" || Array.isArray(bag)) {
+    return null;
+  }
+  const v = bag.usd ?? bag.USD;
+  if (v == null || !Number.isFinite(Number(v))) {
+    return null;
+  }
+  return Number(v);
+}
+
 function usdMinorFromBalance(bal) {
   if (!bal || typeof bal !== "object") {
     return null;
   }
 
-  let minor = null;
-  const cashAvail = bal.cash?.available;
-  if (cashAvail && typeof cashAvail === "object") {
-    const v = cashAvail.usd ?? cashAvail.USD;
-    if (v != null && Number.isFinite(Number(v))) {
-      minor = Number(v);
+  // Posted balance. This is the figure the bank shows on the account list.
+  // cash.available comes after holds and can disagree with that screen.
+  const posted = currencyMinor(bal.current);
+  if (posted != null) {
+    return posted;
+  }
+
+  const available = currencyMinor(bal.cash?.available);
+  if (available != null) {
+    return available;
+  }
+
+  if (bal.type === "credit") {
+    const used = currencyMinor(bal.credit?.used);
+    if (used != null) {
+      return Math.abs(used);
     }
   }
 
-  if (minor == null && bal.type === "credit" && bal.credit?.used) {
-    const used = bal.credit.used;
-    if (typeof used === "object") {
-      const v = used.usd ?? used.USD;
-      if (v != null && Number.isFinite(Number(v))) {
-        minor = Math.abs(Number(v));
-      }
-    }
-  }
-
-  if (minor == null && bal.current && typeof bal.current === "object") {
-    const v = bal.current.usd ?? bal.current.USD;
-    if (v != null && Number.isFinite(Number(v))) {
-      minor = Number(v);
-    }
-  }
-
-  return minor;
+  return null;
 }
 
 /**
@@ -174,54 +178,69 @@ function assertAccountCustomer(account, expectedCustomerId) {
   }
 }
 
+function balanceAsOf(account) {
+  const n = Number(account?.balance?.as_of);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function refreshAttemptedAt(account) {
+  const n = Number(account?.balance_refresh?.last_attempted_at);
+  return Number.isFinite(n) ? n : 0;
+}
+
 async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   const before = await stripeGet(
     `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
   );
   assertAccountCustomer(before, expectedCustomerId);
-  const known = usdAvailableMajorUnits(before);
+  const beforeAsOf = balanceAsOf(before);
+  const beforeAttempt = refreshAttemptedAt(before);
 
+  let refreshError = null;
   try {
     await stripeRefreshBalanceOnly(fcaId);
   } catch (err) {
-    if (known != null) {
-      return known;
-    }
-    throw err;
+    refreshError = err;
   }
 
-  const maxAttempts = known != null ? 2 : 6;
+  // A rate-limited refresh must not save an old snapshot. Accept the posted
+  // balance without a new refresh only when Stripe already succeeded in the
+  // last few minutes (the previous Sync timed out after the bank finished).
+  const recentWindowSec = 10 * 60;
+  const maxAttempts = refreshError ? 1 : 6;
   for (let i = 0; i < maxAttempts; i += 1) {
     if (i > 0) {
-      await sleep(500);
-    }
-
-    const subRes = await tryGetAccountBalanceSubresource(fcaId);
-    if (subRes) {
-      const usdSub = usdAvailableMajorUnits(subRes);
-      if (usdSub != null) {
-        return usdSub;
-      }
+      await sleep(1000);
     }
 
     const account = await stripeGet(
       `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
     );
     assertAccountCustomer(account, expectedCustomerId);
+    const status = account?.balance_refresh?.status;
+    const asOf = balanceAsOf(account);
+    const attempted = refreshAttemptedAt(account);
+    const newer = asOf > beforeAsOf || attempted > beforeAttempt;
+    const recent =
+      attempted > 0 && Math.floor(Date.now() / 1000) - attempted < recentWindowSec;
+    const fresh = status === "succeeded" && (refreshError ? recent : newer);
 
-    const usd = usdAvailableMajorUnits(account);
-    if (usd != null) {
-      return usd;
+    if (fresh) {
+      const usd = usdAvailableMajorUnits(account);
+      if (usd != null) {
+        return usd;
+      }
     }
-    if (account?.balance_refresh?.status === "failed" && known != null) {
-      return known;
+    if (!refreshError && status === "failed" && newer) {
+      throw new Error("Bank balance refresh failed. Try Sync again in a minute.");
     }
   }
 
-  if (known != null) {
-    return known;
+  if (refreshError) {
+    const detail = refreshError.message || "Bank balance refresh failed";
+    throw new Error(`Bank balance could not be refreshed. ${detail}`);
   }
-  throw new Error("Bank did not return a balance. Try Sync again in a minute.");
+  throw new Error("Bank balance is still updating. Try Sync again in a minute.");
 }
 
 function createHandler(deps = {}) {
@@ -338,16 +357,15 @@ function createHandler(deps = {}) {
       tax_reserve: 0,
     };
 
-    for (const key of BUCKET_KEYS) {
-      const fcaId = bucketToFca[key];
-      if (!fcaId) {
-        continue;
-      }
-      if (!fcaId.startsWith("fca_")) {
-        continue;
-      }
-      amounts[key] = await readBalance(fcaId, customerId);
-    }
+    await Promise.all(
+      BUCKET_KEYS.map(async (key) => {
+        const fcaId = bucketToFca[key];
+        if (!fcaId || !fcaId.startsWith("fca_")) {
+          return;
+        }
+        amounts[key] = await readBalance(fcaId, customerId);
+      })
+    );
 
     const operating_balance = amounts.operating;
     const savings_balance = amounts.savings;
