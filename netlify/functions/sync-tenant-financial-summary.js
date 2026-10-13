@@ -133,12 +133,20 @@ function currencyMinor(bag) {
 }
 
 function usdMinorFromBalance(bal) {
-  if (!bal || typeof bal !== "object") {
+  if (!bal || typeof bal !== "object" || Array.isArray(bal)) {
     return null;
   }
 
-  // Posted balance. This is the figure the bank shows on the account list.
-  // cash.available comes after holds and can disagree with that screen.
+  // Cash accounts show spendable money. Zero is a real balance.
+  if (bal.type === "cash") {
+    const available = currencyMinor(bal.cash?.available);
+    if (available != null) {
+      return available;
+    }
+    return currencyMinor(bal.current);
+  }
+
+  // Legacy payloads omit balance.type. Keep current, then available.
   const posted = currencyMinor(bal.current);
   if (posted != null) {
     return posted;
@@ -453,3 +461,5 @@ function createHandler(deps = {}) {
 
 exports.createHandler = createHandler;
 exports.handler = createHandler();
+exports.usdMinorFromBalance = usdMinorFromBalance;
+exports.usdAvailableMajorUnits = usdAvailableMajorUnits;
