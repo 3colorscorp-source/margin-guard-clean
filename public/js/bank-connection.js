@@ -298,12 +298,29 @@
         syncBtn.disabled = true;
         setStatus(root, "Syncing balances from Stripe…", "");
         try {
-          const { response, data } = await api("/sync-tenant-financial-summary", {
-            method: "POST",
-            body: "{}",
-          });
-          if (!response.ok || data.ok !== true || data.persisted !== true) {
-            throw new Error(data.error || "Sync did not persist");
+          let response = null;
+          let data = null;
+          for (let attempt = 0; attempt < 8; attempt += 1) {
+            if (attempt > 0) {
+              setStatus(root, "Waiting for the bank to finish updating…", "");
+              await new Promise((resolve) => setTimeout(resolve, 2500));
+            }
+            const result = await api("/sync-tenant-financial-summary", {
+              method: "POST",
+              body: "{}",
+            });
+            response = result.response;
+            data = result.data;
+            if (response.ok && data.ok === true && data.persisted === true) {
+              break;
+            }
+            const waiting = data.retry === true || /still updating/i.test(String(data.error || ""));
+            if (!waiting || attempt === 7) {
+              throw new Error(data.error || "Sync did not persist");
+            }
+          }
+          if (!response || !response.ok || !data || data.ok !== true || data.persisted !== true) {
+            throw new Error((data && data.error) || "Sync did not persist");
           }
           try {
             await refreshSummaryDisplay(root);
