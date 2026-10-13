@@ -103,8 +103,20 @@
     return accounts.length;
   }
 
+  function whenAppReady(fn) {
+    if (window.__mgAppReady) {
+      fn();
+      return;
+    }
+    document.addEventListener("mg-app-ready", () => fn(), { once: true });
+  }
+
   async function applySummaryToDashboard(summary) {
     if (!summary) return;
+    if (typeof window.__mgApplyBankFinancialSummary === "function") {
+      window.__mgApplyBankFinancialSummary(summary);
+      return;
+    }
     try {
       window.__mgLastFinancialSummary = summary;
     } catch (_err) {
@@ -184,12 +196,14 @@
         } catch (err) {
           setStatus(root, err.message || "Could not load bank data", "err");
         }
+      }, 400);
+      whenAppReady(async () => {
         try {
           await refreshSummaryDisplay(root);
         } catch (_e) {
           /* optional */
         }
-      }, 400);
+      });
     }
     deferInitialLoad();
 
@@ -260,7 +274,17 @@
           if (!response.ok) {
             throw new Error(data.error || "Save failed");
           }
-          setStatus(root, "Mapping saved.", "");
+          setStatus(root, "Mapping saved. Syncing balances to the dashboard…", "");
+          const synced = await api("/sync-tenant-financial-summary", {
+            method: "POST",
+            body: "{}",
+          });
+          if (!synced.response.ok || synced.data.ok !== true || synced.data.persisted !== true) {
+            throw new Error(synced.data.error || "Mapping saved, but dashboard balances could not be refreshed");
+          }
+          await applySummaryToDashboard(synced.data);
+          paintSummaryInline(root, synced.data);
+          setStatus(root, "Mapping saved. Dashboard cash balances updated.", "");
         } catch (err) {
           setStatus(root, err.message || "Save failed", "err");
         } finally {
@@ -288,7 +312,7 @@
           }
           await applySummaryToDashboard(data);
           paintSummaryInline(root, data);
-          setStatus(root, "Sync complete.", "");
+          setStatus(root, "Sync complete. Dashboard cash balances updated.", "");
         } catch (err) {
           setStatus(root, err.message || "Sync failed", "err");
         } finally {

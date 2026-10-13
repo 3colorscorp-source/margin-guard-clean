@@ -4859,6 +4859,45 @@ Thank you.`
     }, 400);
   }
 
+  function bankBalanceOrFallback(value, fallback) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback;
+  }
+
+  /**
+   * Business Settings has no cash inputs. Sync and Save mapping must write the
+   * server bucket balances into mg_dashboard_v2 or the Dashboard keeps the old snapshot.
+   */
+  function applyBankFinancialSummary(summary) {
+    if (!summary || typeof summary !== "object") return false;
+    try {
+      window.__mgLastFinancialSummary = summary;
+    } catch (_err) {
+      /* ignore */
+    }
+    const current = loadDashboard();
+    const next = {
+      ...current,
+      expensesBalance: bankBalanceOrFallback(summary.operating_balance, current.expensesBalance),
+      profitBalance: bankBalanceOrFallback(summary.profit_balance, current.profitBalance),
+      savingsBalance: bankBalanceOrFallback(summary.savings_balance, current.savingsBalance),
+      taxBalance: bankBalanceOrFallback(summary.tax_reserve_balance, current.taxBalance),
+      bankSnapshotAt: summary.last_sync_at || summary.computed_at || new Date().toISOString()
+    };
+    const unchanged = ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "bankSnapshotAt"]
+      .every((key) => String(current[key] ?? "") === String(next[key] ?? ""));
+    if (!unchanged) {
+      saveDashboard(next);
+      void persistTenantSnapshotNow();
+    }
+    if ($("dashKpis") && (!unchanged || $("syncBadge")?.textContent !== "Bank snapshot")) {
+      renderDashboard();
+    }
+    return true;
+  }
+
+  window.__mgApplyBankFinancialSummary = applyBankFinancialSummary;
+  window.__mgPersistTenantSnapshotNow = persistTenantSnapshotNow;
   window.__mgScheduleTenantSnapshotSync = scheduleTenantSnapshotSync;
   window.__mgBuildTenantSnapshotPayload = getTenantSnapshotPayload;
   window.__mgComputeSalesMarginDecisionFromEconomics = computeSalesMarginDecisionFromEconomics;
@@ -7301,8 +7340,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         $("overallHealthMeta").textContent = metrics.healthLabel;
       }
       if ($("syncBadge")) {
-        $("syncBadge").className = `badge ${healthTone}`;
-        $("syncBadge").textContent = "Manual sync";
+        if (state.bankSnapshotAt) {
+          $("syncBadge").className = "badge green";
+          $("syncBadge").textContent = "Bank snapshot";
+        } else {
+          $("syncBadge").className = `badge ${healthTone}`;
+          $("syncBadge").textContent = "Manual sync";
+        }
+      }
+      if ($("dashboardBankSyncMeta") && state.bankSnapshotAt) {
+        let when = "—";
+        try {
+          when = new Date(state.bankSnapshotAt).toLocaleString();
+        } catch (_e) {
+          when = String(state.bankSnapshotAt);
+        }
+        $("dashboardBankSyncMeta").textContent = `Last server sync: ${when}`;
       }
       if ($("executiveStrip")) {
         const runwayBig = metrics.available ? metrics.runwayLabel : metrics.runwayLabel;
@@ -7751,7 +7804,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "operatingMonthly"].forEach((id) => {
       const el = $(id);
-      if (el) el.oninput = refresh;
+      if (!el) return;
+      el.oninput = (ev) => {
+        if (ev && ev.isTrusted && id !== "operatingMonthly") state.bankSnapshotAt = "";
+        refresh();
+      };
     });
 
     const openHubPreset = (preset, tab = "all") => {
@@ -22448,23 +22505,28 @@ window.renderSupervisor = renderSupervisor;
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    await waitForAuthReadyIfNeeded();
-    void ensureTenant();
-    await initTenantSnapshotBridge();
-    await hydrateOwnerBrandingCacheFromServer();
-    if ($("dashKpis")) {
-      await loadOwnerFinancialSettingsFromServer();
-    }
-    render();
-    if (
-      document.documentElement.dataset.salesPortal === "seller" &&
-      document.documentElement.dataset.authMode === "device" &&
-      typeof window.refreshSellerFromStandalone === "function"
-    ) {
-      window.refreshSellerFromStandalone();
-    }
-    if ($("supervisorKpis")) {
-      void refreshSupervisorProjectsFromApi();
+    try {
+      await waitForAuthReadyIfNeeded();
+      void ensureTenant();
+      await initTenantSnapshotBridge();
+      await hydrateOwnerBrandingCacheFromServer();
+      if ($("dashKpis")) {
+        await loadOwnerFinancialSettingsFromServer();
+      }
+      render();
+      if (
+        document.documentElement.dataset.salesPortal === "seller" &&
+        document.documentElement.dataset.authMode === "device" &&
+        typeof window.refreshSellerFromStandalone === "function"
+      ) {
+        window.refreshSellerFromStandalone();
+      }
+      if ($("supervisorKpis")) {
+        void refreshSupervisorProjectsFromApi();
+      }
+    } finally {
+      window.__mgAppReady = true;
+      document.dispatchEvent(new CustomEvent("mg-app-ready"));
     }
   });
 })();
