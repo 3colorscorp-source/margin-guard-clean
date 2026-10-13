@@ -366,6 +366,7 @@ function createHandler(deps = {}) {
         tax_reserve_balance,
         cash_on_hand,
         last_sync_at: payload.last_sync_at,
+        computed_at: payload.computed_at,
       },
       cookieHeaders
     );
