@@ -22506,24 +22506,24 @@ window.renderSupervisor = renderSupervisor;
 
   document.addEventListener("DOMContentLoaded", async () => {
     try {
-      await waitForAuthReadyIfNeeded();
-      void ensureTenant();
-      await initTenantSnapshotBridge();
-      await hydrateOwnerBrandingCacheFromServer();
-      if ($("dashKpis")) {
-        await loadOwnerFinancialSettingsFromServer();
-      }
-      render();
-      if (
-        document.documentElement.dataset.salesPortal === "seller" &&
-        document.documentElement.dataset.authMode === "device" &&
-        typeof window.refreshSellerFromStandalone === "function"
-      ) {
-        window.refreshSellerFromStandalone();
-      }
-      if ($("supervisorKpis")) {
-        void refreshSupervisorProjectsFromApi();
-      }
+    await waitForAuthReadyIfNeeded();
+    void ensureTenant();
+    await initTenantSnapshotBridge();
+    await hydrateOwnerBrandingCacheFromServer();
+    if ($("dashKpis")) {
+      await loadOwnerFinancialSettingsFromServer();
+    }
+    render();
+    if (
+      document.documentElement.dataset.salesPortal === "seller" &&
+      document.documentElement.dataset.authMode === "device" &&
+      typeof window.refreshSellerFromStandalone === "function"
+    ) {
+      window.refreshSellerFromStandalone();
+    }
+    if ($("supervisorKpis")) {
+      void refreshSupervisorProjectsFromApi();
+    }
     } finally {
       window.__mgAppReady = true;
       document.dispatchEvent(new CustomEvent("mg-app-ready"));
