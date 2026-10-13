@@ -329,7 +329,23 @@
           }
           await applySummaryToDashboard(data);
           paintSummaryInline(root, data);
-          if (data.refresh_pending === true) {
+          const preservedNames = (Array.isArray(data.preserved_buckets) ? data.preserved_buckets : [])
+            .map((key) =>
+              ({
+                operating: "Operating / Expenses",
+                savings: "Savings",
+                profit: "Profit",
+                tax_reserve: "Tax Reserve",
+              })[key]
+            )
+            .filter(Boolean);
+          if (preservedNames.length) {
+            setStatus(
+              root,
+              `Available accounts updated. Kept the last saved balance for ${preservedNames.join(", ")} while the bank finishes refreshing.`,
+              ""
+            );
+          } else if (data.refresh_pending === true) {
             setStatus(
               root,
               "Latest bank balance loaded. The bank refresh is still processing; Sync again later for the newest update.",

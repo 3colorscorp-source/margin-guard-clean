@@ -12,6 +12,12 @@ if (!fetch) {
 const STRIPE_API = "https://api.stripe.com/v1";
 
 const BUCKET_KEYS = ["operating", "savings", "profit", "tax_reserve"];
+const BUCKET_BALANCE_COLUMN = {
+  operating: "operating_balance",
+  savings: "savings_balance",
+  profit: "profit_balance",
+  tax_reserve: "tax_reserve_balance",
+};
 
 function json(statusCode, payload, extraHeaders = {}) {
   return {
@@ -205,6 +211,16 @@ function stillUpdatingError() {
   const err = new Error("Bank balance is still updating. Try Sync again in a minute.");
   err.retryable = true;
   return err;
+}
+
+function finiteBalance(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isRetryableRefreshError(err) {
+  return err?.retryable === true;
 }
 
 function normalizeBalanceRead(result) {
@@ -406,6 +422,11 @@ function createHandler(deps = {}) {
       );
     }
 
+    const previousRows = await requestFn(
+      `tenant_financial_summary?tenant_id=eq.${tid}&currency=eq.USD&select=operating_balance,savings_balance,profit_balance,tax_reserve_balance`
+    );
+    const previous = Array.isArray(previousRows) ? previousRows[0] : null;
+
     const amounts = {
       operating: 0,
       savings: 0,
@@ -414,18 +435,54 @@ function createHandler(deps = {}) {
     };
 
     const refreshState = {};
+    const preservedState = {};
+    const blockedBuckets = [];
     await Promise.all(
       BUCKET_KEYS.map(async (key) => {
         const fcaId = bucketToFca[key];
         if (!fcaId || !fcaId.startsWith("fca_")) {
           return;
         }
-        const read = normalizeBalanceRead(await readBalance(fcaId, customerId));
-        amounts[key] = read.amount;
-        refreshState[key] = read.refresh_pending;
+        const column = BUCKET_BALANCE_COLUMN[key];
+        try {
+          const read = normalizeBalanceRead(await readBalance(fcaId, customerId));
+          const amount = finiteBalance(read.amount);
+          if (amount == null) {
+            if (!read.refresh_pending) {
+              throw new Error("Stripe did not return a balance");
+            }
+            const prior = finiteBalance(previous?.[column]);
+            if (prior == null) {
+              blockedBuckets.push(key);
+              return;
+            }
+            amounts[key] = prior;
+            refreshState[key] = true;
+            preservedState[key] = true;
+            return;
+          }
+          amounts[key] = amount;
+          refreshState[key] = read.refresh_pending;
+        } catch (err) {
+          if (!isRetryableRefreshError(err)) {
+            throw err;
+          }
+          const prior = finiteBalance(previous?.[column]);
+          if (prior == null) {
+            blockedBuckets.push(key);
+            return;
+          }
+          amounts[key] = prior;
+          refreshState[key] = true;
+          preservedState[key] = true;
+        }
       })
     );
+    if (blockedBuckets.length) {
+      throw stillUpdatingError();
+    }
     const pending_buckets = BUCKET_KEYS.filter((key) => refreshState[key] === true);
+    const preserved_buckets = BUCKET_KEYS.filter((key) => preservedState[key] === true);
     const refresh_pending = pending_buckets.length > 0;
 
     const operating_balance = amounts.operating;
@@ -483,6 +540,7 @@ function createHandler(deps = {}) {
         computed_at: payload.computed_at,
         refresh_pending,
         pending_buckets,
+        preserved_buckets,
       },
       cookieHeaders
     );
