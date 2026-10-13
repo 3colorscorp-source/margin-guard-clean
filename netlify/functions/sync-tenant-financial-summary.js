@@ -188,6 +188,17 @@ function refreshAttemptedAt(account) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function nextRefreshAt(account) {
+  const n = Number(account?.balance_refresh?.next_refresh_available_at);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function stillUpdatingError() {
+  const err = new Error("Bank balance is still updating. Try Sync again in a minute.");
+  err.retryable = true;
+  return err;
+}
+
 async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   const before = await stripeGet(
     `/financial_connections/accounts/${encodeURIComponent(fcaId)}`
@@ -195,22 +206,28 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   assertAccountCustomer(before, expectedCustomerId);
   const beforeAsOf = balanceAsOf(before);
   const beforeAttempt = refreshAttemptedAt(before);
+  const beforeStatus = before?.balance_refresh?.status;
+  const refreshNotDue = nextRefreshAt(before) > Math.floor(Date.now() / 1000);
+  const alreadyPending = beforeStatus === "pending";
 
+  // A second Sync must not start another refresh while Bank of America is
+  // still answering the first one. Restarting keeps the status on pending.
+  let started = false;
   let refreshError = null;
-  try {
-    await stripeRefreshBalanceOnly(fcaId);
-  } catch (err) {
-    refreshError = err;
+  if (!alreadyPending && !refreshNotDue) {
+    try {
+      await stripeRefreshBalanceOnly(fcaId);
+      started = true;
+    } catch (err) {
+      refreshError = err;
+    }
   }
 
-  // A rate-limited refresh must not save an old snapshot. Accept the posted
-  // balance without a new refresh only when Stripe already succeeded in the
-  // last few minutes (the previous Sync timed out after the bank finished).
-  const recentWindowSec = 10 * 60;
-  const maxAttempts = refreshError ? 1 : 6;
+  let sawPending = alreadyPending;
+  const maxAttempts = 5;
   for (let i = 0; i < maxAttempts; i += 1) {
     if (i > 0) {
-      await sleep(1000);
+      await sleep(800);
     }
 
     const account = await stripeGet(
@@ -221,26 +238,26 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
     const asOf = balanceAsOf(account);
     const attempted = refreshAttemptedAt(account);
     const newer = asOf > beforeAsOf || attempted > beforeAttempt;
-    const recent =
-      attempted > 0 && Math.floor(Date.now() / 1000) - attempted < recentWindowSec;
-    const fresh = status === "succeeded" && (refreshError ? recent : newer);
-
-    if (fresh) {
-      const usd = usdAvailableMajorUnits(account);
-      if (usd != null) {
-        return usd;
-      }
+    if (status === "pending") {
+      sawPending = true;
     }
-    if (!refreshError && status === "failed" && newer) {
+    const posted = usdAvailableMajorUnits(account);
+    const usable = status === "succeeded" && posted != null;
+    const fromThisRefresh = newer || sawPending;
+    const latestAlreadyThere = !started && (refreshNotDue || refreshError);
+    if (usable && (fromThisRefresh || latestAlreadyThere)) {
+      return posted;
+    }
+    if (status === "failed" && newer) {
       throw new Error("Bank balance refresh failed. Try Sync again in a minute.");
     }
   }
 
-  if (refreshError) {
+  if (refreshError && !sawPending) {
     const detail = refreshError.message || "Bank balance refresh failed";
     throw new Error(`Bank balance could not be refreshed. ${detail}`);
   }
-  throw new Error("Bank balance is still updating. Try Sync again in a minute.");
+  throw stillUpdatingError();
 }
 
 function createHandler(deps = {}) {
@@ -424,7 +441,12 @@ function createHandler(deps = {}) {
       cookieHeaders
     );
   } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" }, cookieHeaders);
+    const retry = err?.retryable === true;
+    return json(
+      retry ? 409 : 500,
+      { error: err.message || "Unexpected error", retry },
+      cookieHeaders
+    );
   }
   };
 }
