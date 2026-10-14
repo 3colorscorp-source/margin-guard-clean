@@ -7267,19 +7267,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     ];
   }
 
-  function renderFccAccountTreasury(state, settings, totalCash) {
+  function renderFccAccountTreasury(state, settings) {
     const accounts = buildFccDashboardAccounts(state);
     const maxBar = Math.max(...accounts.map((acc) => acc.balance), 1);
     const root = $("fccBarChartRoot");
     const host = $("fccAccountBarsHost");
-    const legend = $("fccProfitLegend");
 
-    if ($("fccBarChartHeadline")) {
-      $("fccBarChartHeadline").textContent = money(totalCash, settings.currency);
-    }
-    if ($("fccBarChartKicker")) {
-      $("fccBarChartKicker").textContent = "Total cash on hand";
-    }
     if (root) {
       root.setAttribute(
         "aria-label",
@@ -7300,14 +7293,29 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         })
         .join("");
     }
-    if (legend) {
-      legend.innerHTML = accounts
-        .map(
-          (acc) =>
-            `<li><span class="sw sw--${acc.tone}" aria-hidden="true"></span><span>${escapeHtml(acc.label)}</span><span>${escapeHtml(money(acc.balance, settings.currency))}</span></li>`
-        )
-        .join("");
-    }
+  }
+
+  function renderSafetyReserveProgress(host, metrics, settings, reserveRemaining) {
+    if (!host) return;
+    const pct = metrics.available && metrics.savingsPct != null ? Number(metrics.savingsPct) : null;
+    const visual = pct == null || !Number.isFinite(pct) ? 0 : Math.max(0, Math.min(100, pct));
+    const pctLabel = pct == null ? "Setup required" : `${pct.toFixed(2)}%`;
+    const months = metrics.available && metrics.savingsTargetMonths > 0
+      ? `${Number(metrics.savingsTargetMonths).toFixed(0)}-month target`
+      : "Target unavailable";
+    const remainingLabel = reserveRemaining == null
+      ? "Remaining unavailable"
+      : `${money(reserveRemaining, settings.currency)} remaining`;
+    host.innerHTML =
+      `<div class="fcc-reserve-progress__copy">` +
+      `<span class="fcc-reserve-progress__title">Safety reserve progress</span>` +
+      `<span class="fcc-reserve-progress__pct">${escapeHtml(pctLabel)}</span>` +
+      `<span class="fcc-reserve-progress__meta">${escapeHtml(months)}</span>` +
+      `<span class="fcc-reserve-progress__remaining">${escapeHtml(remainingLabel)}</span>` +
+      `</div>` +
+      `<div class="fcc-reserve-progress__track">` +
+      `<div class="fcc-reserve-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${visual}" aria-label="Safety reserve progress" style="width:${visual}%"></div>` +
+      `</div>`;
   }
 
   function renderDashboard() {
@@ -7440,7 +7448,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Se completa al cargar cartera en el hub.";
       }
 
-      renderFccAccountTreasury(state, settings, totalCash);
+      renderFccAccountTreasury(state, settings);
       const renderFccKpiCard = ({ label, value, meta, tone, accent, icon, tier }) => `
         <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent} fcc-kpi-card--tier-${tier}">
           <div class="fcc-kpi-top">
@@ -7452,27 +7460,23 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         </div>
       `;
 
-      const kpisPrimary = [
-        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: metrics.available ? healthClass(totalCash, operatingMonthly * 3, operatingMonthly * 12) : "unknown", accent: "total", icon: "$$", tier: "primary" },
-        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: metrics.available ? healthClass(state.expensesBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "expense", icon: "OP", tier: "primary" },
-        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: metrics.available ? healthClass(state.profitBalance, operatingMonthly * 0.1, operatingMonthly * 0.35) : "unknown", accent: "profit", icon: "PR", tier: "primary" },
-        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: metrics.available ? healthClass(state.taxBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "tax", icon: "TX", tier: "primary" }
-      ];
-
       const savingsMeta = metrics.available && metrics.savingsTarget != null
         ? `${Number(metrics.savingsTargetMonths).toFixed(0)}-month target: ${money(savingsTarget, settings.currency)}`
         : "Setup required";
-      const kpisSecondary = [
-        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: savingsMeta, tone: metrics.available && metrics.savingsTarget != null ? healthClass(state.savingsBalance, operatingMonthly * 6, savingsTarget) : "unknown", accent: "savings", icon: "SV", tier: "secondary" },
-        { label: "Savings Progress", value: metrics.available && metrics.savingsPct != null ? metrics.savingsProgressLabel : (metrics.savingsProgressLabel || "Setup required"), meta: metrics.available && metrics.savingsTargetMonths > 0 ? `Progress to ${Number(metrics.savingsTargetMonths).toFixed(0)}-month safety target` : "Persisted savings target required", tone: metrics.available && metrics.savingsPct != null ? healthClass(savingsPct, 50, 100) : "unknown", accent: "progress", icon: "%", tier: "secondary" }
+      const kpisPrimary = [
+        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: metrics.available ? healthClass(state.expensesBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "expense", icon: "OP", tier: "primary" },
+        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: metrics.available ? healthClass(state.profitBalance, operatingMonthly * 0.1, operatingMonthly * 0.35) : "unknown", accent: "profit", icon: "PR", tier: "primary" },
+        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: metrics.available ? healthClass(state.taxBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "tax", icon: "TX", tier: "primary" },
+        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: savingsMeta, tone: metrics.available && metrics.savingsTarget != null ? healthClass(state.savingsBalance, operatingMonthly * 6, savingsTarget) : "unknown", accent: "savings", icon: "SV", tier: "primary" }
       ];
 
       if ($("dashKpis")) {
         $("dashKpis").innerHTML = kpisPrimary.map(renderFccKpiCard).join("");
       }
-      if ($("dashKpisSecondary")) {
-        $("dashKpisSecondary").innerHTML = kpisSecondary.map(renderFccKpiCard).join("");
-      }
+      const reserveRemaining = metrics.available && Number(savingsTarget) > 0
+        ? Math.max(0, Number(savingsTarget) - Number(state.savingsBalance) || 0)
+        : null;
+      renderSafetyReserveProgress($("fccReserveProgress"), metrics, settings, reserveRemaining);
 
       const dashboardHubNeeded =
         $("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") ||
