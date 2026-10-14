@@ -221,6 +221,9 @@
             throw new Error(data.error || "Could not start Financial Connections session");
           }
           const createdSessionId = String(data.financial_connections_session_id || "").trim();
+          if (!createdSessionId) {
+            throw new Error("Missing Financial Connections session after link");
+          }
           const collect = stripe.collectFinancialConnectionsAccounts;
           if (typeof collect !== "function") {
             throw new Error("Financial Connections is not available in this Stripe.js build.");
@@ -236,18 +239,22 @@
           } else if (fcSession && typeof fcSession.id === "string") {
             sessionIdFromStripe = String(fcSession.id).trim();
           }
-          const sessionId = sessionIdFromStripe || createdSessionId;
-          if (!sessionId) {
-            throw new Error("Missing Financial Connections session after link");
+          if (sessionIdFromStripe && sessionIdFromStripe !== createdSessionId) {
+            throw new Error("The bank session did not match the server session. Connect was stopped.");
           }
           const done = await api("/complete-financial-connections", {
             method: "POST",
-            body: JSON.stringify({ financial_connections_session_id: sessionId }),
+            body: JSON.stringify({ financial_connections_session_id: createdSessionId }),
           });
           if (!done.response.ok) {
             throw new Error(done.data.error || "Could not finalize bank link");
           }
-          setStatus(root, "Bank linked. Map each account to a bucket below, then save.", "");
+          const remapped = Array.isArray(done.data.remapped_buckets) ? done.data.remapped_buckets : [];
+          if (remapped.length) {
+            setStatus(root, "Bank linked. Bucket mappings were moved to the current accounts.", "");
+          } else {
+            setStatus(root, "Bank linked. Map each account to a bucket below, then save.", "");
+          }
           await loadAccountsAndMappings(root);
         } catch (err) {
           setStatus(root, err.message || "Connect failed", "err");

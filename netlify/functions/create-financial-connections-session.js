@@ -24,6 +24,7 @@ async function createFinancialConnectionsSession(stripeCustomerId, deps = {}) {
   form.set("account_holder[type]", "customer");
   form.set("account_holder[customer]", stripeCustomerId);
   form.append("permissions[]", "balances");
+  form.append("prefetch[]", "balances");
 
   const fetchImpl = deps.fetch || fetch;
   const getKey = deps.getStripeKeyForPlatform || getStripeKeyForPlatform;

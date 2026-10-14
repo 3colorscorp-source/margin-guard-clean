@@ -115,6 +115,33 @@ function normalizeSessionAccounts(fcSession) {
   return [];
 }
 
+function normalizeFingerprintPart(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function accountFingerprint(meta) {
+  const institution = normalizeFingerprintPart(meta?.institution_name);
+  const last4 = normalizeFingerprintPart(meta?.account_last4);
+  const category = normalizeFingerprintPart(meta?.account_category);
+  if (!institution || !last4 || !category) {
+    return "";
+  }
+  return institution + "|" + last4 + "|" + category;
+}
+
+function firstRow(data) {
+  if (Array.isArray(data)) {
+    return data[0] || null;
+  }
+  if (data && typeof data === "object") {
+    return data;
+  }
+  return null;
+}
+
 function fcaIdFromEntry(entry) {
   if (typeof entry === "string") {
     const s = entry.trim();
@@ -227,6 +254,7 @@ function createHandler(deps = {}) {
     const accountList = mergeAccountLists(fromSession, fromList);
 
     const linked = [];
+    const savedAccounts = [];
     for (const raw of accountList) {
       let acct = raw;
       const rawId =
@@ -268,39 +296,146 @@ function createHandler(deps = {}) {
             cookieHeaders
           );
         }
-        await requestFn(`tenant_bank_accounts?id=eq.${encodeURIComponent(existing.id)}`, {
-          method: "PATCH",
-          body: {
-            tenant_bank_connection_id: connectionId,
-            status: "active",
-            stripe_fc_account_id: fcaId,
-            provider_account_id: fcaId,
-            institution_name: meta.institution_name,
-            account_last4: meta.account_last4,
-            account_category: meta.account_category,
-            tenant_label: meta.tenant_label,
-            updated_at: new Date().toISOString(),
-          },
+        const updated = firstRow(
+          await requestFn(`tenant_bank_accounts?id=eq.${encodeURIComponent(existing.id)}`, {
+            method: "PATCH",
+            prefer: "return=representation",
+            body: {
+              tenant_bank_connection_id: connectionId,
+              status: "active",
+              stripe_fc_account_id: fcaId,
+              provider_account_id: fcaId,
+              institution_name: meta.institution_name,
+              account_last4: meta.account_last4,
+              account_category: meta.account_category,
+              tenant_label: meta.tenant_label,
+              updated_at: new Date().toISOString(),
+            },
+          })
+        );
+        savedAccounts.push({
+          id: updated?.id || existing.id,
+          fcaId,
+          fingerprint: accountFingerprint(meta),
         });
         linked.push(fcaId);
         continue;
       }
 
-      await requestFn("tenant_bank_accounts", {
-        method: "POST",
-        body: {
-          tenant_id: tenant.id,
-          tenant_bank_connection_id: connectionId,
-          stripe_fc_account_id: fcaId,
-          provider_account_id: fcaId,
-          status: "active",
-          institution_name: meta.institution_name,
-          account_last4: meta.account_last4,
-          account_category: meta.account_category,
-          tenant_label: meta.tenant_label,
-        },
-      });
+      const inserted = firstRow(
+        await requestFn("tenant_bank_accounts", {
+          method: "POST",
+          prefer: "return=representation",
+          body: {
+            tenant_id: tenant.id,
+            tenant_bank_connection_id: connectionId,
+            stripe_fc_account_id: fcaId,
+            provider_account_id: fcaId,
+            status: "active",
+            institution_name: meta.institution_name,
+            account_last4: meta.account_last4,
+            account_category: meta.account_category,
+            tenant_label: meta.tenant_label,
+          },
+        })
+      );
+      if (inserted?.id) {
+        savedAccounts.push({
+          id: inserted.id,
+          fcaId,
+          fingerprint: accountFingerprint(meta),
+        });
+      }
       linked.push(fcaId);
+    }
+
+    const tid = encodeURIComponent(tenant.id);
+    const mapRows = await requestFn(
+      `tenant_financial_account_mapping?tenant_id=eq.${tid}&select=bucket,tenant_bank_account_id`
+    );
+    const mappings = Array.isArray(mapRows) ? mapRows : [];
+    const assignedById = new Map();
+    for (const mapping of mappings) {
+      const assignedId = String(mapping?.tenant_bank_account_id || "").trim();
+      if (!assignedId || assignedById.has(assignedId)) {
+        continue;
+      }
+      const assigned = firstRow(
+        await requestFn(
+          `tenant_bank_accounts?id=eq.${encodeURIComponent(
+            assignedId
+          )}&tenant_id=eq.${tid}&select=id,tenant_id,stripe_fc_account_id,institution_name,account_last4,account_category,status`
+        )
+      );
+      if (!assigned?.id) {
+        continue;
+      }
+      if (assigned.tenant_id && String(assigned.tenant_id) !== String(tenant.id)) {
+        continue;
+      }
+      assignedById.set(assigned.id, assigned);
+    }
+
+    const newByFingerprint = new Map();
+    for (const saved of savedAccounts) {
+      if (!saved.fingerprint || !saved.id) {
+        continue;
+      }
+      const list = newByFingerprint.get(saved.fingerprint) || [];
+      list.push(saved);
+      newByFingerprint.set(saved.fingerprint, list);
+    }
+    const mappedByFingerprint = new Map();
+    for (const mapping of mappings) {
+      const assigned = assignedById.get(mapping?.tenant_bank_account_id);
+      const fp = accountFingerprint(assigned);
+      if (!fp) {
+        continue;
+      }
+      const list = mappedByFingerprint.get(fp) || [];
+      list.push(mapping);
+      mappedByFingerprint.set(fp, list);
+    }
+
+    const currentFcas = new Set(savedAccounts.map((row) => row.fcaId));
+    const remappedBuckets = [];
+    for (const mapping of mappings) {
+      const bucket = String(mapping?.bucket || "").trim();
+      const oldId = String(mapping?.tenant_bank_account_id || "").trim();
+      const assigned = oldId ? assignedById.get(oldId) : null;
+      if (!bucket || !assigned) {
+        continue;
+      }
+      if (currentFcas.has(String(assigned.stripe_fc_account_id || ""))) {
+        continue;
+      }
+      const fp = accountFingerprint(assigned);
+      const candidates = fp ? newByFingerprint.get(fp) || [] : [];
+      const siblings = fp ? mappedByFingerprint.get(fp) || [] : [];
+      if (!fp || candidates.length !== 1 || siblings.length !== 1) {
+        continue;
+      }
+      const next = candidates[0];
+      if (!next?.id || next.id === oldId) {
+        continue;
+      }
+      await requestFn(
+        `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(bucket)}`,
+        {
+          method: "PATCH",
+          prefer: "return=representation",
+          body: { tenant_bank_account_id: next.id },
+        }
+      );
+      await requestFn(
+        `tenant_bank_accounts?id=eq.${encodeURIComponent(oldId)}&tenant_id=eq.${tid}`,
+        {
+          method: "PATCH",
+          prefer: "return=representation",
+          body: { status: "inactive", updated_at: new Date().toISOString() },
+        }
+      );
+      remappedBuckets.push(bucket);
     }
 
     await requestFn(`tenant_bank_connections?id=eq.${encodeURIComponent(connectionId)}`, {
@@ -318,6 +453,7 @@ function createHandler(deps = {}) {
         connection_id: connectionId,
         linked_account_ids: linked,
         count: linked.length,
+        remapped_buckets: remappedBuckets,
       },
       cookieHeaders
     );
@@ -329,3 +465,4 @@ function createHandler(deps = {}) {
 
 exports.createHandler = createHandler;
 exports.handler = createHandler();
+exports.accountFingerprint = accountFingerprint;
