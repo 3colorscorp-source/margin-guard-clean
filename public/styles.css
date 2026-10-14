@@ -7107,10 +7107,6 @@ body.business-settings-page .bs-summary-label{
     grid-template-columns:1fr;
     gap:8px;
   }
-  body[data-role="dashboard"] .fcc-kpi-deck__secondary{
-    grid-template-columns:1fr;
-    gap:8px;
-  }
   body[data-role="dashboard"] .section-head.fcc-section-head{
     flex-wrap:wrap;
     align-items:flex-start;
@@ -7171,7 +7167,7 @@ body.business-settings-page .bs-summary-label{
   }
   body[data-role="dashboard"] .fcc-treasury-chart,
   body[data-role="dashboard"] .fcc-skyline-chart__stage,
-  body[data-role="dashboard"] .fcc-legend--accounts{
+  body[data-role="dashboard"] .fcc-reserve-progress{
     min-width:0;
     max-width:100%;
     box-sizing:border-box;
