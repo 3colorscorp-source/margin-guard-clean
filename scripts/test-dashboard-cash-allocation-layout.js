@@ -88,6 +88,10 @@ assert(
   "mobile account row uses one column",
   /max-width:\s*600px\)\{[\s\S]{0,220}grid-template-columns:\s*1fr/.test(html)
 );
+assert(
+  "account cards do not render clipped KPI icons",
+  !js.includes('icon: "OP"') && !js.includes("fcc-kpi-icon") && !html.includes(".fcc-kpi-icon")
+);
 
 if (failed) {
   console.log("\n" + passed + " passed, " + failed + " failed");

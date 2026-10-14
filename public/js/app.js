@@ -7449,11 +7449,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
 
       renderFccAccountTreasury(state, settings);
-      const renderFccKpiCard = ({ label, value, meta, tone, accent, icon, tier }) => `
+      const renderFccKpiCard = ({ label, value, meta, tone, accent, tier }) => `
         <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent} fcc-kpi-card--tier-${tier}">
           <div class="fcc-kpi-top">
             <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : tone === "amber" ? "Watch" : tone === "unknown" ? "Setup" : "Risk"}</span></div>
-            <div class="fcc-kpi-icon" aria-hidden="true">${escapeHtml(icon)}</div>
           </div>
           <div class="value">${escapeHtml(value)}</div>
           <div class="meta">${escapeHtml(meta)}</div>
@@ -7464,10 +7463,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         ? `${Number(metrics.savingsTargetMonths).toFixed(0)}-month target: ${money(savingsTarget, settings.currency)}`
         : "Setup required";
       const kpisPrimary = [
-        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: metrics.available ? healthClass(state.expensesBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "expense", icon: "OP", tier: "primary" },
-        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: metrics.available ? healthClass(state.profitBalance, operatingMonthly * 0.1, operatingMonthly * 0.35) : "unknown", accent: "profit", icon: "PR", tier: "primary" },
-        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: metrics.available ? healthClass(state.taxBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "tax", icon: "TX", tier: "primary" },
-        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: savingsMeta, tone: metrics.available && metrics.savingsTarget != null ? healthClass(state.savingsBalance, operatingMonthly * 6, savingsTarget) : "unknown", accent: "savings", icon: "SV", tier: "primary" }
+        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: metrics.available ? healthClass(state.expensesBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "expense", tier: "primary" },
+        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: metrics.available ? healthClass(state.profitBalance, operatingMonthly * 0.1, operatingMonthly * 0.35) : "unknown", accent: "profit", tier: "primary" },
+        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: metrics.available ? healthClass(state.taxBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "tax", tier: "primary" },
+        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: savingsMeta, tone: metrics.available && metrics.savingsTarget != null ? healthClass(state.savingsBalance, operatingMonthly * 6, savingsTarget) : "unknown", accent: "savings", tier: "primary" }
       ];
 
       if ($("dashKpis")) {
