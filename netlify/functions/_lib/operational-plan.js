@@ -322,6 +322,34 @@ function computeOperationalPlanMetrics(
 function operationalPlanForSupervisorVisibility(plan) {
   const daysRaw = Array.isArray(plan) ? plan : [];
   const normalized = normalizeOperationalPlan(plan);
+  // Legacy accepted estimates can contain a committed day-by-day scope before
+  // Sales assigns crew hours. Keep those phase-only days visible to Supervisor
+  // without inventing labor or exposing financial data.
+  if (!normalized.length && daysRaw.length) {
+    const phaseOnly = [];
+    let fallbackDayNumber = 0;
+    for (const raw of daysRaw) {
+      fallbackDayNumber += 1;
+      if (!raw || typeof raw !== "object") continue;
+      const day_number = Math.max(
+        1,
+        Math.floor(num(raw.day_number, fallbackDayNumber))
+      );
+      const phase = str(
+        raw.phase ?? raw.title ?? raw.description ?? raw.scope,
+        240
+      );
+      if (!phase) continue;
+      const tasks = Array.isArray(raw.tasks)
+        ? raw.tasks.map((t) => str(t, 500)).filter(Boolean)
+        : [];
+      const out = { day_number, phase, workers: [] };
+      if (tasks.length) out.tasks = tasks;
+      phaseOnly.push(out);
+    }
+    phaseOnly.sort((a, b) => a.day_number - b.day_number);
+    return phaseOnly;
+  }
   return normalized.map((day, idx) => {
     const raw =
       daysRaw.find((d) => Math.floor(num(d?.day_number, 0)) === day.day_number) ||

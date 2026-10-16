@@ -2028,9 +2028,9 @@ Thank you.`
         finiteNumber(estimatedDays, finiteNumber(project?.estimatedDays, 0))
       )
     );
-    const progressRows = Array.isArray(opCache?.day_progress) ? opCache.day_progress : [];
-    const maxDay = supervisorMaxDayNumberFromProgress(progressRows);
-    if (maxDay > est) est = maxDay;
+    // Progress records report execution; they are not a source for plan scope.
+    // Using their highest day number here can fabricate a generic calendar when
+    // an accepted legacy estimate has not yet been synchronized.
     if (est <= 0 && Array.isArray(project?.workers) && project.workers.length) {
       const fromWorkers = supervisorMaxPlanWorkerDays(project.workers);
       if (fromWorkers > 0) est = Math.ceil(fromWorkers);
