@@ -2868,7 +2868,15 @@ Thank you.`
               const raw = String(r.note || "").trim();
               const nl = raw.indexOf("\n");
               const item = nl >= 0 ? raw.slice(0, nl).trim() : raw;
-              return `<li><strong>${escapeHtml(dl)}</strong>${item ? ` · ${escapeHtml(item)}` : ""}</li>`;
+              const expenseId = supervisorProjectKey(r.id);
+              const projectId = supervisorProjectKey(
+                r.project_id || supervisorActiveDayContext?.projectId
+              );
+              const removeBtn =
+                expenseId && projectId
+                  ? `<button type="button" class="btn danger sup-expense-remove" data-sup-remove-expense="${escapeHtml(expenseId)}" data-sup-remove-project="${escapeHtml(projectId)}">Remove</button>`
+                  : "";
+              return `<li class="sup-day-expense-row"><span><strong>${escapeHtml(dl)}</strong>${item ? ` · ${escapeHtml(item)}` : ""}</span>${removeBtn}</li>`;
             })
             .join("")
         : '<li class="small">No expenses for this day yet.</li>';
@@ -4393,12 +4401,19 @@ Thank you.`
               row.day_number != null && row.day_number > 0
                 ? String(row.day_number)
                 : "—";
+            const expenseId = supervisorProjectKey(row.id);
+            const projectId = supervisorProjectKey(row.project_id);
+            const removeBtn =
+              expenseId && projectId
+                ? `<button type="button" class="btn danger sup-expense-remove" data-sup-remove-expense="${escapeHtml(expenseId)}" data-sup-remove-project="${escapeHtml(projectId)}">Remove</button>`
+                : "—";
             return `<tr>
               <td>${escapeHtml(dateLabel)}</td>
               <td>${escapeHtml(row.concept)}</td>
               <td>${escapeHtml(money(row.amount, currency))}</td>
               <td>${escapeHtml(row.note || "—")}</td>
               <td>${escapeHtml(dayCol)}</td>
+              <td>${removeBtn}</td>
             </tr>`;
           })
           .join("");
@@ -4527,6 +4542,19 @@ Thank you.`
     wire("btnCloseSupExpenseSummary", () => closeSupExpenseSummaryModal());
     wire("btnCloseSupExpenseSummaryFooter", () => closeSupExpenseSummaryModal());
     wire("btnSupPrintExpenseSummary", () => printSupExpenseSummary());
+    if (document.body && document.body.dataset.supExpenseRemoveBound !== "1") {
+      document.body.dataset.supExpenseRemoveBound = "1";
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-sup-remove-expense]");
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        removeSupervisorProjectExpense(
+          button.getAttribute("data-sup-remove-expense"),
+          button.getAttribute("data-sup-remove-project")
+        );
+      });
+    }
     const expenseCard = $("supOpExpenseCountCard");
     if (expenseCard) {
       expenseCard.onclick = () => openSupExpenseSummaryModal();
@@ -4549,6 +4577,82 @@ Thank you.`
         closeSupExpenseSummaryModal();
       }
     });
+  }
+
+  async function removeSupervisorProjectExpense(expenseId, projectId) {
+    const eid = supervisorProjectKey(expenseId);
+    const pid = supervisorProjectKey(
+      projectId || resolveActiveSupervisorProject()?.id
+    );
+    if (!eid || !pid) {
+      window.alert("This expense cannot be removed.");
+      return;
+    }
+    if (!window.confirm("Remove this expense? This action cannot be undone.")) return;
+    try {
+      const res = await fetch("/.netlify/functions/delete-supervisor-project-expense", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expense_id: eid, project_id: pid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data || data.ok !== true) {
+        const msg = (data && (data.error || data.message)) || `Remove failed (${res.status}).`;
+        window.alert(msg);
+        return;
+      }
+      const cache = supervisorProjectExpensesCache[pid];
+      if (cache && Array.isArray(cache.expenses)) {
+        cache.expenses = cache.expenses.filter(
+          (row) => supervisorProjectKey(row?.id) !== eid
+        );
+      }
+      const project = resolveActiveSupervisorProject();
+      if (project && supervisorProjectKey(project.id) === pid) {
+        const state = loadSupervisorReport(project);
+        if (state && Array.isArray(state.extras)) {
+          state.extras = state.extras.filter(
+            (row) => supervisorProjectKey(row?.expenseId) !== eid
+          );
+          saveSupervisorReport(project.id, state);
+        }
+      }
+      const dayOpen = $("supDayDetailModal")?.getAttribute("aria-hidden") === "false";
+      const dayNum = Math.max(
+        1,
+        Math.floor(finiteNumber(supervisorActiveDayContext?.day_number, 0))
+      );
+      const summaryOpen =
+        $("supExpenseSummaryModal")?.getAttribute("aria-hidden") === "false";
+      const paintSummary = () => {
+        if (!summaryOpen) return;
+        const rows =
+          supervisorProjectExpensesCache[pid]?.ok === true &&
+          Array.isArray(supervisorProjectExpensesCache[pid].expenses)
+            ? supervisorProjectExpensesCache[pid].expenses
+            : [];
+        renderSupExpenseSummaryModalContent(
+          computeSupervisorExpenseSummary(rows),
+          project?.projectName || "Project"
+        );
+      };
+      paintSummary();
+      renderSupervisor();
+      if (dayOpen && dayNum) openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+      const fresh = await fetchProjectExpenses(pid);
+      supervisorProjectExpensesCache[pid] =
+        fresh && fresh.ok === true && Array.isArray(fresh.expenses)
+          ? { ok: true, expenses: fresh.expenses }
+          : supervisorProjectExpensesCache[pid] || { ok: false, expenses: [] };
+      await loadSupervisorOperationalSnapshot(pid, { force: true });
+      await pullSupervisorProjectsFromApi();
+      renderSupervisor();
+      paintSummary();
+      if (dayOpen && dayNum) openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+    } catch (_e) {
+      window.alert("Network error. Could not remove expense.");
+    }
   }
 
   function clearSupervisorProjectExpensesCache() {
@@ -12316,36 +12420,8 @@ function renderSupervisor() {
             const idx = Number(button.dataset.deleteExtra || -1);
             const row = state.extras[idx];
             if (row && row.expenseId && isServerListedSupervisorProject(currentProject.id)) {
-              try {
-                const res = await fetch("/.netlify/functions/delete-project-expense", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ expense_id: row.expenseId }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data || data.ok !== true) {
-                  const msg = (data && (data.error || data.message)) || `Delete failed (${res.status}).`;
-                  window.alert(msg);
-                  return;
-                }
-                delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
-                const fresh = await fetchProjectExpenses(currentProject.id);
-                supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)] =
-                  fresh && fresh.ok === true && Array.isArray(fresh.expenses)
-                    ? { ok: true, expenses: fresh.expenses }
-                    : { ok: false, expenses: [] };
-                state.locked = true;
-                const merged = loadSupervisorReport(currentProject);
-                saveSupervisorReport(currentProject.id, merged);
-                await recalcProjectProfitIfListed(currentProject.id);
-                await pullSupervisorProjectsFromApi();
-                refresh();
-                return;
-              } catch (_e) {
-                window.alert("Network error. Could not delete expense.");
-                return;
-              }
+              await removeSupervisorProjectExpense(row.expenseId, currentProject.id);
+              return;
             }
             if (row && row.expenseId) {
               window.alert("This row is saved on the server; sync projects list to enable delete.");

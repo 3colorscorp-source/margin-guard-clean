@@ -859,6 +859,18 @@
         display: none;
       }
     }
+    body.supervisor-page .sup-day-expense-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    body.supervisor-page .sup-expense-remove {
+      flex: 0 0 auto;
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.55);
+      background: rgba(239, 68, 68, 0.16);
+    }
     @media (prefers-reduced-motion: reduce) {
       body.supervisor-page .btn,
       body.supervisor-page .sup-exec-progress__fill,
@@ -1306,6 +1318,7 @@
                   <th>Amount</th>
                   <th>Note</th>
                   <th>Day</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="supExpenseSummaryBody"></tbody>
