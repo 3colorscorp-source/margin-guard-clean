@@ -33,4 +33,23 @@ assert(
   "Progress rows must not create or resize the Supervisor execution plan"
 );
 
+const resolveStart = appSource.indexOf("function resolveSupervisorExecutionPlan");
+const resolveEnd = appSource.indexOf("function formatSupervisorDaysLabel", resolveStart);
+assert(resolveStart >= 0 && resolveEnd > resolveStart);
+const resolveSource = appSource.slice(resolveStart, resolveEnd);
+assert(
+  resolveSource.includes("rememberedSupervisorCommittedPlan"),
+  "A previously accepted plan must survive a later generic snapshot"
+);
+assert(
+  resolveSource.includes("supervisorPlanIsStickyAccepted"),
+  "Only a real accepted plan may be kept; generic fallbacks must not stick"
+);
+const keepBranch = resolveSource.indexOf("rememberedSupervisorCommittedPlan(project)");
+const fallbackBranch = resolveSource.indexOf("buildSupervisorExecutionPlanFallback");
+assert(
+  keepBranch > fallbackBranch && keepBranch > 0,
+  "The accepted plan must be restored after a generic fallback is proposed"
+);
+
 console.log("PASS supervisor accepted-plan sync guard");

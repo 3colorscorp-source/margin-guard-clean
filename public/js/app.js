@@ -2229,6 +2229,66 @@ Thank you.`
     });
   }
 
+  const supervisorCommittedExecutionPlans = Object.create(null);
+  const SUPERVISOR_ACCEPTED_PLAN_STORAGE_PREFIX = "mg_supervisor_accepted_plan_v1:";
+
+  function supervisorPlanIsStickyAccepted(plan) {
+    if (!Array.isArray(plan) || !plan.length) return false;
+    if (plan.some((day) => day && (day.plan_fallback || day.migrated))) return false;
+    return !supervisorExecutionPlanLooksGeneric(plan);
+  }
+
+  function supervisorCopyExecutionPlan(plan) {
+    return plan.map((day) => ({
+      ...day,
+      workers: Array.isArray(day?.workers) ? day.workers.map((worker) => ({ ...worker })) : [],
+    }));
+  }
+
+  function supervisorAcceptedPlanStorageKey(project) {
+    const key = supervisorProjectKey(
+      project?.id || project?.projectId || project?.project_id
+    );
+    return key ? SUPERVISOR_ACCEPTED_PLAN_STORAGE_PREFIX + key : "";
+  }
+
+  function rememberSupervisorCommittedPlan(project, plan) {
+    if (!supervisorPlanIsStickyAccepted(plan)) return;
+    const storageKey = supervisorAcceptedPlanStorageKey(project);
+    if (!storageKey) return;
+    const copy = supervisorCopyExecutionPlan(plan);
+    supervisorCommittedExecutionPlans[storageKey] = copy;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(copy));
+    } catch (_err) {
+      /* The in-memory copy still protects this visit. */
+    }
+  }
+
+  function rememberedSupervisorCommittedPlan(project) {
+    const storageKey = supervisorAcceptedPlanStorageKey(project);
+    if (!storageKey) return [];
+    const cached = supervisorCommittedExecutionPlans[storageKey];
+    if (supervisorPlanIsStickyAccepted(cached)) return cached;
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+      if (!supervisorPlanIsStickyAccepted(parsed)) return [];
+      supervisorCommittedExecutionPlans[storageKey] = parsed;
+      return parsed;
+    } catch (_err) {
+      return [];
+    }
+  }
+
+  function supervisorAcceptedPlanDayCount(plan) {
+    if (!supervisorPlanIsStickyAccepted(plan)) return 0;
+    return plan.reduce(
+      (maxDay, day) =>
+        Math.max(maxDay, Math.floor(finiteNumber(day?.day_number, 0))),
+      0
+    );
+  }
+
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
     const est = inferSupervisorExecutionEstimatedDays(project, opCache, estimatedDays);
     const fromQuoted = buildSupervisorPlanFromQuotedLaborDays(project);
@@ -2237,25 +2297,34 @@ Thank you.`
         ? opCache.operational_plan
         : [];
 
+    let resolved = [];
     if (fromQuoted.length && (!fromApi.length || supervisorExecutionPlanLooksGeneric(fromApi))) {
-      return fromQuoted;
+      resolved = fromQuoted;
+    } else if (fromApi.length) {
+      resolved = fromApi;
+    } else if (fromQuoted.length) {
+      resolved = fromQuoted;
+    } else if (resolveShowMigratedExecution(opCache)) {
+      resolved = buildMigratedCalendarPlan(opCache.migration_baseline, est);
+    } else if (est > 0) {
+      resolved = buildSupervisorExecutionPlanFallback(project, est);
     }
 
-    if (fromApi.length) {
-      return fromApi;
+    // A real accepted plan stays in place. Progress, a failed snapshot, or a
+    // generic fallback must not disconnect it.
+    if (supervisorPlanIsStickyAccepted(resolved)) {
+      rememberSupervisorCommittedPlan(project, resolved);
+      return resolved;
     }
-
-    if (fromQuoted.length) return fromQuoted;
-
-    if (resolveShowMigratedExecution(opCache)) {
-      return buildMigratedCalendarPlan(opCache.migration_baseline, est);
+    const kept = rememberedSupervisorCommittedPlan(project);
+    if (
+      kept.length &&
+      (supervisorExecutionPlanLooksGeneric(resolved) ||
+        resolved.some((day) => day && day.plan_fallback))
+    ) {
+      return kept;
     }
-
-    if (est > 0) {
-      return buildSupervisorExecutionPlanFallback(project, est);
-    }
-
-    return [];
+    return resolved;
   }
 
   function formatSupervisorDaysLabel(n) {
@@ -12248,6 +12317,9 @@ function renderSupervisor() {
         currentProject,
         estimatedBudgetDays
       );
+      const acceptedScopeDays = supervisorAcceptedPlanDayCount(execPlan);
+      const scopeDays =
+        acceptedScopeDays > estimatedBudgetDays ? acceptedScopeDays : estimatedBudgetDays;
       const fieldCtx = opCache?.migrated_field_context;
 
       let dayDelta = 0;
@@ -12273,7 +12345,7 @@ function renderSupervisor() {
       }
 
       const smartStatus = computeSupervisorSmartStatus({
-        estimatedDays: estimatedBudgetDays,
+        estimatedDays: scopeDays,
         actualDays,
         calendarDayDelta: dayDelta,
         startIso: scheduleLabels.startIso,
@@ -12292,7 +12364,7 @@ function renderSupervisor() {
 
       renderSupervisorHero({
         projectName: state.projectName || "Project",
-        estimatedDays: estimatedBudgetDays,
+        estimatedDays: scopeDays,
         actualDays,
         planDayIndex,
         status: smartStatus,
@@ -12309,7 +12381,7 @@ function renderSupervisor() {
           ? { baseline: migrationBaseline, schedule: scheduleLabels }
           : null,
         {
-          estimatedDays: estimatedBudgetDays,
+          estimatedDays: scopeDays,
           progressPct,
           currentDayIndex: showMigratedExecution
             ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
@@ -12345,7 +12417,7 @@ function renderSupervisor() {
           );
       const opSnapshotLoading = supervisorOperationalSnapshotLoading(pid);
       const canRenderCalendar =
-        execPlan.length > 0 || Math.ceil(finiteNumber(estimatedBudgetDays, 0)) > 0;
+        execPlan.length > 0 || Math.ceil(finiteNumber(scopeDays, 0)) > 0;
       renderSupervisorExecutionPlanSection({
         showMigrated: showMigratedExecution,
         loading: opSnapshotLoading && !canRenderCalendar,
@@ -12357,7 +12429,7 @@ function renderSupervisor() {
               )
             : null,
         execPlan,
-        estimatedDays: estimatedBudgetDays,
+        estimatedDays: scopeDays,
         projectId: pid,
         calendarCtx: {
           startIso: scheduleLabels.startIso,
