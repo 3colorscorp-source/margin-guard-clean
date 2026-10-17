@@ -44,7 +44,12 @@ const ownerEndpoint = fs.readFileSync(
   "utf8"
 );
 
-assert(app.includes("Remove this expense? This action cannot be undone."));
+assert(app.includes("confirmSupervisorExpenseRemoval"));
+assert(!app.includes('window.confirm("Remove this expense?'));
+assert(html.includes('id="supExpenseRemoveModal"'));
+assert(html.includes("Remove this unexpected expense?"));
+assert(html.includes("Keep expense"));
+assert(html.includes("This action cannot be undone."));
 assert(app.includes("/.netlify/functions/delete-supervisor-project-expense"));
 assert(app.includes('class="btn danger sup-expense-remove"'));
 assert(app.includes("sup-day-expense-row"));
