@@ -871,6 +871,61 @@
       border-color: rgba(239, 68, 68, 0.55);
       background: rgba(239, 68, 68, 0.16);
     }
+    body.supervisor-page .sup-expense-remove-modal {
+      z-index: 12000;
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(8px);
+    }
+    body.supervisor-page .sup-expense-remove-modal__card {
+      width: min(460px, 96vw);
+      overflow: hidden;
+      border-color: rgba(239, 68, 68, 0.32);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
+    }
+    body.supervisor-page .sup-expense-remove-modal__accent {
+      height: 3px;
+      background: linear-gradient(90deg, #ef4444, rgba(239, 68, 68, 0.12));
+    }
+    body.supervisor-page .sup-expense-remove-modal .badge {
+      display: inline-flex;
+      margin-bottom: 10px;
+    }
+    body.supervisor-page .sup-expense-remove-modal__record {
+      margin: 0;
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    body.supervisor-page .sup-expense-remove-modal__record > div {
+      display: grid;
+      gap: 2px;
+    }
+    body.supervisor-page .sup-expense-remove-modal__record dt {
+      margin: 0;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.62;
+    }
+    body.supervisor-page .sup-expense-remove-modal__record dd {
+      margin: 0;
+      font-weight: 650;
+      line-height: 1.4;
+    }
+    body.supervisor-page .sup-expense-remove-modal .notice strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+    body.supervisor-page .sup-expense-remove-modal .notice ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    body.supervisor-page .sup-expense-remove-modal .notice li + li {
+      margin-top: 4px;
+    }
     @media (prefers-reduced-motion: reduce) {
       body.supervisor-page .btn,
       body.supervisor-page .sup-exec-progress__fill,
@@ -1287,6 +1342,47 @@
     </div>
   </div>
 
+
+  <div id="supExpenseRemoveModal" class="modal sup-expense-remove-modal" aria-hidden="true" role="alertdialog" aria-modal="true" aria-labelledby="supExpenseRemoveTitle" aria-describedby="supExpenseRemoveLead">
+    <div class="modal-card sup-expense-remove-modal__card" role="document">
+      <div class="sup-expense-remove-modal__accent" aria-hidden="true"></div>
+      <div class="modal-header">
+        <div>
+          <span class="badge red">Permanent</span>
+          <div class="modal-title" id="supExpenseRemoveTitle">Remove this unexpected expense?</div>
+          <p class="modal-subtitle" id="supExpenseRemoveLead">This deletes one recorded expense from the project. Supervisor cannot restore it.</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <dl class="sup-expense-remove-modal__record">
+          <div>
+            <dt>Date</dt>
+            <dd id="supExpenseRemoveDate">—</dd>
+          </div>
+          <div>
+            <dt>Description</dt>
+            <dd id="supExpenseRemoveConcept">—</dd>
+          </div>
+          <div>
+            <dt>Amount</dt>
+            <dd id="supExpenseRemoveAmount">—</dd>
+          </div>
+        </dl>
+        <div class="notice warn">
+          <strong>What changes</strong>
+          <ul>
+            <li>The expense leaves this day and View expenses.</li>
+            <li>The project count and expense total update immediately.</li>
+            <li>This action cannot be undone.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnSupExpenseRemoveKeep">Keep expense</button>
+        <button type="button" class="btn danger" id="btnSupExpenseRemoveConfirm">Remove expense</button>
+      </div>
+    </div>
+  </div>
 
   <div id="supExpenseSummaryModal" class="modal sup-field-modal sup-expense-summary-modal expense-summary-modal" aria-hidden="true" role="dialog" aria-labelledby="supExpenseSummaryTitle">
     <div class="modal-card sup-field-modal__card sup-expense-summary-modal__card">

@@ -2894,6 +2894,17 @@ Thank you.`
     document.body.style.overflow = "hidden";
   }
 
+  function refreshOpenSupervisorDayDetail() {
+    const modal = $("supDayDetailModal");
+    if (!modal || modal.getAttribute("aria-hidden") !== "false") return;
+    const dayNum = Math.max(
+      0,
+      Math.floor(finiteNumber(supervisorActiveDayContext?.day_number, 0))
+    );
+    if (dayNum < 1) return;
+    openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+  }
+
   function closeSupDayDetailModal() {
     const modal = $("supDayDetailModal");
     if (!modal) return;
@@ -4579,6 +4590,65 @@ Thank you.`
     });
   }
 
+  function supervisorExpenseRemovalPreview(expenseId, projectId) {
+    const pid = supervisorProjectKey(projectId);
+    const eid = supervisorProjectKey(expenseId);
+    const rows = supervisorProjectExpensesCache[pid]?.expenses;
+    const row = Array.isArray(rows)
+      ? rows.find((item) => supervisorProjectKey(item?.id) === eid)
+      : null;
+    const settings = loadSettings();
+    const currency = settings.currency || DEFAULTS.currency;
+    const dateRaw = normalizeDateInput(row?.expense_date || row?.date || "");
+    const raw = String(row?.note || "").trim();
+    const splitAt = raw.indexOf("\n");
+    const concept = splitAt >= 0 ? raw.slice(0, splitAt).trim() : raw;
+    return {
+      dateLabel: dateRaw ? formatDateUS(dateRaw) || dateRaw : "Date not recorded",
+      concept: concept || "Unexpected expense",
+      amount: row ? money(finiteNumber(row.amount, 0), currency) : "—",
+    };
+  }
+
+  function confirmSupervisorExpenseRemoval(preview) {
+    const modal = $("supExpenseRemoveModal");
+    if (!modal) return Promise.resolve(false);
+    const dateEl = $("supExpenseRemoveDate");
+    const conceptEl = $("supExpenseRemoveConcept");
+    const amountEl = $("supExpenseRemoveAmount");
+    if (dateEl) dateEl.textContent = preview.dateLabel;
+    if (conceptEl) conceptEl.textContent = preview.concept;
+    if (amountEl) amountEl.textContent = preview.amount;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (accepted) => {
+        if (settled) return;
+        settled = true;
+        modal.setAttribute("aria-hidden", "true");
+        modal.style.display = "";
+        document.removeEventListener("keydown", onKey, true);
+        resolve(!!accepted);
+      };
+      const onKey = (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+      };
+      const keep = $("btnSupExpenseRemoveKeep");
+      const confirmBtn = $("btnSupExpenseRemoveConfirm");
+      if (keep) keep.onclick = () => finish(false);
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      modal.onclick = (event) => {
+        if (event.target === modal) finish(false);
+      };
+      document.addEventListener("keydown", onKey, true);
+      modal.setAttribute("aria-hidden", "false");
+      modal.style.display = "flex";
+      if (keep) keep.focus();
+    });
+  }
+
   async function removeSupervisorProjectExpense(expenseId, projectId) {
     const eid = supervisorProjectKey(expenseId);
     const pid = supervisorProjectKey(
@@ -4588,7 +4658,10 @@ Thank you.`
       window.alert("This expense cannot be removed.");
       return;
     }
-    if (!window.confirm("Remove this expense? This action cannot be undone.")) return;
+    const accepted = await confirmSupervisorExpenseRemoval(
+      supervisorExpenseRemovalPreview(eid, pid)
+    );
+    if (!accepted) return;
     try {
       const res = await fetch("/.netlify/functions/delete-supervisor-project-expense", {
         method: "POST",
@@ -12435,6 +12508,7 @@ function renderSupervisor() {
       }
 
       supervisorLastRefreshedProjectId = pid;
+      refreshOpenSupervisorDayDetail();
     };
 
     if ($("btnAddSupEntry")) {
