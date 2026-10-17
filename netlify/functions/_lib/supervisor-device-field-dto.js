@@ -36,7 +36,12 @@ function mapDeviceReportRow(row) {
 
 function mapDeviceExpenseRow(row) {
   if (!row || typeof row !== "object") return null;
+  const id = str(row.id, 128);
+  const projectId = str(row.project_id, 128);
+  if (!id || !projectId) return null;
   const out = {
+    id,
+    project_id: projectId,
     expense_date: row.expense_date == null ? null : String(row.expense_date).slice(0, 10),
     amount: num(row.amount, 0),
     note: row.note == null ? "" : String(row.note),
