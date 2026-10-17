@@ -2894,6 +2894,17 @@ Thank you.`
     document.body.style.overflow = "hidden";
   }
 
+  function refreshOpenSupervisorDayDetail() {
+    const modal = $("supDayDetailModal");
+    if (!modal || modal.getAttribute("aria-hidden") !== "false") return;
+    const dayNum = Math.max(
+      0,
+      Math.floor(finiteNumber(supervisorActiveDayContext?.day_number, 0))
+    );
+    if (dayNum < 1) return;
+    openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+  }
+
   function closeSupDayDetailModal() {
     const modal = $("supDayDetailModal");
     if (!modal) return;
@@ -12435,6 +12446,7 @@ function renderSupervisor() {
       }
 
       supervisorLastRefreshedProjectId = pid;
+      refreshOpenSupervisorDayDetail();
     };
 
     if ($("btnAddSupEntry")) {
