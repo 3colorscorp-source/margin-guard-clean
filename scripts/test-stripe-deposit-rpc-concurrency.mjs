@@ -63,7 +63,14 @@ async function main() {
     path.join(root, "SUPABASE_STRIPE_SCHEDULING_DEPOSIT_EVENTS_ROLLBACK.sql"),
     "utf8"
   );
-  ok("rollback does not drop the evidence table", !/drop\s+table/i.test(rollback));
+  const rollbackSql = rollback.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--.*$/gm, "");
+  ok("rollback does not drop the evidence table", !/drop\s+table/i.test(rollbackSql));
+  ok("rollback does not delete ledger or event rows", !/delete\s+from/i.test(rollbackSql));
+  ok(
+    "rollback closes checkout before removing the function",
+    rollback.includes("SCHEDULING_DEPOSIT_CHECKOUT_ENABLED=false") &&
+      rollback.indexOf("SCHEDULING_DEPOSIT_CHECKOUT_ENABLED=false") < rollback.search(/drop\s+function/i)
+  );
   const migration = fs.readFileSync(
     path.join(root, "SUPABASE_STRIPE_SCHEDULING_DEPOSIT_EVENTS.sql"),
     "utf8"

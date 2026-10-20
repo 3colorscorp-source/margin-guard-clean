@@ -109,6 +109,9 @@ BEGIN
   IF v_currency <> 'usd' THEN
     RETURN jsonb_build_object('ok', false, 'code', 'invalid_currency');
   END IF;
+  -- p_paid_at is the confirmed charge time from the succeeded Charge balance
+  -- transaction. It is not PaymentIntent.created. An existing quote
+  -- deposit_paid_at is kept below with COALESCE and is never replaced.
   IF p_paid_at IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'code', 'invalid_paid_at');
   END IF;

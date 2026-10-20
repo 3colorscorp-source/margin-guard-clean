@@ -63,7 +63,7 @@ async function recordVerifiedSchedulingDeposit(args) {
 async function retrieveConnectSession(stripeSecretKey, connectAccountId, sessionId) {
   const sessionUrl =
     `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}` +
-    "?expand[]=payment_intent";
+    "?expand[]=payment_intent.latest_charge.balance_transaction";
   const stripeRes = await fetch(sessionUrl, {
     method: "GET",
     headers: {

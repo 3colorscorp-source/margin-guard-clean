@@ -14,6 +14,52 @@ const TENANT_ID = "tenant-erin";
 const TOKEN = "erinpublictoken1";
 const SESSION_ID = "cs_test_erin_scheduling_1000";
 const CONNECT = "acct_erin_connect";
+const CONFIRMED_AT = 1760724000;
+const INTENT_CREATED_AT = 1760637600;
+
+function paymentEvidence(options) {
+  const settings = options || {};
+  const confirmed = settings.confirmed == null ? CONFIRMED_AT : settings.confirmed;
+  const charge = {
+    id: settings.chargeId || "ch_test_scheduling",
+    object: "charge",
+    status: settings.chargeStatus || "succeeded",
+    created: settings.chargeCreated == null ? confirmed : settings.chargeCreated,
+  };
+  if (!settings.omitBalance) {
+    charge.balance_transaction =
+      typeof settings.balanceIdString === "string"
+        ? settings.balanceIdString
+        : {
+            id: "txn_test_scheduling",
+            object: "balance_transaction",
+            created: confirmed,
+          };
+  }
+  return {
+    id: settings.intentId || "pi_test_scheduling",
+    object: "payment_intent",
+    status: settings.intentStatus || "succeeded",
+    created: settings.intentCreated == null ? INTENT_CREATED_AT : settings.intentCreated,
+    latest_charge: settings.omitCharge ? undefined : charge,
+  };
+}
+
+function appliedEvent(overrides) {
+  return Object.assign(
+    {
+      id: "evt-applied",
+      tenant_id: TENANT_ID,
+      quote_id: QUOTE_ID,
+      project_id: PROJECT_ID,
+      disposition: "applied",
+      checkout_session_id: SESSION_ID,
+      gross_amount: 1000,
+      applied_payment_id: "pay-erin-1",
+    },
+    overrides || {}
+  );
+}
 
 function quote(overrides) {
   return Object.assign(
@@ -60,7 +106,7 @@ function session(overrides) {
     currency: "usd",
     amount_total: 100000,
     client_reference_id: TOKEN,
-    payment_intent: { id: "pi_test_scheduling", object: "payment_intent", created: 1760724000 },
+    payment_intent: paymentEvidence(),
     metadata: {
       purpose: "project_deposit",
       tenant_id: TENANT_ID,
@@ -166,6 +212,157 @@ ok(
     ],
     readError: false,
   }).state === "pending"
+);
+const ownerAdditional = depositRow({
+  id: "pay-owner-additional",
+  payment_method: "check",
+  idempotency_key: "owner-deposit-2",
+  amount: 250,
+  paid_at: "2026-10-18",
+  created_by: "owner",
+});
+const completedWithOwner = depositLib.classifySchedulingDeposit({
+  quote: quote({ deposit_paid_at: "2026-10-17", deposit_paid_amount: 1000 }),
+  projects: [project({ deposit_paid: true })],
+  payments: [depositRow(), ownerAdditional],
+  events: [
+    appliedEvent(),
+    {
+      tenant_id: TENANT_ID,
+      quote_id: QUOTE_ID,
+      project_id: PROJECT_ID,
+      disposition: "needs_review",
+      checkout_session_id: "cs_test_extra_review",
+      gross_amount: 1000,
+      applied_payment_id: null,
+    },
+  ],
+});
+ok(
+  "owner additional deposit stays completed",
+  completedWithOwner.state === "paid" &&
+    depositLib.publicStep4Presentation(completedWithOwner.state, true).status === "Completed" &&
+    depositLib.publicStep4Presentation(completedWithOwner.state, true).offerCheckout === false
+);
+ok(
+  "manual stripe entry is not a second scheduling credit",
+  depositLib.classifySchedulingDeposit({
+    quote: quote(),
+    projects: [project()],
+    payments: [
+      depositRow(),
+      depositRow({
+        id: "pay-owner-same",
+        payment_method: "stripe",
+        idempotency_key: "owner-manual-stripe",
+        amount: 1000,
+        paid_at: "2026-10-19",
+        created_by: "owner",
+      }),
+    ],
+    events: [appliedEvent()],
+  }).state === "paid"
+);
+const secondScheduling = depositLib.classifySchedulingDeposit({
+  quote: quote(),
+  projects: [project()],
+  payments: [
+    depositRow(),
+    depositRow({ id: "pay-second-cs", idempotency_key: "cs_test_second_credit", amount: 1000 }),
+  ],
+  events: [appliedEvent()],
+});
+ok(
+  "second stripe scheduling credit stays pending",
+  secondScheduling.state === "pending" &&
+    depositLib.publicStep4Presentation(secondScheduling.state, true).offerCheckout === false
+);
+ok(
+  "applied event without matching ledger stays pending",
+  depositLib.classifySchedulingDeposit({
+    quote: quote(),
+    projects: [project()],
+    payments: [depositRow()],
+    events: [appliedEvent({ applied_payment_id: "pay-missing" })],
+  }).state === "pending"
+);
+ok(
+  "additional deposit without an applied event stays pending",
+  depositLib.classifySchedulingDeposit({
+    quote: quote(),
+    projects: [project()],
+    payments: [depositRow(), ownerAdditional],
+    events: [],
+  }).state === "pending"
+);
+ok(
+  "null-quote deposit beside a scheduling credit stays pending",
+  depositLib.classifySchedulingDeposit({
+    quote: quote(),
+    projects: [project()],
+    payments: [
+      depositRow(),
+      depositRow({
+        id: "pay-legacy-mix",
+        quote_id: null,
+        idempotency_key: null,
+        payment_method: "cash",
+        amount: 500,
+        paid_at: "2026-10-01",
+      }),
+    ],
+    events: [appliedEvent()],
+  }).state === "pending"
+);
+ok(
+  "intent creation time is not a confirmed payment time",
+  depositLib.stripePaidAt(
+    session({
+      payment_intent: {
+        id: "pi_created_only",
+        object: "payment_intent",
+        status: "succeeded",
+        created: INTENT_CREATED_AT,
+      },
+    })
+  ) === ""
+);
+ok(
+  "pending charge is not a confirmed payment time",
+  depositLib.stripePaidAt(session({ payment_intent: paymentEvidence({ chargeStatus: "pending", omitBalance: true }) })) === ""
+);
+ok(
+  "unexpanded balance transaction is not a confirmed payment time",
+  depositLib.stripePaidAt(session({ payment_intent: paymentEvidence({ balanceIdString: "txn_unexpanded" }) })) === ""
+);
+const immediateIso = "2026-10-17T18:00:05.000Z";
+const immediateSeconds = Date.parse(immediateIso) / 1000;
+ok(
+  "immediate card uses the shared confirmed time",
+  depositLib.stripePaidAt(
+    session({
+      payment_intent: paymentEvidence({
+        confirmed: immediateSeconds,
+        intentCreated: immediateSeconds,
+        chargeCreated: immediateSeconds,
+      }),
+    })
+  ) === immediateIso
+);
+const delayedIso = "2026-10-21T16:30:00.000Z";
+ok(
+  "delayed payment uses the balance transaction time",
+  depositLib.stripePaidAt(
+    session({
+      payment_intent: paymentEvidence({
+        intentCreated: Date.parse("2026-10-13T18:00:00.000Z") / 1000,
+        chargeCreated: Date.parse("2026-10-14T18:00:00.000Z") / 1000,
+        confirmed: Date.parse(delayedIso) / 1000,
+      }),
+    })
+  ) === delayedIso &&
+    depositLib.stripePaidAt(session()) === new Date(CONFIRMED_AT * 1000).toISOString() &&
+    depositLib.stripePaidAt(session()) !== new Date(INTENT_CREATED_AT * 1000).toISOString()
 );
 
 const html = fs.readFileSync(path.join(ROOT, "public/estimate-public.html"), "utf8");
@@ -544,6 +741,26 @@ async function main() {
   ok("net amount is rejected", result.status === 400 && result.body.code === "stripe_amount_mismatch");
   ok("still one project and no ledger", db.projectInserts === 0 && db.inserts.length === 0 && db.invoiceWrites === 0);
 
+  result = await postFinalize(
+    session({
+      id: "cs_test_intent_created_only",
+      payment_intent: {
+        id: "pi_created_only",
+        object: "payment_intent",
+        status: "succeeded",
+        created: INTENT_CREATED_AT,
+      },
+    })
+  );
+  ok(
+    "intent creation time does not record a deposit",
+    result.status === 422 &&
+      result.body.code === "stripe_paid_at_missing" &&
+      db.payments.length === 0 &&
+      db.events.length === 0 &&
+      db.emails.length === 0
+  );
+
   global.fetch = stripeFetch(session(), { failConnect: true });
   let handler = finalizeHandler();
   result = JSON.parse(
@@ -564,7 +781,12 @@ async function main() {
   ok("ledger is deposit stripe on the existing project", db.inserts[0].payment_type === "deposit" && db.inserts[0].payment_method === "stripe" && db.inserts[0].project_id === PROJECT_ID && db.inserts[0].quote_id === QUOTE_ID && db.inserts[0].tenant_id === TENANT_ID);
   ok("assigned project stays assigned", db.project.status === "assigned" && db.project.deposit_paid === true && !Object.prototype.hasOwnProperty.call(db.projectPatches[0], "status"));
   ok("quote paid flag is set and the original timestamp stays", db.quote.deposit_paid === true && db.quote.deposit_paid_at === "2026-10-17" && db.quote.deposit_paid_amount === 1000 && db.quote.total === 9114.61);
-  ok("ledger credits the Stripe payment time", db.payments[0].paid_at === new Date(1760724000 * 1000).toISOString());
+  ok("ledger credits the confirmed charge time", db.payments[0].paid_at === new Date(CONFIRMED_AT * 1000).toISOString());
+  ok("ledger does not use payment intent creation", db.payments[0].paid_at !== new Date(INTENT_CREATED_AT * 1000).toISOString());
+  ok(
+    "stripe retrieve expands the confirmed charge",
+    db.stripeCalls[0].url.includes("expand[]=payment_intent.latest_charge.balance_transaction")
+  );
   ok("Erin reconciliation does not email", db.emails.length === 0);
   ok("stripe retrieve used the connect account", db.stripeCalls.length === 1 && db.stripeCalls[0].headers["Stripe-Account"] === CONNECT);
 
@@ -672,13 +894,15 @@ async function main() {
     depositLib.classifySchedulingDeposit({
       quote: quote(),
       projects: [project()],
-      payments: [depositRow()],
+      payments: [depositRow(), ownerAdditional],
       events: [
+        appliedEvent(),
         {
           tenant_id: TENANT_ID,
           quote_id: QUOTE_ID,
           disposition: "needs_review",
           checkout_session_id: "cs_test_extra",
+          gross_amount: 1000,
         },
       ],
     }).state === "paid" &&
@@ -784,7 +1008,79 @@ async function main() {
       db.project.status === "assigned"
   );
 
-  db.payments = [depositRow({ id: "pay-new", idempotency_key: "cs_test_new_signed" })];
+  resetLedger({ deposit_paid_at: null }, { status: "signed", deposit_paid: false });
+  const immediatePay = "2026-10-17T18:00:05.000Z";
+  const immediateUnix = Date.parse(immediatePay) / 1000;
+  result = await postFinalize(
+    session({
+      id: "cs_test_immediate_card",
+      payment_intent: paymentEvidence({
+        confirmed: immediateUnix,
+        intentCreated: immediateUnix,
+        chargeCreated: immediateUnix,
+      }),
+    })
+  );
+  ok(
+    "immediate payment records the confirmed time",
+    result.status === 200 &&
+      db.payments.length === 1 &&
+      db.payments[0].paid_at === immediatePay &&
+      db.quote.deposit_paid_at === immediatePay
+  );
+
+  resetLedger(
+    { deposit_paid_at: "2026-10-17", deposit_paid_amount: 1000, deposit_paid: false },
+    { status: "assigned" }
+  );
+  result = await postFinalize(
+    session({
+      id: "cs_test_delayed_bank",
+      payment_intent: paymentEvidence({
+        intentCreated: Date.parse("2026-10-13T18:00:00.000Z") / 1000,
+        chargeCreated: Date.parse("2026-10-14T18:00:00.000Z") / 1000,
+        confirmed: Date.parse(delayedIso) / 1000,
+      }),
+    })
+  );
+  ok(
+    "delayed payment keeps Erin's quote timestamp and credits the confirmed time",
+    result.status === 200 &&
+      db.payments.length === 1 &&
+      db.payments[0].paid_at === delayedIso &&
+      db.payments[0].paid_at !== new Date(Date.parse("2026-10-13T18:00:00.000Z")).toISOString() &&
+      db.quote.deposit_paid_at === "2026-10-17" &&
+      db.emails.length === 0 &&
+      db.project.status === "assigned" &&
+      db.quote.total === 9114.61
+  );
+
+  process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED = "false";
+  resetLedger({ deposit_paid_at: "2026-10-17" }, { status: "assigned" });
+  result = await postFinalize(session({ id: "cs_test_inflight_while_closed" }));
+  ok(
+    "closing checkout does not block an already paid session",
+    result.status === 200 && db.payments.length === 1 && db.quote.deposit_paid_at === "2026-10-17"
+  );
+  delete process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED;
+
+  db.payments = [
+    depositRow({ id: "pay-new", idempotency_key: "cs_test_new_signed" }),
+    depositRow({
+      id: "pay-owner-later",
+      payment_method: "check",
+      idempotency_key: "owner-later",
+      amount: 400,
+      paid_at: "2026-10-19",
+      created_by: "owner",
+    }),
+  ];
+  db.events = [
+    appliedEvent({
+      applied_payment_id: "pay-new",
+      checkout_session_id: "cs_test_new_signed",
+    }),
+  ];
   db.quote = quote({ deposit_paid: true, deposit_paid_at: "2026-10-18T00:00:00.000Z", deposit_paid_amount: 1000 });
   db.project = project({ status: "deposit_paid", deposit_paid: true });
   db.holdPaymentReads = 0;
@@ -837,12 +1133,45 @@ async function main() {
       db.stripeCalls.length === 0
   );
   db.paymentsReadError = null;
+
+  process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED = "false";
+  db.quote = quote();
+  db.project = project();
+  db.payments = [];
+  db.stripeCalls = [];
+  global.fetch = async function closedMustNotCreateCheckout() {
+    db.stripeCalls.push("stripe");
+    throw new Error("stripe must not be called");
+  };
+  created = await handler({
+    httpMethod: "POST",
+    body: JSON.stringify({ public_token: TOKEN }),
+  });
+  createdBody = JSON.parse(created.body);
+  ok(
+    "closed checkout does not create a session",
+    created.statusCode === 503 &&
+      createdBody.code === "scheduling_checkout_closed" &&
+      db.stripeCalls.length === 0
+  );
+  delete process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED;
   restore(createPath);
 
   db.quote = quote({ deposit_paid_at: "2026-10-17", deposit_paid_amount: 1000, deposit_paid: true });
   db.project = project({ deposit_paid: true });
-  db.payments = [depositRow()];
+  db.payments = [
+    depositRow(),
+    depositRow({
+      id: "pay-owner-additional",
+      payment_method: "check",
+      idempotency_key: "owner-deposit-2",
+      amount: 250,
+      paid_at: "2026-10-18",
+      created_by: "owner",
+    }),
+  ];
   db.events = [
+    appliedEvent(),
     {
       id: "evt-review",
       tenant_id: TENANT_ID,

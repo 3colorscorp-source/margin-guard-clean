@@ -52,10 +52,22 @@ function depositRequiredToUsdCents(raw) {
   return cents;
 }
 
+function schedulingCheckoutClosed() {
+  return String(process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED || "").trim().toLowerCase() === "false";
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method Not Allowed" });
+    }
+
+    if (schedulingCheckoutClosed()) {
+      return json(503, {
+        ok: false,
+        code: "scheduling_checkout_closed",
+        error: "Scheduling checkout is temporarily closed. Please contact your contractor before paying again."
+      });
     }
 
     let stripeSecretKey;
