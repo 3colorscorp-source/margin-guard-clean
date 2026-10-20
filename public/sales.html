@@ -6,6 +6,15 @@
   <title>Margin Guard | Seller</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
+    .sales-location-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 72px 112px;
+      gap: 10px;
+    }
+    .sales-location-grid label { display: block; margin-bottom: 6px; font-size: 12px; }
+    @media (max-width: 720px) {
+      .sales-location-grid { grid-template-columns: 1fr 1fr; }
+    }
     html[data-sales-portal="seller"] body.seller-portal-layout, html[data-owner-seller-preview="true"] body.owner-seller-preview-layout {
       overflow-x: hidden;
     }
@@ -2038,8 +2047,26 @@
                   <input id="salesCustomerPhone" maxlength="30" placeholder="" />
                 </div>
                 <div class="field" style="grid-column:1 / -1;">
-                  <label>Job site address</label>
-                  <input id="salesLocation" maxlength="90" placeholder="" />
+                  <span>Job site address</span>
+                  <input id="salesLocation" type="hidden" maxlength="255" />
+                  <div class="sales-location-grid">
+                    <div>
+                      <label for="salesLocationStreet">Street address</label>
+                      <input id="salesLocationStreet" maxlength="160" autocomplete="street-address" placeholder="" />
+                    </div>
+                    <div>
+                      <label for="salesLocationCity">City</label>
+                      <input id="salesLocationCity" maxlength="80" autocomplete="address-level2" placeholder="" />
+                    </div>
+                    <div>
+                      <label for="salesLocationState">State</label>
+                      <input id="salesLocationState" maxlength="2" autocomplete="address-level1" placeholder="CA" />
+                    </div>
+                    <div>
+                      <label for="salesLocationZip">ZIP code</label>
+                      <input id="salesLocationZip" maxlength="10" autocomplete="postal-code" placeholder="" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2469,6 +2496,7 @@
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
   <script src="/js/seller-operational-plan-areas.js"></script>
+  <script src="/js/project-location.js"></script>
   <script src="/js/app.js?v=seller-visual-dollar-source-v1"></script>
   <script>
     (function () {
@@ -10655,6 +10683,10 @@
           salesAdditionalRecipients: '',
           salesCustomerPhone: '',
           salesLocation: '',
+          salesLocationStreet: '',
+          salesLocationCity: '',
+          salesLocationState: '',
+          salesLocationZip: '',
           salesPrice: '',
           salesMessageToClient: '',
           salesNotes: ''
@@ -13626,7 +13658,10 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             { id: 'salesClientName', value: contactDisplayName(contact).slice(0, 60) },
             { id: 'salesCustomerEmail', value: String(contact.email || '').trim().slice(0, 80) },
             { id: 'salesCustomerPhone', value: String(contact.phone || '').trim().slice(0, 30) },
-            { id: 'salesLocation', value: buildContactAddress(contact).slice(0, 90) },
+            { id: 'salesLocationStreet', value: [contact.address_line1, contact.address_line2].map(function (v) { return String(v || '').trim(); }).filter(Boolean).join(', ').slice(0, 160) },
+            { id: 'salesLocationCity', value: String(contact.city || '').trim().slice(0, 80) },
+            { id: 'salesLocationState', value: String(contact.state || '').trim().toUpperCase().slice(0, 2) },
+            { id: 'salesLocationZip', value: String(contact.postal_code || '').trim().slice(0, 10) },
           ];
           mappings.forEach(function (map) {
             if (!map.value) return;
@@ -13636,6 +13671,17 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             if (!current) setFieldValue(map.id, map.value);
           });
           updateCharCounter('salesClientName', 'salesClientNameCount');
+          const locationApi = window.MarginGuardProjectLocation;
+          if (locationApi && typeof locationApi.composeProjectLocation === 'function') {
+            const composed = locationApi.composeProjectLocation({
+              street: document.getElementById('salesLocationStreet')?.value || '',
+              city: document.getElementById('salesLocationCity')?.value || '',
+              state: document.getElementById('salesLocationState')?.value || '',
+              zip: document.getElementById('salesLocationZip')?.value || '',
+            });
+            const hiddenLocation = document.getElementById('salesLocation');
+            if (hiddenLocation) hiddenLocation.value = composed;
+          }
           syncPrefillToSalesState();
         }
 

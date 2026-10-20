@@ -843,6 +843,21 @@
     body[data-role="owner"] .owner-input-client-gc,
     body[data-role="owner"] .owner-input-client-email,
     body[data-role="owner"] .owner-input-client-phone,
+    body[data-role="owner"] .owner-location-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 72px 112px;
+      gap: 10px;
+    }
+    body[data-role="owner"] .owner-location-grid label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    @media (max-width: 720px) {
+      body[data-role="owner"] .owner-location-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
     body[data-role="owner"] .owner-input-location,
     body[data-role="owner"] .owner-input-biz-pdf,
     body[data-role="owner"] .owner-input-start-date,
@@ -1003,12 +1018,29 @@
                   <span class="owner-char-pill" title="Caracteres usados"><span id="clientPhoneCount">0</span><span class="owner-char-pill__max">/40</span></span>
                 </div>
               </div>
-              <div class="field owner-field-location">
-                <label for="location" class="owner-field-location__label">Ubicación</label>
-                <input class="owner-input-location" id="location" maxlength="50" placeholder="" />
+              <div class="field owner-field-location" style="grid-column:1 / -1;">
+                <span class="owner-field-location__label">Ubicación</span>
+                <input id="location" type="hidden" maxlength="255" />
+                <div class="owner-location-grid">
+                  <div>
+                    <label for="locationStreet">Calle</label>
+                    <input class="owner-input-location" id="locationStreet" maxlength="160" autocomplete="street-address" placeholder="" />
+                  </div>
+                  <div>
+                    <label for="locationCity">Ciudad</label>
+                    <input class="owner-input-location" id="locationCity" maxlength="80" autocomplete="address-level2" placeholder="" />
+                  </div>
+                  <div>
+                    <label for="locationState">Estado</label>
+                    <input class="owner-input-location" id="locationState" maxlength="2" autocomplete="address-level1" placeholder="CA" />
+                  </div>
+                  <div>
+                    <label for="locationZip">Código postal</label>
+                    <input class="owner-input-location" id="locationZip" maxlength="10" autocomplete="postal-code" placeholder="" />
+                  </div>
+                </div>
                 <div class="hint owner-field-location__foot">
-                  <span class="owner-field-location__tip">Ciudad, zona o dirección del job site (útil en PDF y comunicación).</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="locationCount">0</span><span class="owner-char-pill__max">/50</span></span>
+                  <span class="owner-field-location__tip">Calle, ciudad, estado y código postal. El contrato los usa en su lugar.</span>
                 </div>
               </div>
               <div class="field owner-field-biz-pdf">
@@ -1468,6 +1500,7 @@
 <script src="/js/quote-send-feedback.js"></script>
 <script src="/js/voice-operational-plan.js"></script>
 <script src="/js/owner-multi-area-entry.js"></script>
+<script src="/js/project-location.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/owner-voice-operational-plan.js"></script>
 <script>

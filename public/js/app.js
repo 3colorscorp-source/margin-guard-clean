@@ -9246,6 +9246,100 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
   }
 
+  function projectLocationApi() {
+    return window.MarginGuardProjectLocation || null;
+  }
+
+  function ownerLocationParts(location) {
+    const api = projectLocationApi();
+    if (api && typeof api.partsFromLocation === "function") return api.partsFromLocation(location);
+    return { street: String(location || ""), city: "", state: "", zip: "" };
+  }
+
+  function applyLocationParts(ids, storedLocation) {
+    const api = projectLocationApi();
+    const current = {
+      street: val(ids.street),
+      city: val(ids.city),
+      state: val(ids.state),
+      zip: val(ids.zip)
+    };
+    const needsRefresh = !api || typeof api.locationPartsNeedRefresh !== "function"
+      || api.locationPartsNeedRefresh(current, storedLocation);
+    if (!needsRefresh) return;
+    const parts = ownerLocationParts(storedLocation);
+    setVal(ids.street, parts.street);
+    setVal(ids.city, parts.city);
+    setVal(ids.state, parts.state);
+    setVal(ids.zip, parts.zip);
+  }
+
+  function composeLocationFromIds(ids) {
+    const api = projectLocationApi();
+    const parts = {
+      street: val(ids.street),
+      city: val(ids.city),
+      state: val(ids.state),
+      zip: val(ids.zip)
+    };
+    if (api && typeof api.composeProjectLocation === "function") return api.composeProjectLocation(parts);
+    return [parts.street, parts.city, [parts.state, parts.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  }
+
+  function bindOwnerLocationParts(state, settings) {
+    ["locationStreet", "locationCity", "locationState", "locationZip"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.oninput = () => {
+        const next = composeLocationFromIds({
+          street: "locationStreet",
+          city: "locationCity",
+          state: "locationState",
+          zip: "locationZip"
+        });
+        state.location = next;
+        setVal("location", next);
+        saveOwner(state, calcOwner(state, settings));
+      };
+    });
+  }
+
+  function salesLocationPartFocused() {
+    const active = document.activeElement;
+    return ["salesLocationStreet", "salesLocationCity", "salesLocationState", "salesLocationZip"].some(
+      (id) => active && active.id === id
+    );
+  }
+
+  function fillSalesLocationParts(location) {
+    applyLocationParts({
+      street: "salesLocationStreet",
+      city: "salesLocationCity",
+      state: "salesLocationState",
+      zip: "salesLocationZip"
+    }, location);
+  }
+
+  function bindSalesLocationParts(persist) {
+    ["salesLocationStreet", "salesLocationCity", "salesLocationState", "salesLocationZip"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sync = () => {
+        const next = composeLocationFromIds({
+          street: "salesLocationStreet",
+          city: "salesLocationCity",
+          state: "salesLocationState",
+          zip: "salesLocationZip"
+        });
+        const hidden = document.getElementById("salesLocation");
+        if (hidden) hidden.value = next;
+        if (typeof persist === "function") persist();
+      };
+      el.oninput = sync;
+      el.onchange = sync;
+    });
+  }
+
   function renderOwner() {
     if (!$("ownerKpis")) return;
     bindOwnerSettingsStorageRefreshOnce();
@@ -9309,9 +9403,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       expHint.textContent = `Auto-set to issue date + ${expDays} days.`;
     }
     const locationEl = $("location");
+    const locationPartIds = ["locationStreet", "locationCity", "locationState", "locationZip"];
+    const typingLocationPart = locationPartIds.some((id) => document.activeElement === $(id));
     if (locationEl && document.activeElement === locationEl) {
       state.location = val("location");
-    } else {
+    } else if (!typingLocationPart) {
+      applyLocationParts({
+        street: "locationStreet",
+        city: "locationCity",
+        state: "locationState",
+        zip: "locationZip"
+      }, state.location);
       setVal("location", state.location);
     }
     const bizNameOwnerEl = $("bizNameOwner");
@@ -9407,7 +9509,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         metrics.recommended > 0 ? pricingSource.shortStatus : "Add labor data";
     }
 
-    [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["clientEmail", "clientEmailCount"], ["clientPhone", "clientPhoneCount"], ["location", "locationCount"], ["quoteNotes", "quoteNotesCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
+    bindOwnerLocationParts(state, settings);
+    [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["clientEmail", "clientEmailCount"], ["clientPhone", "clientPhoneCount"], ["quoteNotes", "quoteNotesCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
       const el = $(id);
       if (!el) return;
       el.oninput = () => {
@@ -11436,7 +11539,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (customerEmailInput) customerEmailInput.value = state.customerEmail || "";
   if (additionalRecipientsInput) additionalRecipientsInput.value = state.additional_recipients || "";
   if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
-  if (locationInput) locationInput.value = state.location || "";
+  if (locationInput && !salesLocationPartFocused()) {
+    locationInput.value = state.location || "";
+    fillSalesLocationParts(state.location || "");
+  }
   if (startDateInput) {
     startDateInput.value = normalizeDateInput(state.startDate || "");
   }
@@ -11589,6 +11695,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     saveSales(state);
   }
 
+  bindSalesLocationParts(persistSalesDraft);
   [projectNameInput, clientNameInput, customerEmailInput, additionalRecipientsInput, customerPhoneInput, locationInput, startDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
     if (!input) return;
     input.oninput = () => persistSalesDraft();
