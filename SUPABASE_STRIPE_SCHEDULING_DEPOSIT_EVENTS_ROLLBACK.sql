@@ -13,7 +13,7 @@
 --    In the Netlify production environment set:
 --      SCHEDULING_DEPOSIT_CHECKOUT_ENABLED=false
 --    Redeploy the current production functions so the process loads that value.
---    Confirm create-project-deposit-session returns scheduling_checkout_closed
+--    Confirm create-project-deposit-session returns scheduling_deposit_maintenance
 --    and does not call Stripe.
 --    Leave finalize-project-deposit deployed. A Checkout Session that is already
 --    paid must still be able to record through the RPC.

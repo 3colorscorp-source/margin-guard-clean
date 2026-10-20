@@ -1215,7 +1215,7 @@ async function main() {
   ok(
     "closed checkout does not create a session",
     created.statusCode === 503 &&
-      createdBody.code === "scheduling_checkout_closed" &&
+      createdBody.code === "scheduling_deposit_maintenance" &&
       db.stripeCalls.length === 0
   );
   delete process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED;

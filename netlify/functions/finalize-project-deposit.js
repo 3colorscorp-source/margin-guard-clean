@@ -113,6 +113,11 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
+    // Verified recorder stays available while checkout is closed.
+    // Do not restore a legacy partial-write pause in front of
+    // record_verified_scheduling_deposit: an already-paid Stripe session must
+    // stay reconcilable while new checkout and the public link stay closed.
+
     let stripeSecretKey;
     try {
       stripeSecretKey = getStripeKey();

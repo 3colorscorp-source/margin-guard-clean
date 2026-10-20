@@ -1601,6 +1601,13 @@
             All review steps are complete. Please reserve your project on our schedule by completing the Initial Scheduling Payment.
           </p>
           <div
+            id="publicFlowDepositMaintenance"
+            class="notice warn"
+            style="display:none;margin-top:12px;text-align:left;"
+          >
+            Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined.
+          </div>
+          <div
             id="publicFlowDepositUnavail"
             class="notice warn"
             style="display:none;margin-top:12px;text-align:left;"
@@ -1645,6 +1652,13 @@
               Complete all steps to proceed with estimate approval and payment.
             </div>
 
+            <div
+              id="publicDepositMaintenance"
+              class="notice warn"
+              style="display:none;margin-top:12px;text-align:left;"
+            >
+              Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined.
+            </div>
             <div
               id="publicDepositStripeUnavailable"
               class="notice warn"
@@ -1903,24 +1917,32 @@
         workflowComplete,
         depositPaymentAvailable,
         hasDepositPaymentLink,
-        needsDeposit
+        needsDeposit,
+        schedulingCheckoutEnabled
       }) {
         const actions = $("publicEstimateActions");
         const approvedPanel = $("approvedProjectPanel");
         const paidPanel = $("paidProjectPanel");
         const gateNotice = $("publicDepositGateNotice");
         const stripeUnavail = $("publicDepositStripeUnavailable");
+        const depositMaintenance = $("publicDepositMaintenance");
         const payBtn = $("payDepositBtn");
         const workflowPayBtn = $("workflowPayDepositBtn");
         const depositStep = $("premiumWorkflowStep4");
+        const depositFlowMaintenance = $("publicFlowDepositMaintenance");
         const depositFlowUnavail = $("publicFlowDepositUnavail");
         const depositFlowNoDeposit = $("publicFlowDepositNoDeposit");
         const depositFlowPanel = $("publicFlowStepDeposit");
         const depositFlowLead = $("publicFlowDepositLead");
         const depositFlowPending = $("publicFlowDepositPending");
+        const maintenance = schedulingCheckoutEnabled === false;
+        const maintenanceCopy =
+          "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined.";
 
-        const paymentPathReady = depositPaymentAvailable === true || hasDepositPaymentLink === true;
+        const paymentPathReady =
+          !maintenance && (depositPaymentAvailable === true || hasDepositPaymentLink === true);
         const canPay =
+          !maintenance &&
           verificationBlocked !== true &&
           paid !== true &&
           workflowComplete === true &&
@@ -1947,9 +1969,12 @@
           }
         }
 
-        function setDepositFlowPanelUi({ showUnavail, showNoDeposit, canPayInRail }) {
+        function setDepositFlowPanelUi({ showUnavail, showNoDeposit, showMaintenance, canPayInRail }) {
+          if (depositFlowMaintenance) {
+            depositFlowMaintenance.style.display = showMaintenance ? "block" : "none";
+          }
           if (depositFlowUnavail) {
-            depositFlowUnavail.style.display = showUnavail ? "block" : "none";
+            depositFlowUnavail.style.display = showUnavail && !showMaintenance ? "block" : "none";
           }
           if (depositFlowNoDeposit) {
             depositFlowNoDeposit.style.display = showNoDeposit ? "block" : "none";
@@ -1964,7 +1989,9 @@
               return;
             }
             depositFlowLead.style.display = "";
-            if (showUnavail) {
+            if (showMaintenance) {
+              depositFlowLead.textContent = maintenanceCopy;
+            } else if (showUnavail) {
               depositFlowLead.textContent =
                 "All review steps are complete. Online Initial Scheduling Payment is not available yet — please see the notice below.";
             } else if (verificationBlocked) {
@@ -1995,12 +2022,18 @@
           if (paidPanel) paidPanel.classList.add("show");
           if (gateNotice) gateNotice.style.display = "none";
           if (stripeUnavail) stripeUnavail.style.display = "none";
+          if (depositMaintenance) depositMaintenance.style.display = "none";
           if (payBtn) {
             payBtn.disabled = true;
             payBtn.style.display = "none";
           }
           setDepositWorkflowPayable(false);
-          setDepositFlowPanelUi({ showUnavail: false, showNoDeposit: false, canPayInRail: false });
+          setDepositFlowPanelUi({
+            showUnavail: false,
+            showNoDeposit: false,
+            showMaintenance: false,
+            canPayInRail: false
+          });
           return;
         }
 
@@ -2022,7 +2055,18 @@
           }
           if (stripeUnavail) {
             stripeUnavail.style.display =
-              showApprovedPanel && stepsDone && showApprovedDeposit && !paymentPathReady
+              !maintenance &&
+              verificationBlocked !== true &&
+              showApprovedPanel &&
+              stepsDone &&
+              showApprovedDeposit &&
+              !paymentPathReady
+                ? "block"
+                : "none";
+          }
+          if (depositMaintenance) {
+            depositMaintenance.style.display =
+              maintenance && verificationBlocked !== true && showApprovedPanel && showApprovedDeposit
                 ? "block"
                 : "none";
           }
@@ -2036,8 +2080,16 @@
           }
 
           setDepositFlowPanelUi({
-            showUnavail: onDepositStep && stepsDone && showApprovedDeposit && !paymentPathReady,
+            showUnavail:
+              !maintenance &&
+              verificationBlocked !== true &&
+              onDepositStep &&
+              stepsDone &&
+              showApprovedDeposit &&
+              !paymentPathReady,
             showNoDeposit: onDepositStep && stepsDone && !showApprovedDeposit,
+            showMaintenance:
+              maintenance && verificationBlocked !== true && onDepositStep && showApprovedDeposit,
             canPayInRail: canPay
           });
 
@@ -2050,6 +2102,7 @@
         if (paidPanel) paidPanel.classList.remove("show");
         if (gateNotice) gateNotice.style.display = "none";
         if (stripeUnavail) stripeUnavail.style.display = "none";
+        if (depositMaintenance) depositMaintenance.style.display = "none";
         if (payBtn) {
           payBtn.style.display = "";
           payBtn.style.opacity = "";
@@ -2057,7 +2110,12 @@
           payBtn.disabled = false;
         }
         setDepositWorkflowPayable(false);
-        setDepositFlowPanelUi({ showUnavail: false, showNoDeposit: false, canPayInRail: false });
+        setDepositFlowPanelUi({
+          showUnavail: false,
+          showNoDeposit: false,
+          showMaintenance: false,
+          canPayInRail: false
+        });
       }
 
       function syncPanels() {
@@ -2071,6 +2129,7 @@
         const hasDepositPaymentLink = !!getDepositPaymentLinkFromQuote(est);
         const needsDeposit = depositRequiredPositive(est);
         const offerCheckout = verification.state === "unpaid";
+        const schedulingCheckoutEnabled = !(est && est.scheduling_deposit_checkout_enabled === false);
         showUiState({
           approved,
           paid,
@@ -2079,7 +2138,8 @@
           workflowComplete,
           depositPaymentAvailable,
           hasDepositPaymentLink,
-          needsDeposit
+          needsDeposit,
+          schedulingCheckoutEnabled
         });
 
         if (typeof window.updatePublicWorkflowStepStates === "function") {
@@ -2160,6 +2220,11 @@
         }
 
         const quote = window.__mgPublicEstimateLast;
+        if (quote && quote.scheduling_deposit_checkout_enabled === false) {
+          throw new Error(
+            "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined."
+          );
+        }
         const paymentLink = getDepositPaymentLinkFromQuote(quote);
         if (paymentLink) {
           window.location.href = paymentLink;
