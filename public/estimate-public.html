@@ -1622,6 +1622,13 @@
           >
             No Initial Scheduling Payment is required for this project. Your acknowledgments are complete.
           </div>
+          <div
+            id="publicFlowDepositPending"
+            class="notice warn"
+            style="display:none;margin-top:12px;text-align:left;"
+          >
+            Payment verification is pending. Please contact your contractor before paying again.
+          </div>
           <p class="sub flow-optional-link-wrap">
             <a id="flowNavOptionalWorkDeposit" class="flow-optional-link" href="#">Optional: Request additional work</a>
           </p>
@@ -1814,9 +1821,11 @@
         return new URLSearchParams(window.location.search).get("token") || "";
       }
 
-      function getDepositPaidFlag(token) {
-        const params = new URLSearchParams(window.location.search);
-        return params.get("deposit") === "paid" || localStorage.getItem(`mg_deposit_paid_${token}`) === "true";
+      function serverDepositVerification() {
+        const estimate = window.__mgPublicEstimateLast || {};
+        const state = String(estimate.deposit_verification_state || "").trim().toLowerCase();
+        const message = String(estimate.deposit_verification_message || "").trim();
+        return { state, message };
       }
 
       function getStatusValue() {
@@ -1903,6 +1912,8 @@
       function showUiState({
         approved,
         paid,
+        verificationBlocked,
+        verificationMessage,
         workflowComplete,
         depositPaymentAvailable,
         hasDepositPaymentLink,
@@ -1923,6 +1934,7 @@
         const depositFlowNoDeposit = $("publicFlowDepositNoDeposit");
         const depositFlowPanel = $("publicFlowStepDeposit");
         const depositFlowLead = $("publicFlowDepositLead");
+        const depositFlowPending = $("publicFlowDepositPending");
         const maintenance = schedulingCheckoutEnabled === false;
         const maintenanceCopy =
           "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined.";
@@ -1930,7 +1942,12 @@
         const paymentPathReady =
           !maintenance && (depositPaymentAvailable === true || hasDepositPaymentLink === true);
         const canPay =
-          !maintenance && workflowComplete === true && needsDeposit === true && paymentPathReady;
+          !maintenance &&
+          verificationBlocked !== true &&
+          paid !== true &&
+          workflowComplete === true &&
+          needsDeposit === true &&
+          paymentPathReady;
         const flowStep = getPublicFlowStepForUi();
         const onDepositStep = flowStep === 4;
         const hideApprovedPanel = flowStep !== 1;
@@ -1977,10 +1994,24 @@
             } else if (showUnavail) {
               depositFlowLead.textContent =
                 "All review steps are complete. Online Initial Scheduling Payment is not available yet — please see the notice below.";
+            } else if (verificationBlocked) {
+              depositFlowLead.textContent =
+                verificationMessage ||
+                "Payment verification is pending. Please contact your contractor before paying again.";
             } else {
               depositFlowLead.textContent =
                 "All review steps are complete. Please reserve your project on our schedule by completing the Initial Scheduling Payment.";
             }
+          }
+        }
+
+        if (depositFlowPending) {
+          const showPending = verificationBlocked === true && onDepositStep;
+          depositFlowPending.style.display = showPending ? "block" : "none";
+          if (showPending) {
+            depositFlowPending.textContent =
+              verificationMessage ||
+              "Payment verification is pending. Please contact your contractor before paying again.";
           }
         }
 
@@ -2024,13 +2055,20 @@
           }
           if (stripeUnavail) {
             stripeUnavail.style.display =
-              !maintenance && showApprovedPanel && stepsDone && showApprovedDeposit && !paymentPathReady
+              !maintenance &&
+              verificationBlocked !== true &&
+              showApprovedPanel &&
+              stepsDone &&
+              showApprovedDeposit &&
+              !paymentPathReady
                 ? "block"
                 : "none";
           }
           if (depositMaintenance) {
             depositMaintenance.style.display =
-              maintenance && showApprovedPanel && showApprovedDeposit ? "block" : "none";
+              maintenance && verificationBlocked !== true && showApprovedPanel && showApprovedDeposit
+                ? "block"
+                : "none";
           }
           if (payBtn) {
             payBtn.style.display = "none";
@@ -2042,9 +2080,16 @@
           }
 
           setDepositFlowPanelUi({
-            showUnavail: onDepositStep && stepsDone && showApprovedDeposit && !paymentPathReady,
+            showUnavail:
+              !maintenance &&
+              verificationBlocked !== true &&
+              onDepositStep &&
+              stepsDone &&
+              showApprovedDeposit &&
+              !paymentPathReady,
             showNoDeposit: onDepositStep && stepsDone && !showApprovedDeposit,
-            showMaintenance: maintenance && onDepositStep && showApprovedDeposit,
+            showMaintenance:
+              maintenance && verificationBlocked !== true && onDepositStep && showApprovedDeposit,
             canPayInRail: canPay
           });
 
@@ -2074,19 +2119,22 @@
       }
 
       function syncPanels() {
-        const token = getTokenFromUrl();
         const status = getStatusValue();
         const approved = status === "accepted" || status === "approved";
-        const paid = token ? getDepositPaidFlag(token) : false;
+        const verification = serverDepositVerification();
+        const paid = verification.state === "paid";
         const est = window.__mgPublicEstimateLast;
         const workflowComplete = depositWorkflowComplete(est);
         const depositPaymentAvailable = est && est.deposit_payment_available === true;
         const hasDepositPaymentLink = !!getDepositPaymentLinkFromQuote(est);
         const needsDeposit = depositRequiredPositive(est);
+        const offerCheckout = verification.state === "unpaid";
         const schedulingCheckoutEnabled = !(est && est.scheduling_deposit_checkout_enabled === false);
         showUiState({
           approved,
           paid,
+          verificationBlocked: needsDeposit && !paid && !offerCheckout,
+          verificationMessage: verification.message,
           workflowComplete,
           depositPaymentAvailable,
           hasDepositPaymentLink,
@@ -2160,6 +2208,14 @@
         if (!depositWorkflowComplete(window.__mgPublicEstimateLast)) {
           throw new Error(
             "Complete all steps to proceed with project approval and payment."
+          );
+        }
+
+        const verification = serverDepositVerification();
+        if (verification.state !== "unpaid") {
+          throw new Error(
+            verification.message ||
+              "Payment verification is pending. Please contact your contractor before paying again."
           );
         }
 

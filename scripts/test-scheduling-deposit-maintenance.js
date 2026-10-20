@@ -101,6 +101,17 @@ globalThis.fetch = async (url, opts) => {
       },
     ]);
   }
+  if (entry.url.includes("/rest/v1/tenant_projects")) {
+    return jsonResponse(200, [
+      {
+        id: "project-maintenance",
+        tenant_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        quote_id: "quote-maintenance",
+        status: "signed",
+        deposit_paid: false,
+      },
+    ]);
+  }
   return jsonResponse(200, []);
 };
 
@@ -242,22 +253,20 @@ async function main() {
 
   setFlag("false");
   resetCalls();
-  blockFetch = true;
   const blockedFinalize = await finalizeDeposit.handler({
     httpMethod: "POST",
     headers: {},
     body: JSON.stringify({ sessionId: "cs_test_already_paid", public_token: "publictokMaintenance" }),
   });
   const blockedFinalizeBody = parse(blockedFinalize);
-  eq("maintenance finalize status", blockedFinalize.statusCode, 503);
-  eq("maintenance finalize code", blockedFinalizeBody.code, "scheduling_deposit_maintenance");
-  eq("maintenance finalize ok", blockedFinalizeBody.ok, false);
-  eq("maintenance finalize recorded", blockedFinalizeBody.recorded, false);
-  eq("maintenance finalize copy", blockedFinalizeBody.error, maintenance.MAINTENANCE_FINALIZE_COPY);
-  ok("maintenance finalize has no redirect", blockedFinalizeBody.redirect_url === undefined);
-  ok("maintenance finalize does not mark deposit paid", !String(blockedFinalize.body).includes("deposit=paid"));
-  eq("maintenance finalize makes no fetch", calls.length, 0);
-  eq("maintenance finalize sends no email", emailCalls, 0);
+  eq("closed finalize stays available", blockedFinalize.statusCode, 400);
+  eq("closed finalize uses verified unpaid result", blockedFinalizeBody.code, "stripe_not_paid");
+  ok("closed finalize is not the maintenance pause", blockedFinalizeBody.code !== "scheduling_deposit_maintenance");
+  ok("closed finalize has no redirect", blockedFinalizeBody.redirect_url === undefined);
+  ok("closed finalize does not mark deposit paid", !String(blockedFinalize.body).includes("deposit=paid"));
+  eq("closed finalize reads Stripe", stripeCalls().length, 1);
+  eq("closed finalize sends no email", emailCalls, 0);
+  eq("closed finalize does not patch quotes", calls.filter((c) => c.method === "PATCH").length, 0);
 
   const blockedCreateRes = await createSession.handler({
     httpMethod: "POST",
@@ -271,12 +280,12 @@ async function main() {
   const openFinalize = await finalizeDeposit.handler({
     httpMethod: "POST",
     headers: {},
-    body: JSON.stringify({ sessionId: "cs_test_maintenance_existing" }),
+    body: JSON.stringify({ sessionId: "cs_test_maintenance_existing", public_token: "publictokMaintenance" }),
   });
   const openFinalizeBody = parse(openFinalize);
   eq("open finalize still reads Stripe", stripeCalls().length, 1);
   eq("open finalize Stripe method", stripeCalls()[0].method, "GET");
-  eq("open finalize unpaid stays unpaid", openFinalizeBody.error, "Stripe session is not paid yet");
+  eq("open unpaid finalize stays unrecorded", openFinalizeBody.code, "stripe_not_paid");
   ok("open finalize is not maintenance", openFinalizeBody.code !== "scheduling_deposit_maintenance");
   eq("open unpaid finalize sends no email", emailCalls, 0);
   eq(
@@ -302,6 +311,7 @@ async function main() {
   eq("closed public checkout flag", closedPublic.body.estimate.scheduling_deposit_checkout_enabled, false);
   eq("closed public hides the external link", closedPublic.body.estimate.deposit_payment_link, null);
   eq("closed public reports deposit payment unavailable", closedPublic.body.estimate.deposit_payment_available, false);
+  eq("closed public still reports the unpaid verification state", closedPublic.body.estimate.deposit_verification_state, "unpaid");
   ok("closed public payload does not contain the external link", !JSON.stringify(closedPublic.body).includes(hiddenLink));
   eq("closed public does not call Stripe", stripeCalls().length, 0);
 
@@ -358,9 +368,11 @@ async function main() {
   const createHandler = createSrc.indexOf("exports.handler");
   const finalizeHandler = finalizeSrc.indexOf("exports.handler");
   ok(
-    "legacy finalize names the verified recorder it must not block",
+    "verified finalize is not paused by the maintenance flag",
     finalizeSrc.includes("record_verified_scheduling_deposit") &&
-      finalizeSrc.includes("already-paid Stripe session")
+      finalizeSrc.includes("already-paid Stripe session") &&
+      !finalizeSrc.includes("schedulingDepositCheckoutClosed") &&
+      !finalizeSrc.includes("function patchQuote")
   );
   ok(
     "create stops before Stripe key lookup",
@@ -368,18 +380,8 @@ async function main() {
       createSrc.indexOf("getStripeKey()", createHandler)
   );
   ok(
-    "finalize stops before Stripe key lookup",
-    finalizeSrc.indexOf("schedulingDepositCheckoutClosed()", finalizeHandler) <
-      finalizeSrc.indexOf("getStripeKey()", finalizeHandler)
-  );
-  ok(
-    "finalize stops before quote writes",
-    finalizeSrc.indexOf("schedulingDepositCheckoutClosed()", finalizeHandler) <
-      finalizeSrc.indexOf("patchQuote(", finalizeHandler)
-  );
-  ok(
-    "finalize stops before deposit email",
-    finalizeSrc.indexOf("schedulingDepositCheckoutClosed()", finalizeHandler) <
+    "verified finalize emails only a new applied credit",
+    finalizeSrc.indexOf('recorded.outcome === "applied_new"', finalizeHandler) <
       finalizeSrc.indexOf("runDepositPostAutomation(", finalizeHandler)
   );
 
@@ -400,7 +402,6 @@ async function main() {
     usingHelper.join("|"),
     [
       "netlify/functions/create-project-deposit-session.js",
-      "netlify/functions/finalize-project-deposit.js",
       "netlify/functions/get-public-estimate.js",
     ].join("|")
   );
