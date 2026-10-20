@@ -468,16 +468,8 @@
     return `mg_crq_submitted_${tok || ""}`;
   }
 
-  function publicDepositPaidFlag(token) {
-    const tok = String(token || getQueryParam("token") || "").trim();
-    if (!tok) return false;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("deposit") === "paid") return true;
-    try {
-      return localStorage.getItem(`mg_deposit_paid_${tok}`) === "true";
-    } catch (_e) {
-      return false;
-    }
+  function serverDepositVerificationState(estimate) {
+    return String(estimate?.deposit_verification_state || "").trim().toLowerCase();
   }
 
   function updatePublicWorkflowBadges(next) {
@@ -492,7 +484,6 @@
 
   function updatePublicWorkflowStepStates(next) {
     const estimate = next || window.__mgPublicEstimateLast || {};
-    const token = getQueryParam("token") || "";
     const urlStep = getPublicFlowStep();
     const step1Done = safe(estimate.accepted_at) !== "";
     const step2Done =
@@ -500,8 +491,9 @@
       safe(estimate.exclusions_acknowledged_at) !== "";
     const step3Done = safe(estimate.change_order_acknowledged_at) !== "";
     const needsDeposit = publicDepositRequired(estimate);
+    const verificationState = serverDepositVerificationState(estimate);
     const step4Done =
-      publicDepositPaidFlag(token) || (!needsDeposit && step1Done && step2Done && step3Done);
+      verificationState === "paid" || (!needsDeposit && step1Done && step2Done && step3Done);
     const doneByStep = [step1Done, step2Done, step3Done, step4Done];
 
     const statusCopy = {
@@ -561,6 +553,10 @@
     else depositState = "upcoming";
 
     setStepUi(4, { done: step4Done, state: depositState });
+    if (needsDeposit && step1Done && step2Done && step3Done && !step4Done && verificationState !== "unpaid") {
+      const pendingStatus = $("flowStepStatus4");
+      if (pendingStatus) pendingStatus.textContent = "Verification pending";
+    }
   }
 
   window.updatePublicWorkflowStepStates = updatePublicWorkflowStepStates;

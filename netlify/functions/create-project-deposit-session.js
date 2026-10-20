@@ -3,6 +3,7 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 const { getStripeKey } = require("./_lib/stripe");
+const { readSchedulingDeposit } = require("./_lib/verified-scheduling-deposit");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -151,6 +152,24 @@ exports.handler = async (event) => {
       return json(400, {
         error:
           "Initial Scheduling Payment is below the minimum allowed for card checkout ($0.50)."
+      });
+    }
+
+    const depositView = await readSchedulingDeposit(supabaseRequest, quote);
+    if (depositView.state === "paid") {
+      return json(409, {
+        ok: false,
+        code: "deposit_already_paid",
+        error: "Initial Scheduling Payment is already confirmed for this estimate."
+      });
+    }
+    if (depositView.state !== "unpaid") {
+      return json(409, {
+        ok: false,
+        code: "deposit_verification_pending",
+        error:
+          depositView.copy ||
+          "Payment verification is pending. Please contact your contractor before paying again."
       });
     }
 

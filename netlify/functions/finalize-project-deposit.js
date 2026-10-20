@@ -3,18 +3,25 @@ if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
 
-const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
 const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 const { getStripeKey } = require("./_lib/stripe");
+const {
+  preservedPaidAt,
+  publicDepositFields,
+  readSchedulingDeposit,
+  stripePaidAt,
+  validatePaidCheckoutSession,
+} = require("./_lib/verified-scheduling-deposit");
 
 function json(statusCode, body) {
   return {
     statusCode,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   };
 }
 
@@ -26,38 +33,58 @@ function parseBody(raw) {
   }
 }
 
-async function patchQuote({ supabaseUrl, serviceRoleKey, publicToken, tenantId, payload }) {
-  const tenantPart = tenantId
-    ? `&tenant_id=eq.${encodeURIComponent(String(tenantId))}`
-    : "";
-  const response = await fetch(
-    `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(publicToken)}${tenantPart}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify(payload)
-    }
-  );
+function failure(status, code, error) {
+  return json(status, { ok: false, code, error });
+}
 
-  const text = await response.text();
-  let rows = [];
+function rpcResult(data) {
+  if (Array.isArray(data)) return data[0] || null;
+  if (data && typeof data === "object") return data;
+  return null;
+}
+
+async function recordVerifiedSchedulingDeposit(args) {
+  const data = await supabaseRequest("rpc/record_verified_scheduling_deposit", {
+    method: "POST",
+    body: {
+      p_tenant_id: args.tenantId,
+      p_quote_id: args.quoteId,
+      p_project_id: args.projectId,
+      p_checkout_session_id: args.sessionId,
+      p_stripe_account_id: args.stripeAccountId,
+      p_currency: args.currency,
+      p_gross_amount: args.grossAmount,
+      p_paid_at: args.paidAt,
+    },
+  });
+  return rpcResult(data);
+}
+
+async function retrieveConnectSession(stripeSecretKey, connectAccountId, sessionId) {
+  const sessionUrl =
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}` +
+    "?expand[]=payment_intent";
+  const stripeRes = await fetch(sessionUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      "Stripe-Account": connectAccountId,
+    },
+  });
+  const stripeText = await stripeRes.text();
+  let session = {};
   try {
-    rows = text ? JSON.parse(text) : [];
+    session = stripeText ? JSON.parse(stripeText) : {};
   } catch {
-    rows = [];
+    session = {};
   }
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    text,
-    rows
-  };
+  if (!stripeRes.ok) {
+    return {
+      ok: false,
+      error: session?.error?.message || stripeText || "Unable to retrieve Stripe session",
+    };
+  }
+  return { ok: true, session };
 }
 
 exports.handler = async (event) => {
@@ -75,94 +102,18 @@ exports.handler = async (event) => {
 
     logStripeSecretDiagnostics(stripeSecretKey, "finalize-project-deposit");
 
-    let supabaseUrl;
-    let serviceRoleKey;
-    try {
-      ({ url: supabaseUrl, key: serviceRoleKey } = getSupabaseConfig());
-    } catch (_e) {
-      return json(500, { error: "Missing server configuration" });
-    }
-
     const body = parseBody(event.body);
     const sessionId = String(body.sessionId || body.session_id || "").trim();
-    if (!sessionId) {
-      return json(400, { error: "Missing sessionId" });
+    const suppliedToken = String(body.public_token || body.publicToken || "").trim();
+    if (!sessionId || !suppliedToken) {
+      return failure(400, "missing_session", "Missing sessionId or public token.");
     }
-
-    const bodyPublicToken = String(body.public_token || body.publicToken || "").trim();
-
-    let connectAccountId = "";
-    if (bodyPublicToken) {
-      try {
-        const qrows = await supabaseRequest(
-          `quotes?public_token=eq.${encodeURIComponent(bodyPublicToken)}&select=tenant_id&limit=1`
-        );
-        const tid = Array.isArray(qrows) && qrows[0] ? qrows[0].tenant_id : null;
-        if (tid) {
-          const trows = await supabaseRequest(
-            `tenants?id=eq.${encodeURIComponent(String(tid))}&select=stripe_account_id`
-          );
-          connectAccountId = String(
-            Array.isArray(trows) && trows[0] ? trows[0].stripe_account_id || "" : ""
-          ).trim();
-        }
-      } catch (_e) {
-        connectAccountId = "";
-      }
-    }
-
-    const sessionUrl = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`;
-    const baseHeaders = { Authorization: `Bearer ${stripeSecretKey}` };
-
-    let stripeRes = await fetch(sessionUrl, {
-      method: "GET",
-      headers: connectAccountId ? { ...baseHeaders, "Stripe-Account": connectAccountId } : baseHeaders,
-    });
-
-    if (!stripeRes.ok && connectAccountId) {
-      stripeRes = await fetch(sessionUrl, {
-        method: "GET",
-        headers: baseHeaders,
-      });
-    }
-
-    const stripeText = await stripeRes.text();
-    let session = {};
-    try {
-      session = stripeText ? JSON.parse(stripeText) : {};
-    } catch {
-      session = {};
-    }
-
-    if (!stripeRes.ok) {
-      return json(502, {
-        error: session?.error?.message || stripeText || "Unable to retrieve Stripe session",
-      });
-    }
-
-    const paid =
-      String(session.payment_status || "").toLowerCase() === "paid" ||
-      String(session.status || "").toLowerCase() === "complete";
-
-    if (!paid) {
-      return json(400, { error: "Stripe session is not paid yet" });
-    }
-
-    const publicToken =
-      session?.metadata?.public_token ||
-      session?.client_reference_id ||
-      "";
-
-    if (!publicToken) {
-      return json(400, { error: "Stripe session missing public_token metadata" });
-    }
-
-    const tenantIdFromSession = String(session?.metadata?.tenant_id || "").trim();
 
     let quoteRows;
     try {
       quoteRows = await supabaseRequest(
-        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at,client_name,client_email,project_name,title,currency,business_name,company_name&limit=2`
+        `quotes?public_token=eq.${encodeURIComponent(suppliedToken)}&tenant_id=not.is.null&select=id,tenant_id,public_token,deposit_required,deposit_paid,deposit_paid_at,deposit_paid_amount,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at,client_name,client_email,project_name,title,currency,business_name,company_name&limit=2`,
+        { method: "GET" }
       );
     } catch (err) {
       return json(502, { error: err.message || "Failed to read quote" });
@@ -176,67 +127,117 @@ exports.handler = async (event) => {
     }
 
     const quoteRow = quoteRows[0];
-    if (!quoteRow?.tenant_id) {
+    if (!quoteRow?.tenant_id || !quoteRow?.id) {
       return json(404, { error: "Quote not found for this payment." });
     }
-
-    if (
-      tenantIdFromSession &&
-      String(quoteRow.tenant_id) !== tenantIdFromSession
-    ) {
-      return json(403, { error: "Payment session does not match this quote." });
-    }
+    quoteRow.public_token = String(quoteRow.public_token || suppliedToken).trim();
 
     const gate = assertPublicDepositAllowed(quoteRow);
     if (!gate.ok) {
       return json(403, { error: gate.error });
     }
 
-    const quoteTenantId = quoteRow.tenant_id;
-
-    const paidAt = new Date().toISOString();
-    const paidAmount = Number(session.amount_total || 0) / 100;
-
-    const payloadVariants = [
-      {
-        deposit_paid_amount: paidAmount,
-        deposit_paid_at: paidAt,
-        stripe_checkout_session_id: session.id,
-        stripe_payment_status: "paid"
-      },
-      {
-        deposit_paid_amount: paidAmount,
-        deposit_paid_at: paidAt
-      },
-      {
-        deposit_paid_at: paidAt
-      }
-    ];
-
-    let updateOk = null;
-    let lastErrorText = "";
-
-    for (const payload of payloadVariants) {
-      const result = await patchQuote({
-        supabaseUrl,
-        serviceRoleKey,
-        publicToken,
-        tenantId: quoteTenantId,
-        payload
-      });
-
-      if (result.ok) {
-        updateOk = result;
-        break;
-      }
-
-      lastErrorText = result.text || `Supabase update failed (${result.status})`;
+    let connectAccountId = "";
+    try {
+      const tenantRows = await supabaseRequest(
+        `tenants?id=eq.${encodeURIComponent(String(quoteRow.tenant_id))}&select=stripe_account_id&limit=1`,
+        { method: "GET" }
+      );
+      connectAccountId = String(
+        Array.isArray(tenantRows) && tenantRows[0] ? tenantRows[0].stripe_account_id || "" : ""
+      ).trim();
+    } catch (err) {
+      return json(502, { error: err.message || "Failed to read Stripe account" });
+    }
+    if (!connectAccountId) {
+      return failure(
+        403,
+        "stripe_connect_required",
+        "Stripe Connect account is required to verify this payment."
+      );
     }
 
-    if (!updateOk) {
-      return json(500, {
-        error: lastErrorText || "Stripe payment confirmed, but quote update failed"
-      });
+    const retrieved = await retrieveConnectSession(stripeSecretKey, connectAccountId, sessionId);
+    if (!retrieved.ok) {
+      return json(502, { error: retrieved.error || "Unable to retrieve Stripe session" });
+    }
+
+    const verified = validatePaidCheckoutSession(retrieved.session, quoteRow, suppliedToken);
+    if (!verified.ok) {
+      return failure(verified.status, verified.code, verified.error);
+    }
+    const stripePaid = stripePaidAt(retrieved.session);
+    if (!stripePaid) {
+      return failure(
+        422,
+        "stripe_paid_at_missing",
+        "Stripe did not provide a payment timestamp. The deposit was not recorded."
+      );
+    }
+
+    const view = await readSchedulingDeposit(supabaseRequest, quoteRow);
+    if (view.state === "unavailable") {
+      return failure(503, "deposit_verification_unavailable", view.copy);
+    }
+    if (!view.project?.id) {
+      return failure(
+        409,
+        "deposit_project_unresolved",
+        "This estimate does not have one matching project to receive the scheduling payment."
+      );
+    }
+
+    const priorPaidAt = preservedPaidAt(quoteRow);
+    const rpcArgs = {
+      tenantId: quoteRow.tenant_id,
+      quoteId: quoteRow.id,
+      projectId: view.project.id,
+      sessionId,
+      stripeAccountId: connectAccountId,
+      currency: "usd",
+      grossAmount: verified.grossAmount,
+      paidAt: stripePaid,
+    };
+    let recorded;
+    try {
+      recorded = await recordVerifiedSchedulingDeposit(rpcArgs);
+    } catch (rpcErr) {
+      const duplicate =
+        Number(rpcErr?.status) === 409 ||
+        /23505|duplicate key/i.test(String(rpcErr?.message || ""));
+      if (!duplicate) {
+        return failure(
+          500,
+          "deposit_ledger_failed",
+          "Stripe payment was verified, but the scheduling deposit was not recorded. Do not pay again."
+        );
+      }
+      try {
+        recorded = await recordVerifiedSchedulingDeposit(rpcArgs);
+      } catch (_retryErr) {
+        return failure(
+          500,
+          "deposit_ledger_failed",
+          "Stripe payment was verified, but the scheduling deposit was not recorded. Do not pay again."
+        );
+      }
+    }
+    if (!recorded || recorded.ok !== true) {
+      return failure(
+        409,
+        recorded?.code || "deposit_conflict",
+        "This scheduling payment could not be applied. Do not pay again."
+      );
+    }
+    if (recorded.outcome === "needs_review") {
+      return failure(
+        409,
+        "deposit_needs_review",
+        "This additional scheduling payment was kept for owner review. It was not credited again. Do not pay again."
+      );
+    }
+    if (recorded.outcome !== "applied_new" && recorded.outcome !== "already_recorded") {
+      return failure(500, "deposit_ledger_failed", "Scheduling deposit result was not recognized.");
     }
 
     const siteUrl = (
@@ -246,45 +247,47 @@ exports.handler = async (event) => {
       ""
     ).replace(/\/+$/, "");
 
-    let tenant = { id: String(quoteTenantId) };
-    try {
-      const td = await loadTenantDisplayForTenantId(quoteTenantId);
-      tenant = { id: String(quoteTenantId), ...td };
-    } catch (tenantErr) {
-      console.error(
-        "[finalize-project-deposit] tenant branding load",
-        tenantErr?.message || tenantErr
-      );
+    if (recorded.outcome === "applied_new" && !priorPaidAt) {
+      let tenant = { id: String(quoteRow.tenant_id) };
+      try {
+        const td = await loadTenantDisplayForTenantId(quoteRow.tenant_id);
+        tenant = { id: String(quoteRow.tenant_id), ...td };
+      } catch (tenantErr) {
+        console.error(
+          "[finalize-project-deposit] tenant branding load",
+          tenantErr?.message || tenantErr
+        );
+      }
+      try {
+        await runDepositPostAutomation({
+          quote: quoteRow,
+          tenant,
+          payment: {
+            amount: verified.grossAmount,
+            currency: "usd",
+            paidAt: stripePaid,
+            stripeCheckoutSessionId: retrieved.session.id,
+            publicToken: suppliedToken,
+          },
+        });
+      } catch (autoErr) {
+        console.error(
+          "[finalize-project-deposit] runDepositPostAutomation",
+          autoErr?.message || autoErr
+        );
+      }
     }
 
-    const payment = {
-      amount: paidAmount,
-      currency: String(quoteRow.currency || session.currency || "usd"),
-      paidAt,
-      stripeCheckoutSessionId: session.id,
-      publicToken
-    };
-
-    try {
-      await runDepositPostAutomation({
-        quote: quoteRow,
-        tenant,
-        payment
-      });
-    } catch (autoErr) {
-      console.error(
-        "[finalize-project-deposit] runDepositPostAutomation",
-        autoErr?.message || autoErr
-      );
-    }
-
+    const synced = publicDepositFields({ state: "paid", copy: "" });
     return json(200, {
       ok: true,
-      public_token: publicToken,
-      paid_amount: paidAmount,
-      redirect_url: `${siteUrl}/estimate-public.html?token=${encodeURIComponent(publicToken)}&deposit=paid`
+      public_token: suppliedToken,
+      paid_amount: verified.grossAmount,
+      replay: recorded.outcome !== "applied_new",
+      deposit_verification_state: synced.deposit_verification_state,
+      redirect_url: `${siteUrl}/estimate-public.html?token=${encodeURIComponent(suppliedToken)}`,
     });
   } catch (err) {
-    return json(500, { error: err.message || "Server error" });
+    return json(500, { ok: false, error: err.message || "Server error" });
   }
 };

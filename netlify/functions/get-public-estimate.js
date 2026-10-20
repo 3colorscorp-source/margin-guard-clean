@@ -5,6 +5,10 @@ const {
   publicAreasFromBreakdown,
 } = require("./_lib/labor-area-breakdown");
 const { scrubPublicPayload, sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
+const {
+  publicDepositFields,
+  readSchedulingDeposit,
+} = require("./_lib/verified-scheduling-deposit");
 
 function json(statusCode, body) {
   return {
@@ -255,6 +259,23 @@ exports.handler = async (event) => {
         !!ownerSettings?.deposit_payment_link || stripeDepositCheckoutAvailable;
     }
 
+    let depositVerification = publicDepositFields({
+      state: "unavailable",
+      copy: "Payment status could not be verified. Please refresh or contact your contractor before paying again.",
+    });
+    if (row.id && row.tenant_id) {
+      try {
+        depositVerification = publicDepositFields(
+          await readSchedulingDeposit(supabaseRequest, row)
+        );
+      } catch (_depositErr) {
+        depositVerification = publicDepositFields({
+          state: "unavailable",
+          copy: "Payment status could not be verified. Please refresh or contact your contractor before paying again.",
+        });
+      }
+    }
+
     const resolvedBusinessName = pickFirst(
       skipHeaderPlaceholderName(td ? td.branding_business_name : ""),
       skipHeaderPlaceholderName(td ? td.business_name : ""),
@@ -292,6 +313,8 @@ exports.handler = async (event) => {
         logo_url: tenantLogoUrl,
         deposit_payment_available,
         deposit_payment_link: ownerSettings?.deposit_payment_link || null,
+        deposit_verification_state: depositVerification.deposit_verification_state,
+        deposit_verification_message: depositVerification.deposit_verification_message,
         items: [],
         labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown)
       }))
