@@ -1,19 +1,18 @@
 /**
- * Server switch for scheduling-deposit maintenance.
- * Absent or any value other than false keeps the current checkout behavior.
- * false stops new scheduling checkout, hides the public deposit link, and
- * pauses legacy finalize writes. It does not apply to invoice checkout or
- * other payment functions.
+ * Server switch for native Stripe scheduling Checkout.
+ * Absent or any value other than false keeps Checkout Session creation open.
+ * false stops new scheduling Checkout Sessions only. It does not hide a
+ * tenant's HTTPS deposit_payment_link, and it does not apply to invoice
+ * checkout or other payment functions.
  *
  * This switch cannot invalidate a Stripe Checkout Session that was already
- * created, or an external payment URL that was already shared outside the
- * public estimate response. Those remain payable until they expire or are
- * handled at the provider.
+ * created. An already shared external payment URL also remains payable at
+ * the provider until it expires or is handled there.
  *
  * The legacy finalize pause must not be wrapped around the verified
  * scheduling-deposit recorder. While checkout stays closed, that recorder
- * still accepts an already-paid Stripe session. New Checkout Sessions and
- * the public external link stay blocked.
+ * still accepts an already-paid Stripe session. New Checkout Sessions stay
+ * blocked. Tenant external payment links stay available.
  */
 "use strict";
 

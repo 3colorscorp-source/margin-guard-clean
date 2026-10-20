@@ -1935,14 +1935,15 @@
         const depositFlowPanel = $("publicFlowStepDeposit");
         const depositFlowLead = $("publicFlowDepositLead");
         const depositFlowPending = $("publicFlowDepositPending");
-        const maintenance = schedulingCheckoutEnabled === false;
+        const nativeCheckoutClosed = schedulingCheckoutEnabled === false;
+        const externalLinkReady = hasDepositPaymentLink === true;
+        const maintenance = nativeCheckoutClosed && !externalLinkReady;
         const maintenanceCopy =
           "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined.";
 
         const paymentPathReady =
-          !maintenance && (depositPaymentAvailable === true || hasDepositPaymentLink === true);
+          externalLinkReady || (!nativeCheckoutClosed && depositPaymentAvailable === true);
         const canPay =
-          !maintenance &&
           verificationBlocked !== true &&
           paid !== true &&
           workflowComplete === true &&
@@ -2220,15 +2221,15 @@
         }
 
         const quote = window.__mgPublicEstimateLast;
-        if (quote && quote.scheduling_deposit_checkout_enabled === false) {
-          throw new Error(
-            "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined."
-          );
-        }
         const paymentLink = getDepositPaymentLinkFromQuote(quote);
         if (paymentLink) {
           window.location.href = paymentLink;
           return;
+        }
+        if (quote && quote.scheduling_deposit_checkout_enabled === false) {
+          throw new Error(
+            "Initial Scheduling Payment is temporarily unavailable. Please contact your contractor. This does not mean a payment was missed or declined."
+          );
         }
 
         const btn = $("payDepositBtn");

@@ -78,10 +78,15 @@ function loadPublicEstimateModule() {
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const TENANT_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const TOKEN_A = "publictokA123456";
 const TOKEN_B = "publictokB123456";
+const TOKEN_C = "publictokC123456";
+const TOKEN_HTTP = "publictokHttp12345";
 const LINK_A = "https://square.link/u/tenant-a-checkout";
-const LINK_B = "https://paypal.me/tenant-b";
+const LINK_B = "https://quickbooks.intuit.com/payments/tenant-b";
+const LINK_C = "https://paypal.me/tenant-c";
+const LINK_HTTP = "http://pay.example.test/insecure";
 
 function quoteRow(tenantId, token) {
   return {
@@ -125,19 +130,27 @@ function extractPath(url) {
 async function withMockedPublicEstimateFetch(fn) {
   const prev = globalThis.fetch;
   const ownerSettingsQueries = [];
+  let lastPublicToken = "";
   globalThis.fetch = async (url) => {
     const restPath = extractPath(url);
     if (restPath.startsWith("quotes?public_token=eq.")) {
       const token = decodeURIComponent(restPath.split("public_token=eq.")[1].split("&")[0]);
+      lastPublicToken = token;
       if (token === TOKEN_A) return jsonOk([quoteRow(TENANT_A, TOKEN_A)]);
       if (token === TOKEN_B) return jsonOk([quoteRow(TENANT_B, TOKEN_B)]);
+      if (token === TOKEN_C) return jsonOk([quoteRow(TENANT_C, TOKEN_C)]);
+      if (token === TOKEN_HTTP) return jsonOk([quoteRow(TENANT_A, TOKEN_HTTP)]);
       return jsonOk([]);
     }
     if (restPath.startsWith("owner_settings?tenant_id=eq.")) {
       const tid = decodeURIComponent(restPath.split("tenant_id=eq.")[1].split("&")[0]);
       ownerSettingsQueries.push(tid);
-      if (tid === TENANT_A) return jsonOk([{ deposit_payment_link: LINK_A }]);
+      if (tid === TENANT_A) {
+        const link = lastPublicToken === TOKEN_HTTP ? LINK_HTTP : LINK_A;
+        return jsonOk([{ deposit_payment_link: link }]);
+      }
       if (tid === TENANT_B) return jsonOk([{ deposit_payment_link: LINK_B }]);
+      if (tid === TENANT_C) return jsonOk([{ deposit_payment_link: LINK_C }]);
       return jsonOk([{ deposit_payment_link: "https://evil.example/wrong-tenant" }]);
     }
     if (restPath.startsWith("tenants?")) {
@@ -277,9 +290,10 @@ async function main() {
     )
   );
   ok(
-    "get-public-estimate still returns the tenant deposit link when checkout is open",
-    /ownerSettings\?\.deposit_payment_link \|\| null/.test(pubEstSrc) &&
-      /schedulingDepositCheckoutEnabled/.test(pubEstSrc)
+    "get-public-estimate returns the tenant HTTPS link without the maintenance flag",
+    /deposit_payment_link:\s*externalPaymentLink/.test(pubEstSrc) &&
+      /publicHttpsDepositLink\(/.test(pubEstSrc) &&
+      !/deposit_payment_link:\s*schedulingDepositCheckoutEnabled/.test(pubEstSrc)
   );
 
   await withMockedPublicEstimateFetch(async (queries) => {
@@ -299,9 +313,60 @@ async function main() {
     });
     const bodyB = parse(resB);
     eq("public estimate B status 200", resB.statusCode, 200);
-    eq("public estimate B returns tenant B link", bodyB.estimate?.deposit_payment_link, LINK_B);
+    eq("public estimate B returns tenant B QuickBooks link", bodyB.estimate?.deposit_payment_link, LINK_B);
     ok("public estimate B did not receive tenant A link", bodyB.estimate?.deposit_payment_link !== LINK_A);
+    ok("public estimate B did not receive tenant C link", bodyB.estimate?.deposit_payment_link !== LINK_C);
+
+    const resC = await handler({
+      httpMethod: "GET",
+      queryStringParameters: { token: TOKEN_C },
+    });
+    const bodyC = parse(resC);
+    eq("public estimate C status 200", resC.statusCode, 200);
+    eq("public estimate C returns tenant C PayPal link", bodyC.estimate?.deposit_payment_link, LINK_C);
+    ok("public estimate C did not receive tenant A link", bodyC.estimate?.deposit_payment_link !== LINK_A);
+    ok("public estimate C did not receive tenant B link", bodyC.estimate?.deposit_payment_link !== LINK_B);
+    ok("public estimate C queried owner_settings for tenant C", queries.includes(TENANT_C));
+
+    const resHttp = await handler({
+      httpMethod: "GET",
+      queryStringParameters: { token: TOKEN_HTTP },
+    });
+    const bodyHttp = parse(resHttp);
+    eq("public estimate rejects an http deposit link", bodyHttp.estimate?.deposit_payment_link, null);
   });
+
+  const prevFlag = process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED;
+  process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED = "false";
+  try {
+    await withMockedPublicEstimateFetch(async () => {
+      const { handler } = loadPublicEstimateModule();
+      const closedA = parse(await handler({
+        httpMethod: "GET",
+        queryStringParameters: { token: TOKEN_A },
+      }));
+      const closedB = parse(await handler({
+        httpMethod: "GET",
+        queryStringParameters: { token: TOKEN_B },
+      }));
+      const closedC = parse(await handler({
+        httpMethod: "GET",
+        queryStringParameters: { token: TOKEN_C },
+      }));
+      eq("maintenance still returns tenant A Square link", closedA.estimate?.deposit_payment_link, LINK_A);
+      eq("maintenance still returns tenant B QuickBooks link", closedB.estimate?.deposit_payment_link, LINK_B);
+      eq("maintenance still returns tenant C PayPal link", closedC.estimate?.deposit_payment_link, LINK_C);
+      eq("maintenance keeps native checkout closed for tenant A", closedA.estimate?.scheduling_deposit_checkout_enabled, false);
+      eq("maintenance keeps native checkout closed for tenant B", closedB.estimate?.scheduling_deposit_checkout_enabled, false);
+      eq("maintenance keeps native checkout closed for tenant C", closedC.estimate?.scheduling_deposit_checkout_enabled, false);
+      ok("maintenance Square link did not cross to QuickBooks", closedA.estimate?.deposit_payment_link !== LINK_B);
+      ok("maintenance QuickBooks link did not cross to PayPal", closedB.estimate?.deposit_payment_link !== LINK_C);
+      ok("maintenance PayPal link did not cross to Square", closedC.estimate?.deposit_payment_link !== LINK_A);
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED;
+    else process.env.SCHEDULING_DEPOSIT_CHECKOUT_ENABLED = prevFlag;
+  }
 
   console.log("\n" + passed + " passed");
 }

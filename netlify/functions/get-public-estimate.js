@@ -19,6 +19,23 @@ function json(statusCode, body) {
   };
 }
 
+const DEPOSIT_PAYMENT_LINK_MAX_CHARS = 2000;
+
+/** Tenant Business Settings link. HTTPS only. Maintenance does not apply. */
+function publicHttpsDepositLink(raw) {
+  if (raw == null) return null;
+  const value = String(raw).trim();
+  if (!value || value.length > DEPOSIT_PAYMENT_LINK_MAX_CHARS) return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (_err) {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  return value;
+}
+
 /** Public columns returned to the browser (no ids). */
 const QUOTE_PUBLIC_KEYS = [
   "business_name",
@@ -216,6 +233,7 @@ exports.handler = async (event) => {
 
     let deposit_payment_available = false;
     let ownerSettings = null;
+    let stripeDepositCheckoutAvailable = false;
 
     if (tenantId) {
       try {
@@ -242,7 +260,6 @@ exports.handler = async (event) => {
         ownerSettings = null;
       }
 
-      let stripeDepositCheckoutAvailable = false;
       try {
         const tenantStripeRows = await supabaseRequest(
           `tenants?id=eq.${encodeURIComponent(String(tenantId))}&select=stripe_account_id,stripe_charges_enabled&limit=1`
@@ -255,9 +272,6 @@ exports.handler = async (event) => {
       } catch (_e4) {
         stripeDepositCheckoutAvailable = false;
       }
-
-      deposit_payment_available =
-        !!ownerSettings?.deposit_payment_link || stripeDepositCheckoutAvailable;
     }
 
     let depositVerification = publicDepositFields({
@@ -277,10 +291,11 @@ exports.handler = async (event) => {
       }
     }
 
+    const externalPaymentLink = publicHttpsDepositLink(ownerSettings && ownerSettings.deposit_payment_link);
     const schedulingDepositCheckoutEnabled = !schedulingDepositCheckoutClosed();
-    if (!schedulingDepositCheckoutEnabled) {
-      deposit_payment_available = false;
-    }
+    deposit_payment_available =
+      !!externalPaymentLink ||
+      (schedulingDepositCheckoutEnabled && stripeDepositCheckoutAvailable);
 
     const resolvedBusinessName = pickFirst(
       skipHeaderPlaceholderName(td ? td.branding_business_name : ""),
@@ -318,9 +333,7 @@ exports.handler = async (event) => {
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
         deposit_payment_available,
-        deposit_payment_link: schedulingDepositCheckoutEnabled
-          ? ownerSettings?.deposit_payment_link || null
-          : null,
+        deposit_payment_link: externalPaymentLink,
         scheduling_deposit_checkout_enabled: schedulingDepositCheckoutEnabled,
         deposit_verification_state: depositVerification.deposit_verification_state,
         deposit_verification_message: depositVerification.deposit_verification_message,
