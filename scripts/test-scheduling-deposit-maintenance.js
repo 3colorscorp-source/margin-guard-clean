@@ -21,6 +21,7 @@ delete process.env.STRIPE_PLATFORM_SECRET_KEY;
 
 const calls = [];
 let blockFetch = false;
+let ownerDepositLink = "https://pay.example.test/scheduling";
 
 function jsonResponse(status, body) {
   return {
@@ -89,7 +90,7 @@ globalThis.fetch = async (url, opts) => {
     ]);
   }
   if (entry.url.includes("/rest/v1/owner_settings")) {
-    return jsonResponse(200, [{ deposit_payment_link: "https://pay.example.test/scheduling" }]);
+    return jsonResponse(200, [{ deposit_payment_link: ownerDepositLink }]);
   }
   if (entry.url.includes("/rest/v1/tenants")) {
     return jsonResponse(200, [
@@ -305,24 +306,50 @@ async function main() {
   }
 
   const hiddenLink = "https://pay.example.test/scheduling";
+  ownerDepositLink = hiddenLink;
   setFlag("false");
   const closedPublic = await publicEstimate();
   eq("closed public status", closedPublic.status, 200);
   eq("closed public checkout flag", closedPublic.body.estimate.scheduling_deposit_checkout_enabled, false);
-  eq("closed public hides the external link", closedPublic.body.estimate.deposit_payment_link, null);
-  eq("closed public reports deposit payment unavailable", closedPublic.body.estimate.deposit_payment_available, false);
+  eq("closed public still returns the external link", closedPublic.body.estimate.deposit_payment_link, hiddenLink);
+  eq("closed public keeps the external payment path", closedPublic.body.estimate.deposit_payment_available, true);
   eq("closed public still reports the unpaid verification state", closedPublic.body.estimate.deposit_verification_state, "unpaid");
-  ok("closed public payload does not contain the external link", !JSON.stringify(closedPublic.body).includes(hiddenLink));
+  ok("closed public payload contains the external link", JSON.stringify(closedPublic.body).includes(hiddenLink));
   eq("closed public does not call Stripe", stripeCalls().length, 0);
 
   setFlag(" FALSE ");
   const trimmedClosedPublic = await publicEstimate();
-  eq("trimmed false hides the external link", trimmedClosedPublic.body.estimate.deposit_payment_link, null);
-  eq("trimmed false reports deposit payment unavailable", trimmedClosedPublic.body.estimate.deposit_payment_available, false);
+  eq("trimmed false still returns the external link", trimmedClosedPublic.body.estimate.deposit_payment_link, hiddenLink);
+  eq("trimmed false keeps the external payment path", trimmedClosedPublic.body.estimate.deposit_payment_available, true);
   ok(
-    "trimmed false payload does not contain the external link",
-    !JSON.stringify(trimmedClosedPublic.body).includes(hiddenLink)
+    "trimmed false payload contains the external link",
+    JSON.stringify(trimmedClosedPublic.body).includes(hiddenLink)
   );
+
+  ownerDepositLink = null;
+  setFlag("false");
+  const closedWithoutLink = await publicEstimate();
+  eq("closed without external link returns null", closedWithoutLink.body.estimate.deposit_payment_link, null);
+  eq("closed without external link reports payment unavailable", closedWithoutLink.body.estimate.deposit_payment_available, false);
+  eq(
+    "closed without external link keeps native checkout disabled",
+    closedWithoutLink.body.estimate.scheduling_deposit_checkout_enabled,
+    false
+  );
+  eq("closed without external link does not call Stripe", stripeCalls().length, 0);
+
+  ownerDepositLink = "http://pay.example.test/insecure";
+  setFlag("false");
+  const closedHttp = await publicEstimate();
+  eq("closed http link is not returned", closedHttp.body.estimate.deposit_payment_link, null);
+  eq("closed http link does not open a payment path", closedHttp.body.estimate.deposit_payment_available, false);
+
+  setFlag(undefined);
+  const openHttp = await publicEstimate();
+  eq("open http link is not returned", openHttp.body.estimate.deposit_payment_link, null);
+  eq("open http link still allows native stripe availability", openHttp.body.estimate.deposit_payment_available, true);
+  eq("open http link leaves native checkout enabled", openHttp.body.estimate.scheduling_deposit_checkout_enabled, true);
+  ownerDepositLink = hiddenLink;
 
   setFlag(undefined);
   const openPublic = await publicEstimate();
@@ -351,17 +378,30 @@ async function main() {
   const start = html.indexOf("async function startDepositCheckout()");
   const stripeCall = html.indexOf('fetch("/.netlify/functions/create-project-deposit-session"', start);
   const slice = html.slice(start, stripeCall);
+  const unpaidCheck = slice.indexOf('verification.state !== "unpaid"');
   const flagCheck = slice.indexOf("scheduling_deposit_checkout_enabled === false");
   const linkLookup = slice.indexOf("getDepositPaymentLinkFromQuote(quote)");
   ok("public checkout checks maintenance", flagCheck >= 0);
-  ok("maintenance check is before the external link", flagCheck < linkLookup);
+  ok("verification blocks payment before the external link", unpaidCheck >= 0 && unpaidCheck < linkLookup);
+  ok("external link is used before native checkout maintenance", linkLookup < flagCheck);
   ok("external link redirect remains before Stripe", slice.includes("window.location.href = paymentLink"));
   ok("external link still returns before Stripe", slice.includes("return"));
+  ok("opening an external link does not mark the deposit paid", !slice.includes("deposit_paid"));
   ok("maintenance slice does not call checkout", !slice.includes("create-project-deposit-session"));
+  ok(
+    "paid and pending states stay ahead of offering payment",
+    html.indexOf("if (paid)") < html.indexOf("setDepositWorkflowPayable(canPay)") &&
+      html.includes("verificationBlocked !== true") &&
+      html.includes("paid !== true")
+  );
   ok("public copy says temporarily unavailable", html.includes("temporarily unavailable"));
   ok("public copy does not claim a missed payment", html.includes("does not mean a payment was missed"));
   ok("paid local state still says payment received", html.includes("Initial Scheduling Payment received. Project scheduling reserved."));
   ok("page does not read the server env flag", !html.includes("SCHEDULING_DEPOSIT_CHECKOUT_ENABLED"));
+  ok(
+    "maintenance notice is only for native checkout without an external link",
+    html.includes("const maintenance = nativeCheckoutClosed && !externalLinkReady")
+  );
 
   const createSrc = read("netlify/functions/create-project-deposit-session.js");
   const finalizeSrc = read("netlify/functions/finalize-project-deposit.js");
