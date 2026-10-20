@@ -276,7 +276,11 @@ async function main() {
       pubEstSrc
     )
   );
-  ok("get-public-estimate still returns deposit_payment_link", /deposit_payment_link: ownerSettings\?\.deposit_payment_link/.test(pubEstSrc));
+  ok(
+    "get-public-estimate still returns the tenant deposit link when checkout is open",
+    /ownerSettings\?\.deposit_payment_link \|\| null/.test(pubEstSrc) &&
+      /schedulingDepositCheckoutEnabled/.test(pubEstSrc)
+  );
 
   await withMockedPublicEstimateFetch(async (queries) => {
     const { handler } = loadPublicEstimateModule();

@@ -295,17 +295,47 @@ async function main() {
     return { status: res.statusCode, body: parse(res) };
   }
 
+  const hiddenLink = "https://pay.example.test/scheduling";
   setFlag("false");
   const closedPublic = await publicEstimate();
   eq("closed public status", closedPublic.status, 200);
   eq("closed public checkout flag", closedPublic.body.estimate.scheduling_deposit_checkout_enabled, false);
-  eq("closed public still returns external link", closedPublic.body.estimate.deposit_payment_link, "https://pay.example.test/scheduling");
+  eq("closed public hides the external link", closedPublic.body.estimate.deposit_payment_link, null);
+  eq("closed public reports deposit payment unavailable", closedPublic.body.estimate.deposit_payment_available, false);
+  ok("closed public payload does not contain the external link", !JSON.stringify(closedPublic.body).includes(hiddenLink));
   eq("closed public does not call Stripe", stripeCalls().length, 0);
+
+  setFlag(" FALSE ");
+  const trimmedClosedPublic = await publicEstimate();
+  eq("trimmed false hides the external link", trimmedClosedPublic.body.estimate.deposit_payment_link, null);
+  eq("trimmed false reports deposit payment unavailable", trimmedClosedPublic.body.estimate.deposit_payment_available, false);
+  ok(
+    "trimmed false payload does not contain the external link",
+    !JSON.stringify(trimmedClosedPublic.body).includes(hiddenLink)
+  );
 
   setFlag(undefined);
   const openPublic = await publicEstimate();
   eq("open public checkout flag", openPublic.body.estimate.scheduling_deposit_checkout_enabled, true);
-  eq("open public still returns external link", openPublic.body.estimate.deposit_payment_link, "https://pay.example.test/scheduling");
+  eq("open public still returns external link", openPublic.body.estimate.deposit_payment_link, hiddenLink);
+  eq("open public still reports a payment path", openPublic.body.estimate.deposit_payment_available, true);
+
+  setFlag("true");
+  const enabledPublic = await publicEstimate();
+  eq("enabled public checkout flag", enabledPublic.body.estimate.scheduling_deposit_checkout_enabled, true);
+  eq("enabled public still returns external link", enabledPublic.body.estimate.deposit_payment_link, hiddenLink);
+  eq("enabled public still reports a payment path", enabledPublic.body.estimate.deposit_payment_available, true);
+
+  const helperSrc = read("netlify/functions/_lib/scheduling-deposit-maintenance.js");
+  ok(
+    "helper documents that an existing Checkout Session stays payable",
+    helperSrc.includes("Stripe Checkout Session that was already") &&
+      helperSrc.includes("already shared")
+  );
+  ok(
+    "helper keeps verified reconciliation available while checkout is closed",
+    helperSrc.includes("verified") && helperSrc.includes("already-paid Stripe session")
+  );
 
   const html = read("public/estimate-public.html");
   const start = html.indexOf("async function startDepositCheckout()");
@@ -327,6 +357,11 @@ async function main() {
   const finalizeSrc = read("netlify/functions/finalize-project-deposit.js");
   const createHandler = createSrc.indexOf("exports.handler");
   const finalizeHandler = finalizeSrc.indexOf("exports.handler");
+  ok(
+    "legacy finalize names the verified recorder it must not block",
+    finalizeSrc.includes("record_verified_scheduling_deposit") &&
+      finalizeSrc.includes("already-paid Stripe session")
+  );
   ok(
     "create stops before Stripe key lookup",
     createSrc.indexOf("schedulingDepositCheckoutClosed()", createHandler) <

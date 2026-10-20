@@ -70,6 +70,9 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
+    // Legacy partial-write pause only. Do not place this return in front of
+    // record_verified_scheduling_deposit: an already-paid Stripe session must
+    // stay reconcilable while new checkout and the public link stay closed.
     if (schedulingDepositCheckoutClosed()) {
       return json(503, {
         ok: false,
