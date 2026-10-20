@@ -175,14 +175,71 @@
 
   function propertyLines(property) {
     if (!property) return "—";
-    var parts = [
-      property.address_line1,
-      property.address_line2,
-      [property.city, property.state, property.postal_code].filter(Boolean).join(", "),
-    ].filter(Boolean);
+    var api = window.MarginGuardProjectLocation;
+    var parts =
+      api && typeof api.formatPropertyDisplay === "function"
+        ? api.formatPropertyDisplay(property)
+        : [
+            property.address_line1,
+            property.address_line2,
+            [property.city, property.state, property.postal_code].filter(Boolean).join(", "),
+          ].filter(Boolean);
     if (!parts.length && property.quote_project_address) parts.push(property.quote_project_address);
     if (!parts.length && property.quote_job_site) parts.push(property.quote_job_site);
     return parts.length ? escapeHtml(parts.join("\n")).replace(/\n/g, "<br>") : "—";
+  }
+
+  function propertyFieldRows(property) {
+    var src = property || {};
+    var line1 = String(src.address_line1 || "").trim();
+    var line2 = String(src.address_line2 || "").trim();
+    var city = String(src.city || "").trim();
+    var state = String(src.state || "").trim();
+    var zip = String(src.postal_code || src.zip || "").trim();
+    if (!line1 && !line2 && !city && !state && !zip) {
+      var api = window.MarginGuardProjectLocation;
+      var parsed =
+        api && typeof api.parseCommaProjectAddress === "function"
+          ? api.parseCommaProjectAddress(src.quote_project_address || src.quote_job_site || "")
+          : null;
+      if (parsed) {
+        line1 = parsed.street;
+        city = parsed.city;
+        state = parsed.state;
+        zip = parsed.zip;
+      } else {
+        line1 = String(src.quote_project_address || src.quote_job_site || "").trim();
+      }
+    }
+    return { line1: line1, line2: line2, city: city, state: state, zip: zip };
+  }
+
+  function propertyGridHtml(property) {
+    var parts = propertyFieldRows(property);
+    var street = [parts.line1, parts.line2].filter(Boolean).join(", ");
+    if (!street && !parts.city && !parts.state && !parts.zip) {
+      return (
+        '<div class="cs-kv" style="grid-column:1/-1"><span class="k">Property</span><span class="v">' +
+        propertyLines(property) +
+        "</span></div>"
+      );
+    }
+    return [
+      ["Street address", street],
+      ["City", parts.city],
+      ["State", parts.state],
+      ["ZIP code", parts.zip],
+    ]
+      .map(function (row) {
+        return (
+          '<div class="cs-kv"><span class="k">' +
+          row[0] +
+          '</span><span class="v">' +
+          text(row[1]) +
+          "</span></div>"
+        );
+      })
+      .join("");
   }
 
   function renderNotices(legal) {
@@ -693,9 +750,8 @@
       '<div class="cs-kv"><span class="k">Project</span><span class="v">' +
       text(project.name) +
       "</span></div>" +
-      '<div class="cs-kv" style="grid-column:1/-1"><span class="k">Property</span><span class="v">' +
-      propertyLines(property) +
-      "</span></div></div></div>" +
+      propertyGridHtml(property) +
+      "</div></div>" +
       '<div id="sec-scope" style="margin-top:18px">' +
       '<p class="cs-section-label">SCOPE OF WORK</p>' +
       '<div class="cs-prose" id="scopeText" style="white-space:pre-wrap;"></div></div>' +

@@ -221,6 +221,23 @@
       state: editFields.state || setupFields.state,
       zip: editFields.zip || setupFields.zip,
     };
+    if (!sparse.city && !sparse.state && !sparse.zip) {
+      var structuredSource = extra || sparse.line1;
+      var locationApi = typeof window !== "undefined" ? window.MarginGuardProjectLocation : null;
+      var structured =
+        locationApi && typeof locationApi.parseCommaProjectAddress === "function"
+          ? locationApi.parseCommaProjectAddress(structuredSource)
+          : null;
+      if (structured) {
+        return {
+          line1: structured.street,
+          line2: sparse.line2,
+          city: structured.city,
+          state: structured.state,
+          zip: structured.zip,
+        };
+      }
+    }
     if (propertyFieldsComplete(sparse)) return sparse;
     var candidate =
       extra ||

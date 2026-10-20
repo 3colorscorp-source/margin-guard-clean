@@ -24,6 +24,7 @@ const {
   resolveContractScope,
   isMissingScopeOfWorkColumn,
 } = require("./contract-scope");
+const { propertyPartsFromQuote } = require("../../../public/js/project-location");
 const {
   resolveCanonicalContractSchedule,
   validateContractSchedule,
@@ -624,16 +625,26 @@ function buildSnapshot({
       name: trimField(project.project_name || quote.project_name),
       status: trimField(project.status),
     },
-    property: {
-      address_line1: setup?.property_address_line1 || "",
+    property: (() => {
+      const quotedProperty = propertyPartsFromQuote(quote, null);
+      const setupHasProperty = Boolean(
+        trimField(setup?.property_address_line1) ||
+        trimField(setup?.property_city) ||
+        trimField(setup?.property_state) ||
+        trimField(setup?.property_postal_code)
+      );
+      const fromQuote = setupHasProperty ? null : quotedProperty;
+      return {
+      address_line1: setup?.property_address_line1 || fromQuote?.address_line1 || "",
       address_line2: setup?.property_address_line2 || "",
-      city: setup?.property_city || "",
-      state: setup?.property_state || "",
-      postal_code: setup?.property_postal_code || "",
+      city: setup?.property_city || fromQuote?.city || "",
+      state: setup?.property_state || fromQuote?.state || "",
+      postal_code: setup?.property_postal_code || fromQuote?.postal_code || "",
       confirmed_at: setup?.property_confirmed_at || null,
       quote_project_address: trimField(quote.project_address),
       quote_job_site: trimField(quote.job_site),
-    },
+      };
+    })(),
     quote: {
       id: quote.id,
       number: trimField(quote.quote_number_display),
