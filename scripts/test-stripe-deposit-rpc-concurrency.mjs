@@ -265,7 +265,30 @@ async function main() {
     const afterReplay = await admin.query(
       `SELECT count(*)::int AS n FROM tenant_project_payments WHERE quote_id = '${QUOTE}'`
     );
-    ok("same-session replay is idempotent", replay.outcome === "already_recorded" && afterReplay.rows[0].n === 1);
+    ok(
+      "same-session replay is idempotent",
+      replay.outcome === "already_recorded" &&
+        replay.disposition === "applied" &&
+        Boolean(replay.payment_id) &&
+        afterReplay.rows[0].n === 1
+    );
+    const reviewSession = first.outcome === "needs_review" ? "cs_test_parallel_a" : "cs_test_parallel_b";
+    const reviewReplay = await callRpc(admin, {
+      tenant: TENANT,
+      quote: QUOTE,
+      project: PROJECT,
+      session: reviewSession,
+    });
+    const afterReviewReplay = await admin.query(
+      `SELECT count(*)::int AS n FROM tenant_project_payments WHERE quote_id = '${QUOTE}'`
+    );
+    ok(
+      "needs_review replay keeps its disposition and does not credit",
+      reviewReplay.outcome === "already_recorded" &&
+        reviewReplay.disposition === "needs_review" &&
+        reviewReplay.payment_id == null &&
+        afterReviewReplay.rows[0].n === 1
+    );
 
     await admin.query(`
       INSERT INTO tenant_project_payments (

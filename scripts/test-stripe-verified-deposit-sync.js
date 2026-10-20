@@ -793,7 +793,14 @@ async function main() {
   const insertsAfterFirst = db.inserts.length;
   const patchesAfterFirst = db.quotePatches.length;
   result = await postFinalize(session());
-  ok("same-session replay succeeds", result.status === 200 && result.body.replay === true);
+  ok(
+    "same-session applied replay succeeds",
+    result.status === 200 &&
+      result.body.ok === true &&
+      result.body.replay === true &&
+      result.body.deposit_verification_state === "paid" &&
+      result.body.code !== "deposit_needs_review"
+  );
   ok("replay does not insert another ledger row or email", db.inserts.length === insertsAfterFirst && db.emails.length === 0 && db.payments.length === 1);
   ok("replay does not create a project or invoice", db.projectInserts === 0 && db.invoiceWrites === 0);
   ok("replay keeps the quote timestamp", db.quote.deposit_paid_at === "2026-10-17");
@@ -803,9 +810,45 @@ async function main() {
   ok(
     "a second session is kept for review without a second credit",
     result.status === 409 &&
+      result.body.ok === false &&
       result.body.code === "deposit_needs_review" &&
+      result.body.paid_amount == null &&
+      result.body.deposit_verification_state !== "paid" &&
       db.payments.length === 1 &&
+      db.emails.length === 0 &&
       db.events.filter((row) => row.disposition === "needs_review").length === 1
+  );
+  result = await postFinalize(session({ id: "cs_test_second_session" }));
+  ok(
+    "replay of a needs_review session is not reported as credited",
+    result.status === 409 &&
+      result.body.ok === false &&
+      result.body.code === "deposit_needs_review" &&
+      result.body.paid_amount == null &&
+      result.body.deposit_verification_state !== "paid" &&
+      db.payments.length === 1 &&
+      db.emails.length === 0 &&
+      db.events.filter((row) => row.disposition === "needs_review").length === 1
+  );
+  db.events.push({
+    id: "evt-applied-without-payment",
+    tenant_id: TENANT_ID,
+    quote_id: QUOTE_ID,
+    project_id: PROJECT_ID,
+    checkout_session_id: "cs_test_applied_without_payment",
+    disposition: "applied",
+    gross_amount: 1000,
+    applied_payment_id: null,
+  });
+  result = await postFinalize(session({ id: "cs_test_applied_without_payment" }));
+  ok(
+    "applied result without a payment reference is not credited",
+    result.status === 409 &&
+      result.body.ok === false &&
+      result.body.code === "deposit_conflict" &&
+      result.body.deposit_verification_state !== "paid" &&
+      db.payments.length === 1 &&
+      db.emails.length === 0
   );
 
   db.payments = [];
@@ -844,7 +887,28 @@ async function main() {
   ok("signed project uses the deposit_paid transition", db.project.status === "deposit_paid" && db.project.deposit_paid === true);
   const emailCount = db.emails.length;
   result = await postFinalize(session({ id: "cs_test_new_signed" }));
-  ok("replay of a new payment does not email again", result.body.replay === true && db.emails.length === emailCount && db.inserts.length === 1);
+  ok("replay of a new payment does not email again", result.body.replay === true && result.body.ok === true && db.emails.length === emailCount && db.inserts.length === 1);
+  result = await postFinalize(session({ id: "cs_test_review_after_applied" }));
+  ok(
+    "applied credit plus a new review session does not credit or email again",
+    result.status === 409 &&
+      result.body.code === "deposit_needs_review" &&
+      result.body.ok === false &&
+      db.payments.length === 1 &&
+      db.emails.length === emailCount
+  );
+  result = await postFinalize(session({ id: "cs_test_review_after_applied" }));
+  ok(
+    "replay after an applied credit does not repeat the review email or credit",
+    result.status === 409 &&
+      result.body.code === "deposit_needs_review" &&
+      result.body.ok === false &&
+      result.body.paid_amount == null &&
+      db.payments.length === 1 &&
+      db.emails.length === emailCount &&
+      db.events.filter((row) => row.disposition === "applied").length === 1 &&
+      db.events.filter((row) => row.disposition === "needs_review").length === 1
+  );
 
   resetLedger({ deposit_paid_at: null }, { status: "assigned", deposit_paid: false });
   db.payments = [

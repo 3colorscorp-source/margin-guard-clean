@@ -43,6 +43,26 @@ function rpcResult(data) {
   return null;
 }
 
+function recordedText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function needsReviewRecord(recorded) {
+  return (
+    recordedText(recorded?.disposition) === "needs_review" ||
+    recordedText(recorded?.outcome) === "needs_review"
+  );
+}
+
+function appliedCreditRecord(recorded) {
+  const outcome = recordedText(recorded?.outcome);
+  return (
+    recordedText(recorded?.disposition) === "applied" &&
+    String(recorded?.payment_id || "").trim() !== "" &&
+    (outcome === "applied_new" || outcome === "already_recorded")
+  );
+}
+
 async function recordVerifiedSchedulingDeposit(args) {
   const data = await supabaseRequest("rpc/record_verified_scheduling_deposit", {
     method: "POST",
@@ -229,15 +249,19 @@ exports.handler = async (event) => {
         "This scheduling payment could not be applied. Do not pay again."
       );
     }
-    if (recorded.outcome === "needs_review") {
+    if (needsReviewRecord(recorded)) {
       return failure(
         409,
         "deposit_needs_review",
         "This additional scheduling payment was kept for owner review. It was not credited again. Do not pay again."
       );
     }
-    if (recorded.outcome !== "applied_new" && recorded.outcome !== "already_recorded") {
-      return failure(500, "deposit_ledger_failed", "Scheduling deposit result was not recognized.");
+    if (!appliedCreditRecord(recorded)) {
+      return failure(
+        409,
+        "deposit_conflict",
+        "This scheduling payment could not be confirmed. Do not pay again."
+      );
     }
 
     const siteUrl = (
@@ -283,7 +307,7 @@ exports.handler = async (event) => {
       ok: true,
       public_token: suppliedToken,
       paid_amount: verified.grossAmount,
-      replay: recorded.outcome !== "applied_new",
+      replay: recordedText(recorded.outcome) === "already_recorded",
       deposit_verification_state: synced.deposit_verification_state,
       redirect_url: `${siteUrl}/estimate-public.html?token=${encodeURIComponent(suppliedToken)}`,
     });
