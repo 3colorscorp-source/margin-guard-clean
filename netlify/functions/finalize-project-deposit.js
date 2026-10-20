@@ -9,6 +9,10 @@ const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
 const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 const { getStripeKey } = require("./_lib/stripe");
+const {
+  MAINTENANCE_FINALIZE_COPY,
+  schedulingDepositCheckoutClosed,
+} = require("./_lib/scheduling-deposit-maintenance");
 
 function json(statusCode, body) {
   return {
@@ -64,6 +68,18 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method Not Allowed" });
+    }
+
+    // Legacy partial-write pause only. Do not place this return in front of
+    // record_verified_scheduling_deposit: an already-paid Stripe session must
+    // stay reconcilable while new checkout and the public link stay closed.
+    if (schedulingDepositCheckoutClosed()) {
+      return json(503, {
+        ok: false,
+        code: "scheduling_deposit_maintenance",
+        recorded: false,
+        error: MAINTENANCE_FINALIZE_COPY
+      });
     }
 
     let stripeSecretKey;

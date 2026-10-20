@@ -3,6 +3,10 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 const { getStripeKey } = require("./_lib/stripe");
+const {
+  MAINTENANCE_PUBLIC_COPY,
+  schedulingDepositCheckoutClosed,
+} = require("./_lib/scheduling-deposit-maintenance");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -55,6 +59,14 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method Not Allowed" });
+    }
+
+    if (schedulingDepositCheckoutClosed()) {
+      return json(503, {
+        ok: false,
+        code: "scheduling_deposit_maintenance",
+        error: MAINTENANCE_PUBLIC_COPY
+      });
     }
 
     let stripeSecretKey;

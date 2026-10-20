@@ -5,6 +5,7 @@ const {
   publicAreasFromBreakdown,
 } = require("./_lib/labor-area-breakdown");
 const { scrubPublicPayload, sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
+const { schedulingDepositCheckoutClosed } = require("./_lib/scheduling-deposit-maintenance");
 
 function json(statusCode, body) {
   return {
@@ -255,6 +256,11 @@ exports.handler = async (event) => {
         !!ownerSettings?.deposit_payment_link || stripeDepositCheckoutAvailable;
     }
 
+    const schedulingDepositCheckoutEnabled = !schedulingDepositCheckoutClosed();
+    if (!schedulingDepositCheckoutEnabled) {
+      deposit_payment_available = false;
+    }
+
     const resolvedBusinessName = pickFirst(
       skipHeaderPlaceholderName(td ? td.branding_business_name : ""),
       skipHeaderPlaceholderName(td ? td.business_name : ""),
@@ -291,7 +297,10 @@ exports.handler = async (event) => {
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
         deposit_payment_available,
-        deposit_payment_link: ownerSettings?.deposit_payment_link || null,
+        deposit_payment_link: schedulingDepositCheckoutEnabled
+          ? ownerSettings?.deposit_payment_link || null
+          : null,
+        scheduling_deposit_checkout_enabled: schedulingDepositCheckoutEnabled,
         items: [],
         labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown)
       }))
