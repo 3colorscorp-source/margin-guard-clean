@@ -5,6 +5,7 @@ const {
   publicAreasFromBreakdown,
 } = require("./_lib/labor-area-breakdown");
 const { scrubPublicPayload, sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
+const { schedulingDepositCheckoutClosed } = require("./_lib/scheduling-deposit-maintenance");
 
 function json(statusCode, body) {
   return {
@@ -292,6 +293,7 @@ exports.handler = async (event) => {
         logo_url: tenantLogoUrl,
         deposit_payment_available,
         deposit_payment_link: ownerSettings?.deposit_payment_link || null,
+        scheduling_deposit_checkout_enabled: !schedulingDepositCheckoutClosed(),
         items: [],
         labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown)
       }))
