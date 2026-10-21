@@ -19830,6 +19830,7 @@ window.renderSupervisor = renderSupervisor;
 
     let hubRecordPaySubmitting = false;
     const hubRecordPayModalCtx = {
+      invoiceTotal: 0,
       remaining: 0,
       paymentCount: 0,
       idempotencyKey: "",
@@ -19873,12 +19874,57 @@ window.renderSupervisor = renderSupervisor;
       return String(data?.message || data?.error || `Unable to record payment (HTTP ${status}).`).trim();
     }
 
+    function hubRecordPayAmountInputValue(amount) {
+      const n = finiteNumber(amount, 0);
+      return (Math.round(n * 100) / 100).toFixed(2);
+    }
+
+    function hubRecordPayUsesFullAmount() {
+      return val("hubRecordPayType") !== "adjustment" && val("hubRecordPayAmountMode") !== "custom";
+    }
+
+    function updateHubRecordPayBalanceHint() {
+      const hint = $("hubRecordPayBalanceHint");
+      if (!hint) return;
+      const total = finiteNumber(hubRecordPayModalCtx.invoiceTotal, 0);
+      const remaining = finiteNumber(hubRecordPayModalCtx.remaining, 0);
+      const currency = settings?.currency;
+      hint.textContent = hubRecordPayUsesFullAmount()
+        ? `Records the remaining balance of ${money(remaining, currency)}.`
+        : `Invoice ${money(total, currency)}. Remaining ${money(remaining, currency)}. Enter only what the customer paid.`;
+    }
+
+    function applyHubRecordPayAmountMode() {
+      const input = $("hubRecordPayAmount");
+      const label = $("hubRecordPayAmountLabel");
+      if (!input) return;
+      const full = hubRecordPayUsesFullAmount();
+      const remaining = finiteNumber(hubRecordPayModalCtx.remaining, 0);
+      if (label) label.textContent = full ? "Full amount" : "Custom amount";
+      if (full) {
+        setVal("hubRecordPayAmount", remaining > 0 ? hubRecordPayAmountInputValue(remaining) : "");
+        input.readOnly = true;
+        input.setAttribute("aria-readonly", "true");
+      } else if (input.readOnly) {
+        input.readOnly = false;
+        input.removeAttribute("aria-readonly");
+        setVal("hubRecordPayAmount", "");
+      } else {
+        input.readOnly = false;
+        input.removeAttribute("aria-readonly");
+      }
+      updateHubRecordPayBalanceHint();
+      updateHubRecordPayOverpayWarning();
+    }
+
     function syncHubRecordPayAmountDefault() {
       if (!$("hubRecordPayType")) return;
       const t = val("hubRecordPayType");
-      const r = finiteNumber(hubRecordPayModalCtx.remaining, 0);
-      if (t === "final" && r > 0) setVal("hubRecordPayAmount", String(r));
-      updateHubRecordPayOverpayWarning();
+      if (t === "final" && $("hubRecordPayAmountMode")) setVal("hubRecordPayAmountMode", "full");
+      if (t === "adjustment" && $("hubRecordPayAmountMode")) setVal("hubRecordPayAmountMode", "custom");
+      applyHubRecordPayAmountMode();
+      const modeSelect = $("hubRecordPayAmountMode");
+      if (modeSelect) syncHubRecordPayPremiumSelect(modeSelect);
     }
 
     function updateHubRecordPayOverpayWarning() {
@@ -19903,7 +19949,7 @@ window.renderSupervisor = renderSupervisor;
       warnEl.textContent = "";
     }
 
-    const HUB_RP_SELECT_IDS = ["hubRecordPayType", "hubRecordPayMethod"];
+    const HUB_RP_SELECT_IDS = ["hubRecordPayType", "hubRecordPayMethod", "hubRecordPayAmountMode"];
     const hubRpSelectState = new WeakMap();
     let hubRpSelectMediaBound = false;
 
@@ -20180,6 +20226,7 @@ window.renderSupervisor = renderSupervisor;
         ? data.netSum
         : payments.reduce((s, p) => s + finiteNumber(p?.amount, 0), 0);
       const amountTotal = finiteNumber(selectedRow.amount, 0);
+      hubRecordPayModalCtx.invoiceTotal = amountTotal;
       hubRecordPayModalCtx.remaining = Math.max(0, amountTotal - netSum);
       hubRecordPayModalCtx.paymentCount = payments.length;
       hubRecordPayModalCtx.idempotencyKey = newHubPaymentIdempotencyKey();
@@ -20187,8 +20234,11 @@ window.renderSupervisor = renderSupervisor;
       setVal("hubRecordPayType", payments.length === 0 ? "deposit" : "progress");
       setVal("hubRecordPayMethod", "check");
       setVal("hubRecordPayDate", new Date().toISOString().slice(0, 10));
+      setVal("hubRecordPayAmountMode", hubRecordPayModalCtx.remaining > 0 ? "full" : "custom");
       setVal("hubRecordPayAmount", "");
       setVal("hubRecordPayNotes", "");
+      const amountInput = $("hubRecordPayAmount");
+      if (amountInput) amountInput.readOnly = false;
       syncHubRecordPayAmountDefault();
       refreshHubRecordPayPremiumSelects();
       modal.setAttribute("aria-hidden", "false");
@@ -20227,6 +20277,13 @@ window.renderSupervisor = renderSupervisor;
       }
 
       let amount = amountRaw;
+      if (hubRecordPayUsesFullAmount()) {
+        amount = finiteNumber(hubRecordPayModalCtx.remaining, 0);
+        if (!(amount > 0)) {
+          setNotice("hubRecordPayFeedback", "This invoice has no remaining balance.", "err");
+          return;
+        }
+      }
       if (payment_type === "adjustment") {
         if (!Number.isFinite(amount) || amount === 0) {
           setNotice("hubRecordPayFeedback", "Adjustment amount must be non-zero.", "err");
@@ -20767,6 +20824,9 @@ window.renderSupervisor = renderSupervisor;
     }
     if ($("hubRecordPayType")) {
       $("hubRecordPayType").onchange = () => syncHubRecordPayAmountDefault();
+    }
+    if ($("hubRecordPayAmountMode")) {
+      $("hubRecordPayAmountMode").onchange = () => applyHubRecordPayAmountMode();
     }
     bindHubRecordPayPremiumSelects();
     if ($("hubRecordPayAmount")) {

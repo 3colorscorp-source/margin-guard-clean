@@ -1101,6 +1101,15 @@
       letter-spacing: 0.05em;
       color: rgba(232, 238, 252, 0.58);
     }
+    .hub-record-pay-card .hub-record-pay-balance {
+      margin: 6px 0 0;
+      font-size: 0.8rem;
+      color: rgba(232, 238, 252, 0.72);
+    }
+    .hub-record-pay-card .hub-form-grid input[readonly] {
+      color: #f8fbff;
+      background: rgba(34, 197, 94, 0.08);
+    }
     .hub-record-pay-card .hub-form-grid input,
     .hub-record-pay-card .hub-form-grid select,
     .hub-record-pay-card .hub-form-grid textarea {
@@ -1992,12 +2001,22 @@
             </div>
           </div>
           <div class="field">
-            <label for="hubRecordPayAmount">Amount</label>
-            <input id="hubRecordPayAmount" type="number" step="0.01" placeholder="0.00" />
+            <label for="hubRecordPayAmountMode">Amount</label>
+            <div class="hub-rp-select" data-hub-rp-select>
+              <select id="hubRecordPayAmountMode">
+                <option value="full">Full amount</option>
+                <option value="custom">Custom amount</option>
+              </select>
+            </div>
           </div>
           <div class="field">
             <label for="hubRecordPayDate">Paid date</label>
             <input id="hubRecordPayDate" type="date" />
+          </div>
+          <div class="field" style="grid-column:1/-1;">
+            <label for="hubRecordPayAmount" id="hubRecordPayAmountLabel">Full amount</label>
+            <input id="hubRecordPayAmount" type="number" step="0.01" min="0" placeholder="0.00" />
+            <p class="hub-record-pay-balance" id="hubRecordPayBalanceHint"></p>
           </div>
           <div class="field" style="grid-column:1/-1;">
             <label for="hubRecordPayNotes">Notes</label>
