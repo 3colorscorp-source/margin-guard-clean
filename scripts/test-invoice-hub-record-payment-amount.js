@@ -29,5 +29,8 @@ ok("custom amount tells the tenant to enter what was paid", app.includes("Enter 
 ok("opening the modal can start on full amount", app.includes('setVal("hubRecordPayAmountMode", hubRecordPayModalCtx.remaining > 0 ? "full" : "custom")'));
 ok("saving a full amount posts the remaining balance", app.includes("amount = finiteNumber(hubRecordPayModalCtx.remaining, 0)"));
 ok("adjustment stays a custom amount", app.includes('if (t === "adjustment" && $("hubRecordPayAmountMode")) setVal("hubRecordPayAmountMode", "custom")'));
+ok("a recorded payment shows the success report", app.includes('showHubDrawerSuccessReport("Payment recorded"'));
+ok("a recorded payment then closes the invoice drawer", /showHubDrawerSuccessReport\("Payment recorded"[\s\S]{0,800}closeHubInvoiceDrawerAfterSend\(\)/.test(app));
+ok("a failed payment stays on the record modal", /if \(!res\.ok \|\| !data\?\.ok\) \{[\s\S]{0,280}return;/.test(app));
 
 console.log("\n" + passed + " passed");

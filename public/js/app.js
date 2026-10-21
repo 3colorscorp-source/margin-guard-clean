@@ -15565,14 +15565,20 @@ window.renderSupervisor = renderSupervisor;
     el.setAttribute("aria-hidden", "true");
   }
 
-  function showHubDrawerInvoiceSentSuccess(row, emailOverride) {
+  function showHubDrawerSuccessReport(title, message) {
     const el = $("hubDrawerSendSuccess");
+    const titleEl = $("hubDrawerSendSuccessTitle");
     const msgEl = $("hubDrawerSendSuccessMsg");
     if (!el) return;
-    const email = String(emailOverride || hubInvoiceSendCustomerEmail(row) || "").trim();
-    if (msgEl) msgEl.textContent = email ? "Sent to " + email : "";
+    if (titleEl) titleEl.textContent = title || "Invoice sent successfully";
+    if (msgEl) msgEl.textContent = message || "";
     el.hidden = false;
     el.setAttribute("aria-hidden", "false");
+  }
+
+  function showHubDrawerInvoiceSentSuccess(row, emailOverride) {
+    const email = String(emailOverride || hubInvoiceSendCustomerEmail(row) || "").trim();
+    showHubDrawerSuccessReport("Invoice sent successfully", email ? "Sent to " + email : "");
   }
 
   function closeHubInvoiceDrawerAfterSend() {
@@ -20338,12 +20344,15 @@ window.renderSupervisor = renderSupervisor;
           $("hubRecordPayOverpayWarn").style.display = "none";
           $("hubRecordPayOverpayWarn").textContent = "";
         }
+        const successMsg = `Payment recorded: ${money(amount, settings?.currency)}.`;
+        showHubDrawerSuccessReport("Payment recorded", successMsg);
         if (typeof window.__mgHubRefetchServerInvoices === "function") {
           await window.__mgHubRefetchServerInvoices();
         }
         refresh();
-        refreshSelectedRow();
-        setHubFeedback("Payment recorded in ledger.", "ok");
+        await new Promise((resolve) => setTimeout(resolve, HUB_INVOICE_SEND_SUCCESS_HOLD_MS));
+        closeHubInvoiceDrawerAfterSend();
+        setHubFeedback(successMsg, "ok");
       } finally {
         hubRecordPaySubmitting = false;
         if (submitBtn) submitBtn.disabled = false;
