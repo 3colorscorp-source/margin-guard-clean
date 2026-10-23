@@ -2487,6 +2487,33 @@ Thank you.`
     return 0;
   }
 
+  function supervisorReportDayFields(entryDate) {
+    const ctx =
+      supervisorActiveDayContext && typeof supervisorActiveDayContext === "object"
+        ? supervisorActiveDayContext
+        : {};
+    const plan = Array.isArray(ctx.plan) ? ctx.plan : [];
+    const maxDay = plan.reduce((max, day) => {
+      return Math.max(max, Math.floor(finiteNumber(day?.day_number, 0)));
+    }, 0);
+    let dayNum = supervisorInferDayNumberFromRow(
+      { entry_date: entryDate },
+      ctx.startIso || "",
+      maxDay
+    );
+    if (dayNum < 1) dayNum = Math.floor(finiteNumber(ctx.day_number, 0));
+    const planDay =
+      plan.find((day) => Math.floor(finiteNumber(day?.day_number, 0)) === dayNum) || {};
+    let phase = String(planDay.phase || "").trim();
+    if (!phase && dayNum > 0 && dayNum === Math.floor(finiteNumber(ctx.day_number, 0))) {
+      phase = String(ctx.phase || "").trim();
+    }
+    return {
+      day_number: dayNum >= 1 ? dayNum : undefined,
+      phase: phase || undefined,
+    };
+  }
+
   function supervisorBuildDayFieldActivityMap(pid, state, startIso, execPlan) {
     const map = Object.create(null);
     const maxDay = Array.isArray(execPlan) && execPlan.length
@@ -2663,6 +2690,13 @@ Thank you.`
     }
   }
 
+  function supervisorCalendarDayNumber(el) {
+    if (!el) return 1;
+    const raw = el.getAttribute("data-sup-day") || el.getAttribute("data-sup-day-open") || "";
+    const n = Math.floor(finiteNumber(raw, 0));
+    return n >= 1 ? n : 1;
+  }
+
   function bindSupExecutionCalendarOnce() {
     const host = $("supLaborPlanBody");
     if (!host || host.dataset.supCalendarBound === "1") return;
@@ -2672,10 +2706,7 @@ Thank you.`
       if (completeBtn) {
         event.preventDefault();
         event.stopPropagation();
-        const dayNum = Math.max(
-          1,
-          Math.floor(finiteNumber(completeBtn.getAttribute("data-sup-day"), 0))
-        );
+        const dayNum = supervisorCalendarDayNumber(completeBtn);
         const ctx = supervisorBuildDayContext(dayNum);
         if (String(completeBtn.getAttribute("data-sup-done") || "") === "1") return;
         if (String(completeBtn.dataset.supBusy || "") === "1") return;
@@ -2694,31 +2725,19 @@ Thank you.`
       if (laborBtn) {
         event.preventDefault();
         event.stopPropagation();
-        const dayNum = Math.max(
-          1,
-          Math.floor(finiteNumber(laborBtn.getAttribute("data-sup-day"), 0))
-        );
-        openSupFieldModal("labor", supervisorBuildDayContext(dayNum));
+        openSupFieldModal("labor", supervisorBuildDayContext(supervisorCalendarDayNumber(laborBtn)));
         return;
       }
       const expenseBtn = event.target.closest("[data-sup-expense]");
       if (expenseBtn) {
         event.preventDefault();
         event.stopPropagation();
-        const dayNum = Math.max(
-          1,
-          Math.floor(finiteNumber(expenseBtn.getAttribute("data-sup-day"), 0))
-        );
-        openSupFieldModal("extra", supervisorBuildDayContext(dayNum));
+        openSupFieldModal("extra", supervisorBuildDayContext(supervisorCalendarDayNumber(expenseBtn)));
         return;
       }
       const openBtn = event.target.closest("[data-sup-day-open]");
       if (!openBtn) return;
-      const dayNum = Math.max(
-        1,
-        Math.floor(finiteNumber(openBtn.getAttribute("data-sup-day"), 1))
-      );
-      openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+      openSupDayDetailModal(supervisorBuildDayContext(supervisorCalendarDayNumber(openBtn)));
     });
   }
 
@@ -3570,7 +3589,7 @@ Thank you.`
         ? '<span class="sup-diary-day__done-label">Completed</span>'
         : `<button type="button" class="btn small primary" data-sup-complete data-sup-day="${escapeHtml(String(dayNum))}" data-sup-done="0">Mark completed</button>`;
       return `<article class="sup-diary-day sup-diary-day--${escapeHtml(status)}">
-        <button type="button" class="sup-diary-day__open" data-sup-day-open="${escapeHtml(String(dayNum))}" aria-label="Day ${escapeHtml(String(dayNum))} details">
+        <button type="button" class="sup-diary-day__open" data-sup-day="${escapeHtml(String(dayNum))}" data-sup-day-open="${escapeHtml(String(dayNum))}" aria-label="Day ${escapeHtml(String(dayNum))} details">
           <span class="sup-diary-day__label">Day ${escapeHtml(String(dayNum))}</span>
           ${dateLabel ? `<p class="sup-diary-day__date">${escapeHtml(dateLabel)}</p>` : ""}
           <h4 class="sup-diary-day__phase">${escapeHtml(phase)}</h4>
@@ -3821,6 +3840,29 @@ Thank you.`
     return people;
   }
 
+  function supervisorLabelFieldModalDay(modal, dayNum, planned, fallback) {
+    const sub = modal && modal.querySelector(".modal-subtitle");
+    if (!sub) return;
+    const dateLabel = planned ? formatDateUS(planned) || planned : "";
+    sub.textContent =
+      dayNum > 0
+        ? `Day ${dayNum}${dateLabel ? ` · ${dateLabel}` : ""}. ${fallback}`
+        : fallback;
+  }
+
+  function supervisorSeedFieldDayNote(inputId, dayNum, phase) {
+    const current = String(val(inputId) || "").trim();
+    if (current && !/^Day \d+\b/.test(current)) return;
+    if (dayNum < 1) return;
+    const cleanPhase = String(phase || "").trim();
+    setVal(
+      inputId,
+      cleanPhase && cleanPhase !== "Work scheduled"
+        ? `Day ${dayNum} — ${cleanPhase}`
+        : `Day ${dayNum}`
+    );
+  }
+
   function openSupFieldModal(kind, dayCtx) {
     if (dayCtx && typeof dayCtx === "object") {
       supervisorActiveDayContext = { ...(supervisorActiveDayContext || {}), ...dayCtx };
@@ -3842,9 +3884,8 @@ Thank you.`
         setVal("supEntryDate", planned || todayInputValue());
         const dayNum = Math.floor(finiteNumber(ctx?.day_number, 0));
         const phase = String(ctx?.phase || "").trim();
-        if (dayNum > 0 && !String(val("supEntryNote") || "").trim()) {
-          setVal("supEntryNote", phase ? `Day ${dayNum} — ${phase}` : `Day ${dayNum}`);
-        }
+        supervisorLabelFieldModalDay(labor, dayNum, planned, "Record hours, days, and who worked.");
+        supervisorSeedFieldDayNote("supEntryNote", dayNum, phase);
         const focusEl = $("supEntryDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
         const seed = supervisorCrewPeopleFromPlan(ctx?.workers);
@@ -3863,9 +3904,8 @@ Thank you.`
         setVal("supExtraDate", planned || todayInputValue());
         const dayNum = Math.floor(finiteNumber(ctx?.day_number, 0));
         const phase = String(ctx?.phase || "").trim();
-        if (dayNum > 0 && !String(val("supExtraNote") || "").trim()) {
-          setVal("supExtraNote", phase ? `Day ${dayNum} — ${phase}` : `Day ${dayNum}`);
-        }
+        supervisorLabelFieldModalDay(extra, dayNum, planned, "Record the expense and who worked that day.");
+        supervisorSeedFieldDayNote("supExtraNote", dayNum, phase);
         const focusEl = $("supExtraDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
         const seed = supervisorCrewPeopleFromPlan(ctx?.workers);
@@ -13282,8 +13322,8 @@ function renderSupervisor() {
                 days: entry.days,
                 note: entry.note,
                 crew: entry.crew,
-                day_number: finiteNumber(supervisorActiveDayContext?.day_number, 0) || undefined,
-                phase: String(supervisorActiveDayContext?.phase || "").trim() || undefined
+                day_number: supervisorReportDayFields(entry.date).day_number,
+                phase: supervisorReportDayFields(entry.date).phase
               })
             });
             const data = await res.json().catch(() => ({}));
@@ -13388,8 +13428,8 @@ function renderSupervisor() {
                 amount: extra.amount,
                 note: packSupervisorExpenseNote(extra.item, extra.note),
                 crew: extra.crew,
-                day_number: finiteNumber(supervisorActiveDayContext?.day_number, 0) || undefined,
-                phase: String(supervisorActiveDayContext?.phase || "").trim() || undefined
+                day_number: supervisorReportDayFields(extra.date).day_number,
+                phase: supervisorReportDayFields(extra.date).phase
               })
             });
             const data = await res.json().catch(() => ({}));
