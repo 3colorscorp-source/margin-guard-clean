@@ -2855,7 +2855,15 @@ Thank you.`
               const presented = supervisorPresentCrew(r);
               const note = String(presented.note || "").trim();
               const crew = presented.summary ? ` · ${escapeHtml(presented.summary)}` : "";
-              return `<li><strong>${escapeHtml(dl)}</strong> — ${hrs.toFixed(2)}h / ${dys.toFixed(2)}d${crew}${note ? ` · ${escapeHtml(note)}` : ""}</li>`;
+              const reportId = supervisorProjectKey(r.id);
+              const projectId = supervisorProjectKey(
+                r.project_id || supervisorActiveDayContext?.projectId
+              );
+              const removeBtn =
+                reportId && projectId
+                  ? `<button type="button" class="btn danger sup-labor-remove" data-sup-remove-report="${escapeHtml(reportId)}" data-sup-remove-project="${escapeHtml(projectId)}">Remove</button>`
+                  : "";
+              return `<li class="sup-day-labor-row"><span><strong>${escapeHtml(dl)}</strong> — ${hrs.toFixed(2)}h / ${dys.toFixed(2)}d${crew}${note ? ` · ${escapeHtml(note)}` : ""}</span>${removeBtn}</li>`;
             })
             .join("")
         : '<li class="small">No labor reports for this day yet.</li>';
@@ -3866,6 +3874,92 @@ Thank you.`
       }
     }
     document.body.style.overflow = "hidden";
+    supervisorReportSuccessToken += 1;
+    hideSupervisorReportSuccess(kind);
+    clearSupervisorReportFeedback(kind);
+  }
+
+  const SUPERVISOR_REPORT_SUCCESS_HOLD_MS = 3000;
+  let supervisorReportSuccessToken = 0;
+
+  function supervisorReportSuccessRoot(kind) {
+    return $(kind === "extra" ? "supExpenseSaveSuccess" : "supLaborSaveSuccess");
+  }
+
+  function hideSupervisorReportSuccess(kind) {
+    const kinds = kind === "all" ? ["labor", "extra"] : [kind];
+    kinds.forEach((item) => {
+      const el = supervisorReportSuccessRoot(item);
+      if (!el) return;
+      el.hidden = true;
+      el.setAttribute("aria-hidden", "true");
+    });
+  }
+
+  function showSupervisorReportSuccess(kind, title, message) {
+    const el = supervisorReportSuccessRoot(kind);
+    if (!el) return;
+    const titleEl = el.querySelector(".sup-report-success__title");
+    const msgEl = el.querySelector(".sup-report-success__msg");
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message || "";
+    el.hidden = false;
+    el.setAttribute("aria-hidden", "false");
+  }
+
+  function supervisorReportFeedbackId(kind) {
+    return kind === "extra" ? "supExtraFeedback" : "supEntryFeedback";
+  }
+
+  function clearSupervisorReportFeedback(kind) {
+    const kinds = kind === "all" ? ["labor", "extra"] : [kind];
+    kinds.forEach((item) => {
+      const el = $(supervisorReportFeedbackId(item));
+      if (!el) return;
+      el.hidden = true;
+      el.textContent = "";
+      el.classList.remove("is-error");
+    });
+    ["supEntryDate", "supEntryHours", "supEntryDays", "supExtraDate", "supExtraItem", "supExtraAmount"].forEach((id) => {
+      const field = $(id)?.closest(".field");
+      if (field) field.classList.remove("field--error");
+    });
+  }
+
+  function showSupervisorReportFeedback(kind, message, tone, fieldIds) {
+    clearSupervisorReportFeedback(kind);
+    const el = $(supervisorReportFeedbackId(kind));
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = message;
+    el.classList.toggle("is-error", tone === "error");
+    (fieldIds || []).forEach((id) => {
+      const field = $(id)?.closest(".field");
+      if (field) field.classList.add("field--error");
+    });
+  }
+
+  function dismissSupervisorFieldModal(kind) {
+    supervisorReportSuccessToken += 1;
+    hideSupervisorReportSuccess(kind);
+    clearSupervisorReportFeedback(kind);
+    closeSupFieldModal(kind);
+  }
+
+  async function presentSupervisorReportSuccess(kind, title, message, afterSave) {
+    const token = ++supervisorReportSuccessToken;
+    showSupervisorReportSuccess(kind, title, message);
+    const started = Date.now();
+    try {
+      if (typeof afterSave === "function") await afterSave();
+    } catch (_err) {
+      /* The report is already saved. The modal still closes after the success hold. */
+    }
+    const left = SUPERVISOR_REPORT_SUCCESS_HOLD_MS - (Date.now() - started);
+    if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+    if (token !== supervisorReportSuccessToken) return;
+    hideSupervisorReportSuccess(kind);
+    closeSupFieldModal(kind);
   }
 
   function closeSupFieldModal(kind) {
@@ -3920,10 +4014,10 @@ Thank you.`
       const el = $(id);
       if (el) el.onclick = handler;
     };
-    wire("btnCloseSupLaborReport", () => closeSupFieldModal("labor"));
-    wire("btnCancelSupLaborReport", () => closeSupFieldModal("labor"));
-    wire("btnCloseSupExpenseReport", () => closeSupFieldModal("extra"));
-    wire("btnCancelSupExpenseReport", () => closeSupFieldModal("extra"));
+    wire("btnCloseSupLaborReport", () => dismissSupervisorFieldModal("labor"));
+    wire("btnCancelSupLaborReport", () => dismissSupervisorFieldModal("labor"));
+    wire("btnCloseSupExpenseReport", () => dismissSupervisorFieldModal("extra"));
+    wire("btnCancelSupExpenseReport", () => dismissSupervisorFieldModal("extra"));
     wire("btnCloseSupDayDetail", () => closeSupDayDetailModal());
     wire("btnSupDayReportLabor", () => {
       const ctx = supervisorActiveDayContext;
@@ -3968,15 +4062,17 @@ Thank you.`
       if (!modal) return;
       modal.addEventListener("click", (e) => {
         if (e.target !== modal) return;
-        if (modal === laborModal) closeSupFieldModal("labor");
-        else if (modal === extraModal) closeSupFieldModal("extra");
+        if (modal === laborModal) dismissSupervisorFieldModal("labor");
+        else if (modal === extraModal) dismissSupervisorFieldModal("extra");
         else closeSupDayDetailModal();
       });
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      if ($("supLaborRemoveModal")?.getAttribute("aria-hidden") === "false") return;
+      if ($("supExpenseRemoveModal")?.getAttribute("aria-hidden") === "false") return;
       closeSupDayDetailModal();
-      closeSupFieldModal("all");
+      dismissSupervisorFieldModal("all");
     });
   }
 
@@ -4971,13 +5067,23 @@ Thank you.`
     if (document.body && document.body.dataset.supExpenseRemoveBound !== "1") {
       document.body.dataset.supExpenseRemoveBound = "1";
       document.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-sup-remove-expense]");
-        if (!button) return;
+        const expenseButton = event.target.closest("[data-sup-remove-expense]");
+        if (expenseButton) {
+          event.preventDefault();
+          event.stopPropagation();
+          removeSupervisorProjectExpense(
+            expenseButton.getAttribute("data-sup-remove-expense"),
+            expenseButton.getAttribute("data-sup-remove-project")
+          );
+          return;
+        }
+        const reportButton = event.target.closest("[data-sup-remove-report]");
+        if (!reportButton) return;
         event.preventDefault();
         event.stopPropagation();
-        removeSupervisorProjectExpense(
-          button.getAttribute("data-sup-remove-expense"),
-          button.getAttribute("data-sup-remove-project")
+        removeSupervisorProjectReport(
+          reportButton.getAttribute("data-sup-remove-report"),
+          reportButton.getAttribute("data-sup-remove-project")
         );
       });
     }
@@ -5140,6 +5246,130 @@ Thank you.`
       if (dayOpen && dayNum) openSupDayDetailModal(supervisorBuildDayContext(dayNum));
     } catch (_e) {
       window.alert("Network error. Could not remove expense.");
+    }
+  }
+
+  function supervisorLaborRemovalPreview(reportId, projectId) {
+    const pid = supervisorProjectKey(projectId);
+    const rid = supervisorProjectKey(reportId);
+    const rows = supervisorProjectReportsCache[pid]?.reports;
+    const row = Array.isArray(rows)
+      ? rows.find((item) => supervisorProjectKey(item?.id) === rid)
+      : null;
+    const dateRaw = normalizeDateInput(row?.entry_date || row?.date || "");
+    const presented = supervisorPresentCrew(row || {});
+    const hours = finiteNumber(row?.hours, 0);
+    const days = finiteNumber(row?.days, 0);
+    return {
+      dateLabel: dateRaw ? formatDateUS(dateRaw) || dateRaw : "Date not recorded",
+      hours: row ? `${hours.toFixed(2)} h` : "—",
+      days: row ? `${days.toFixed(2)} d` : "—",
+      crew: presented.summary || "Not recorded",
+    };
+  }
+
+  function confirmSupervisorLaborRemoval(preview) {
+    const modal = $("supLaborRemoveModal");
+    if (!modal) return Promise.resolve(false);
+    const dateEl = $("supLaborRemoveDate");
+    const hoursEl = $("supLaborRemoveHours");
+    const daysEl = $("supLaborRemoveDays");
+    const crewEl = $("supLaborRemoveCrew");
+    if (dateEl) dateEl.textContent = preview.dateLabel;
+    if (hoursEl) hoursEl.textContent = preview.hours;
+    if (daysEl) daysEl.textContent = preview.days;
+    if (crewEl) crewEl.textContent = preview.crew;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (accepted) => {
+        if (settled) return;
+        settled = true;
+        modal.setAttribute("aria-hidden", "true");
+        modal.style.display = "";
+        document.removeEventListener("keydown", onKey, true);
+        resolve(!!accepted);
+      };
+      const onKey = (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+      };
+      const keep = $("btnSupLaborRemoveKeep");
+      const confirmBtn = $("btnSupLaborRemoveConfirm");
+      if (keep) keep.onclick = () => finish(false);
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      modal.onclick = (event) => {
+        if (event.target === modal) finish(false);
+      };
+      document.addEventListener("keydown", onKey, true);
+      modal.setAttribute("aria-hidden", "false");
+      modal.style.display = "flex";
+      if (keep) keep.focus();
+    });
+  }
+
+  async function removeSupervisorProjectReport(reportId, projectId) {
+    const rid = supervisorProjectKey(reportId);
+    const pid = supervisorProjectKey(
+      projectId || resolveActiveSupervisorProject()?.id
+    );
+    if (!rid || !pid) {
+      showSupervisorToast("This labor report cannot be removed.", "error");
+      return;
+    }
+    const accepted = await confirmSupervisorLaborRemoval(
+      supervisorLaborRemovalPreview(rid, pid)
+    );
+    if (!accepted) return;
+    try {
+      const res = await fetch("/.netlify/functions/delete-supervisor-project-report", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report_id: rid, project_id: pid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data || data.ok !== true) {
+        const msg = (data && (data.error || data.message)) || `Remove failed (${res.status}).`;
+        showSupervisorToast(msg, "error");
+        return;
+      }
+      const cache = supervisorProjectReportsCache[pid];
+      if (cache && Array.isArray(cache.reports)) {
+        cache.reports = cache.reports.filter(
+          (row) => supervisorProjectKey(row?.id) !== rid
+        );
+      }
+      const project = resolveActiveSupervisorProject();
+      if (project && supervisorProjectKey(project.id) === pid) {
+        const state = loadSupervisorReport(project);
+        if (state && Array.isArray(state.entries)) {
+          state.entries = state.entries.filter(
+            (row) => supervisorProjectKey(row?.reportId) !== rid
+          );
+          saveSupervisorReport(project.id, state);
+        }
+      }
+      const dayOpen = $("supDayDetailModal")?.getAttribute("aria-hidden") === "false";
+      const dayNum = Math.max(
+        1,
+        Math.floor(finiteNumber(supervisorActiveDayContext?.day_number, 0))
+      );
+      renderSupervisor();
+      if (dayOpen && dayNum) openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+      const fresh = await fetchProjectReports(pid);
+      supervisorProjectReportsCache[pid] =
+        fresh && fresh.ok === true && Array.isArray(fresh.reports)
+          ? { ok: true, reports: fresh.reports }
+          : supervisorProjectReportsCache[pid] || { ok: false, reports: [] };
+      await loadSupervisorOperationalSnapshot(pid, { force: true });
+      await pullSupervisorProjectsFromApi();
+      renderSupervisor();
+      if (dayOpen && dayNum) openSupDayDetailModal(supervisorBuildDayContext(dayNum));
+      showSupervisorToast("Labor report removed.", "success");
+    } catch (_e) {
+      showSupervisorToast("Network error. Could not remove the labor report.", "error");
     }
   }
 
@@ -12951,43 +13181,11 @@ function renderSupervisor() {
         `;
         }).join("");
         $("supEntriesBody").querySelectorAll("button[data-delete-entry]").forEach((button) => {
-          button.onclick = async () => {
+          button.onclick = () => {
             const idx = Number(button.dataset.deleteEntry || -1);
             const row = state.entries[idx];
-            if (row && row.reportId && isServerListedSupervisorProject(currentProject.id)) {
-              try {
-                const res = await fetch("/.netlify/functions/delete-project-report", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ report_id: row.reportId }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data || data.ok !== true) {
-                  const msg = (data && (data.error || data.message)) || `Delete failed (${res.status}).`;
-                  window.alert(msg);
-                  return;
-                }
-                delete supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)];
-                const fresh = await fetchProjectReports(currentProject.id);
-                supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)] =
-                  fresh && fresh.ok === true && Array.isArray(fresh.reports)
-                    ? { ok: true, reports: fresh.reports }
-                    : { ok: false, reports: [] };
-                state.locked = true;
-                const merged = loadSupervisorReport(currentProject);
-                saveSupervisorReport(currentProject.id, merged);
-                await recalcProjectProfitIfListed(currentProject.id);
-                await pullSupervisorProjectsFromApi();
-                refresh();
-                return;
-              } catch (_e) {
-                window.alert("Network error. Could not delete report.");
-                return;
-              }
-            }
             if (row && row.reportId) {
-              window.alert("This row is saved on the server; sync projects list to enable delete.");
+              removeSupervisorProjectReport(row.reportId, currentProject.id);
               return;
             }
             state.entries.splice(idx, 1);
@@ -13037,8 +13235,13 @@ function renderSupervisor() {
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = async () => {
+        const saveBtn = $("btnAddSupEntry");
         const currentProject = resolveActiveSupervisorProject();
-        if (!currentProject) return alert("No signed projects yet.");
+        clearSupervisorReportFeedback("labor");
+        if (!currentProject) {
+          showSupervisorReportFeedback("labor", "Selecciona un proyecto primero.", "error");
+          return;
+        }
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
         const entryCrew = supervisorCrewForSave($("supEntryCrew"));
@@ -13050,12 +13253,24 @@ function renderSupervisor() {
           crew: entryCrew || [],
           serverProjectId: rowPid
         };
-        if (!entry.date) return alert("Entry date is required.");
-        if (entry.hours <= 0 && entry.days <= 0) return alert("Report hours or days worked.");
+        if (!entry.date) {
+          showSupervisorReportFeedback("labor", "Elige la fecha del reporte.", "warn", ["supEntryDate"]);
+          return;
+        }
+        if (entry.hours <= 0 && entry.days <= 0) {
+          showSupervisorReportFeedback("labor", "Escribe las horas o los días trabajados.", "warn", ["supEntryHours", "supEntryDays"]);
+          return;
+        }
         if (!entryCrew) return;
+        const crewLabel = supervisorPresentCrew({ crew: entry.crew }).summary;
+        const successDetail = [`${entry.hours.toFixed(2)} h`, `${entry.days.toFixed(2)} d`, crewLabel].filter(Boolean).join(" · ");
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Guardando…";
+        }
 
-        if (isServerListedSupervisorProject(currentProject.id)) {
-          try {
+        try {
+          if (isServerListedSupervisorProject(currentProject.id)) {
             const res = await fetch("/.netlify/functions/save-project-report", {
               method: "POST",
               credentials: "include",
@@ -13074,52 +13289,62 @@ function renderSupervisor() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data || data.ok !== true) {
               const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
-              window.alert(msg);
+              showSupervisorReportFeedback("labor", msg, "error");
               return;
             }
-            delete supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)];
-            const fresh = await fetchProjectReports(currentProject.id);
-            supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)] =
-              fresh && fresh.ok === true && Array.isArray(fresh.reports)
-                ? { ok: true, reports: fresh.reports }
-                : { ok: false, reports: [] };
-            state.locked = true;
-            const merged = loadSupervisorReport(currentProject);
-            saveSupervisorReport(currentProject.id, merged);
             setVal("supEntryDate", "");
             setNum("supEntryHours", 0);
             setNum("supEntryDays", 0);
             setVal("supEntryNote", "");
             supervisorCrewPaint($("supEntryCrew"), []);
-            await recalcProjectProfitIfListed(currentProject.id);
-            await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
-            await pullSupervisorProjectsFromApi();
-            closeSupFieldModal("labor");
+            await presentSupervisorReportSuccess("labor", "Reporte guardado", successDetail, async () => {
+              delete supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)];
+              const fresh = await fetchProjectReports(currentProject.id);
+              supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)] =
+                fresh && fresh.ok === true && Array.isArray(fresh.reports)
+                  ? { ok: true, reports: fresh.reports }
+                  : { ok: false, reports: [] };
+              state.locked = true;
+              const merged = loadSupervisorReport(currentProject);
+              saveSupervisorReport(currentProject.id, merged);
+              await recalcProjectProfitIfListed(currentProject.id);
+              await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
+              await pullSupervisorProjectsFromApi();
+            });
             refresh();
             return;
-          } catch (_e) {
-            window.alert("Network error. Could not save report.");
-            return;
+          }
+
+          state.locked = true;
+          state.entries.unshift(entry);
+          setVal("supEntryDate", "");
+          setNum("supEntryHours", 0);
+          setNum("supEntryDays", 0);
+          setVal("supEntryNote", "");
+          supervisorCrewPaint($("supEntryCrew"), []);
+          saveSupervisorReport(currentProject.id, state);
+          await presentSupervisorReportSuccess("labor", "Reporte guardado", successDetail);
+          refresh();
+        } catch (_e) {
+          showSupervisorReportFeedback("labor", "No se pudo guardar el reporte. Inténtalo de nuevo.", "error");
+        } finally {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Guardar reporte";
           }
         }
-
-        state.locked = true;
-        state.entries.unshift(entry);
-        setVal("supEntryDate", "");
-        setNum("supEntryHours", 0);
-        setNum("supEntryDays", 0);
-        setVal("supEntryNote", "");
-        supervisorCrewPaint($("supEntryCrew"), []);
-        saveSupervisorReport(currentProject.id, state);
-        closeSupFieldModal("labor");
-        refresh();
       };
     }
 
     if ($("btnAddSupExtra")) {
       $("btnAddSupExtra").onclick = async () => {
+        const saveBtn = $("btnAddSupExtra");
         const currentProject = resolveActiveSupervisorProject();
-        if (!currentProject) return alert("No signed projects yet.");
+        clearSupervisorReportFeedback("extra");
+        if (!currentProject) {
+          showSupervisorReportFeedback("extra", "Selecciona un proyecto primero.", "error");
+          return;
+        }
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
         const extraCrew = supervisorCrewForSave($("supExtraCrew"));
@@ -13131,13 +13356,28 @@ function renderSupervisor() {
           crew: extraCrew || [],
           serverProjectId: rowPid
         };
-        if (!extra.date) return alert("Extra expense date is required.");
-        if (!extra.item) return alert("Extra expense concept is required.");
-        if (extra.amount <= 0) return alert("Enter an amount greater than zero.");
+        if (!extra.date) {
+          showSupervisorReportFeedback("extra", "Elige la fecha del gasto.", "warn", ["supExtraDate"]);
+          return;
+        }
+        if (!extra.item) {
+          showSupervisorReportFeedback("extra", "Escribe el concepto del gasto.", "warn", ["supExtraItem"]);
+          return;
+        }
+        if (extra.amount <= 0) {
+          showSupervisorReportFeedback("extra", "Escribe un monto mayor a cero.", "warn", ["supExtraAmount"]);
+          return;
+        }
         if (!extraCrew) return;
+        const crewLabel = supervisorPresentCrew({ crew: extra.crew }).summary;
+        const successDetail = [money(extra.amount), extra.item, crewLabel].filter(Boolean).join(" · ");
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Guardando…";
+        }
 
-        if (isServerListedSupervisorProject(currentProject.id)) {
-          try {
+        try {
+          if (isServerListedSupervisorProject(currentProject.id)) {
             const res = await fetch("/.netlify/functions/save-project-expense", {
               method: "POST",
               credentials: "include",
@@ -13155,45 +13395,50 @@ function renderSupervisor() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data || data.ok !== true) {
               const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
-              window.alert(msg);
+              showSupervisorReportFeedback("extra", msg, "error");
               return;
             }
-            delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
-            const fresh = await fetchProjectExpenses(currentProject.id);
-            supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)] =
-              fresh && fresh.ok === true && Array.isArray(fresh.expenses)
-                ? { ok: true, expenses: fresh.expenses }
-                : { ok: false, expenses: [] };
-            state.locked = true;
-            const merged = loadSupervisorReport(currentProject);
-            saveSupervisorReport(currentProject.id, merged);
             setVal("supExtraDate", "");
             setVal("supExtraItem", "");
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
             supervisorCrewPaint($("supExtraCrew"), []);
-            await recalcProjectProfitIfListed(currentProject.id);
-            await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
-            await pullSupervisorProjectsFromApi();
-            closeSupFieldModal("extra");
+            await presentSupervisorReportSuccess("extra", "Gasto guardado", successDetail, async () => {
+              delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
+              const fresh = await fetchProjectExpenses(currentProject.id);
+              supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)] =
+                fresh && fresh.ok === true && Array.isArray(fresh.expenses)
+                  ? { ok: true, expenses: fresh.expenses }
+                  : { ok: false, expenses: [] };
+              state.locked = true;
+              const merged = loadSupervisorReport(currentProject);
+              saveSupervisorReport(currentProject.id, merged);
+              await recalcProjectProfitIfListed(currentProject.id);
+              await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
+              await pullSupervisorProjectsFromApi();
+            });
             refresh();
             return;
-          } catch (_e) {
-            window.alert("Network error. Could not save expense.");
-            return;
+          }
+
+          state.locked = true;
+          state.extras.unshift(extra);
+          setVal("supExtraDate", "");
+          setVal("supExtraItem", "");
+          setNum("supExtraAmount", 0);
+          setVal("supExtraNote", "");
+          supervisorCrewPaint($("supExtraCrew"), []);
+          saveSupervisorReport(currentProject.id, state);
+          await presentSupervisorReportSuccess("extra", "Gasto guardado", successDetail);
+          refresh();
+        } catch (_e) {
+          showSupervisorReportFeedback("extra", "No se pudo guardar el gasto. Inténtalo de nuevo.", "error");
+        } finally {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Guardar gasto";
           }
         }
-
-        state.locked = true;
-        state.extras.unshift(extra);
-        setVal("supExtraDate", "");
-        setVal("supExtraItem", "");
-        setNum("supExtraAmount", 0);
-        setVal("supExtraNote", "");
-        supervisorCrewPaint($("supExtraCrew"), []);
-        saveSupervisorReport(currentProject.id, state);
-        closeSupFieldModal("extra");
-        refresh();
       };
     }
 
