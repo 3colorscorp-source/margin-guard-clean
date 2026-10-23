@@ -563,18 +563,18 @@
     body.supervisor-page .sup-start-modal input[type="date"] {
       display: none;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-nav {
+    body.supervisor-page .sup-start-modal .sup-start-cal-nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       margin: 8px 0;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-month {
+    body.supervisor-page .sup-start-modal .sup-start-cal-month {
       font-size: 14px;
       font-weight: 800;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-nav-btn {
+    body.supervisor-page .sup-start-modal .sup-start-cal-nav-btn {
       width: 36px;
       height: 36px;
       border-radius: 8px;
@@ -583,14 +583,14 @@
       color: var(--sup-text);
       cursor: pointer;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-dow,
-    body.supervisor-page .sup-start-modal .hub-mini-cal-grid {
+    body.supervisor-page .sup-start-modal .sup-start-cal-dow,
+    body.supervisor-page .sup-start-modal .sup-start-cal-grid {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 4px;
       text-align: center;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-dow {
+    body.supervisor-page .sup-start-modal .sup-start-cal-dow {
       color: var(--sup-muted);
       font-size: 10px;
       font-weight: 700;
@@ -598,25 +598,25 @@
       text-transform: uppercase;
       margin-bottom: 4px;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-day,
-    body.supervisor-page .sup-start-modal .hub-mini-cal-pad {
+    body.supervisor-page .sup-start-modal .sup-start-cal-day,
+    body.supervisor-page .sup-start-modal .sup-start-cal-pad {
       min-height: 36px;
       border-radius: 8px;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-day {
+    body.supervisor-page .sup-start-modal .sup-start-cal-day {
       border: 0;
       background: transparent;
       color: var(--sup-text);
       cursor: pointer;
       font-weight: 650;
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-day:hover {
+    body.supervisor-page .sup-start-modal .sup-start-cal-day:hover {
       background: rgba(255, 255, 255, 0.06);
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-day.is-today {
+    body.supervisor-page .sup-start-modal .sup-start-cal-day.is-today {
       box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.55);
     }
-    body.supervisor-page .sup-start-modal .hub-mini-cal-day.is-selected {
+    body.supervisor-page .sup-start-modal .sup-start-cal-day.is-selected {
       background: #0f766e;
       color: #fff;
     }
@@ -1460,7 +1460,7 @@
         </div>
         <label id="supStartDateLabel">New start date</label>
         <input id="supStartDateInput" class="sup-field-date-input" type="date" autocomplete="off" hidden />
-        <div id="supStartDateCal" class="hub-mini-cal" role="group" aria-labelledby="supStartDateLabel"></div>
+        <div id="supStartDateCal" class="sup-start-cal" role="group" aria-labelledby="supStartDateLabel"></div>
         <div class="sup-start-modal__preview" id="supStartEditPreview" aria-live="polite">Pick a start date to see the new finish.</div>
         <p class="small sup-start-modal__feedback" id="supStartEditFeedback" aria-live="polite"></p>
       </div>

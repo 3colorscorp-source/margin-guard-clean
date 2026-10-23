@@ -110,8 +110,8 @@ ok("the start modal previews the moved plan", app.includes("Today becomes Day"))
 ok(
   "the start modal shows the system month calendar",
   html.includes('id="supStartDateCal"') &&
-    html.includes('class="hub-mini-cal"') &&
-    app.includes("hub-mini-cal-day") &&
+    html.includes('class="sup-start-cal"') &&
+    app.includes("sup-start-cal-day") &&
     app.includes("data-sup-start-day")
 );
 ok("saving the start date posts the production start", app.includes("/.netlify/functions/update-supervisor-production-start"));

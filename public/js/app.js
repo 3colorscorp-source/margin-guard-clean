@@ -4175,21 +4175,21 @@ Thank you.`
     const today = todayInputValue();
     const monthLabel = new Date(year, month, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
     let cells = "";
-    for (let i = 0; i < firstDow; i += 1) cells += '<span class="hub-mini-cal-pad"></span>';
+    for (let i = 0; i < firstDow; i += 1) cells += '<span class="sup-start-cal-pad"></span>';
     for (let day = 1; day <= daysInMonth; day += 1) {
       const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const cls = ["hub-mini-cal-day"];
+      const cls = ["sup-start-cal-day"];
       if (iso === selected) cls.push("is-selected");
       if (iso === today) cls.push("is-today");
       cells += `<button type="button" class="${cls.join(" ")}" data-sup-start-day="${iso}">${day}</button>`;
     }
-    root.innerHTML = `<div class="hub-mini-cal-nav">
-      <button type="button" class="hub-mini-cal-nav-btn" data-sup-start-shift="-1" aria-label="Previous month">‹</button>
-      <div class="hub-mini-cal-month">${escapeHtml(monthLabel)}</div>
-      <button type="button" class="hub-mini-cal-nav-btn" data-sup-start-shift="1" aria-label="Next month">›</button>
+    root.innerHTML = `<div class="sup-start-cal-nav">
+      <button type="button" class="sup-start-cal-nav-btn" data-sup-start-shift="-1" aria-label="Previous month">‹</button>
+      <div class="sup-start-cal-month">${escapeHtml(monthLabel)}</div>
+      <button type="button" class="sup-start-cal-nav-btn" data-sup-start-shift="1" aria-label="Next month">›</button>
     </div>
-    <div class="hub-mini-cal-dow">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
-    <div class="hub-mini-cal-grid">${cells}</div>`;
+    <div class="sup-start-cal-dow">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
+    <div class="sup-start-cal-grid">${cells}</div>`;
     root.querySelectorAll("[data-sup-start-shift]").forEach((btn) => {
       btn.onclick = (event) => {
         event.preventDefault();
