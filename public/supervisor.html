@@ -955,38 +955,45 @@
         display: none;
       }
     }
-    body.supervisor-page .sup-day-expense-row {
+    body.supervisor-page .sup-day-expense-row,
+    body.supervisor-page .sup-day-labor-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
     }
-    body.supervisor-page .sup-expense-remove {
+    body.supervisor-page .sup-expense-remove,
+    body.supervisor-page .sup-labor-remove {
       flex: 0 0 auto;
       color: #fecaca;
       border-color: rgba(239, 68, 68, 0.55);
       background: rgba(239, 68, 68, 0.16);
     }
-    body.supervisor-page .sup-expense-remove-modal {
+    body.supervisor-page .sup-expense-remove-modal,
+    body.supervisor-page .sup-labor-remove-modal {
       z-index: 12000;
       background: rgba(0, 0, 0, 0.72);
       backdrop-filter: blur(8px);
     }
-    body.supervisor-page .sup-expense-remove-modal__card {
+    body.supervisor-page .sup-expense-remove-modal__card,
+    body.supervisor-page .sup-labor-remove-modal__card {
       width: min(460px, 96vw);
       overflow: hidden;
       border-color: rgba(239, 68, 68, 0.32);
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
     }
-    body.supervisor-page .sup-expense-remove-modal__accent {
+    body.supervisor-page .sup-expense-remove-modal__accent,
+    body.supervisor-page .sup-labor-remove-modal__accent {
       height: 3px;
       background: linear-gradient(90deg, #ef4444, rgba(239, 68, 68, 0.12));
     }
-    body.supervisor-page .sup-expense-remove-modal .badge {
+    body.supervisor-page .sup-expense-remove-modal .badge,
+    body.supervisor-page .sup-labor-remove-modal .badge {
       display: inline-flex;
       margin-bottom: 10px;
     }
-    body.supervisor-page .sup-expense-remove-modal__record {
+    body.supervisor-page .sup-expense-remove-modal__record,
+    body.supervisor-page .sup-labor-remove-modal__record {
       margin: 0;
       display: grid;
       gap: 12px;
@@ -995,36 +1002,99 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(255, 255, 255, 0.03);
     }
-    body.supervisor-page .sup-expense-remove-modal__record > div {
+    body.supervisor-page .sup-expense-remove-modal__record > div,
+    body.supervisor-page .sup-labor-remove-modal__record > div {
       display: grid;
       gap: 2px;
     }
-    body.supervisor-page .sup-expense-remove-modal__record dt {
+    body.supervisor-page .sup-expense-remove-modal__record dt,
+    body.supervisor-page .sup-labor-remove-modal__record dt {
       margin: 0;
       font-size: 11px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       opacity: 0.62;
     }
-    body.supervisor-page .sup-expense-remove-modal__record dd {
+    body.supervisor-page .sup-expense-remove-modal__record dd,
+    body.supervisor-page .sup-labor-remove-modal__record dd {
       margin: 0;
       font-weight: 650;
       line-height: 1.4;
     }
-    body.supervisor-page .sup-expense-remove-modal .notice strong {
+    body.supervisor-page .sup-expense-remove-modal .notice strong,
+    body.supervisor-page .sup-labor-remove-modal .notice strong {
       display: block;
       margin-bottom: 6px;
     }
-    body.supervisor-page .sup-expense-remove-modal .notice ul {
+    body.supervisor-page .sup-expense-remove-modal .notice ul,
+    body.supervisor-page .sup-labor-remove-modal .notice ul {
       margin: 0;
       padding-left: 18px;
     }
-    body.supervisor-page .sup-expense-remove-modal .notice li + li {
+    body.supervisor-page .sup-expense-remove-modal .notice li + li,
+    body.supervisor-page .sup-labor-remove-modal .notice li + li {
       margin-top: 4px;
     }
     body.supervisor-page #supLaborReportModal .sup-field-modal__card,
     body.supervisor-page #supExpenseReportModal .sup-field-modal__card {
+      position: relative;
       width: min(640px, 96vw);
+      overflow: hidden;
+    }
+    body.supervisor-page .sup-report-feedback {
+      grid-column: 1 / -1;
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.12);
+      color: #fde68a;
+      line-height: 1.4;
+    }
+    body.supervisor-page .sup-report-feedback.is-error {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.12);
+      color: #fecaca;
+    }
+    body.supervisor-page .sup-report-success {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 28px 24px;
+      text-align: center;
+      background: rgba(11, 11, 10, 0.96);
+    }
+    body.supervisor-page .sup-report-success[hidden] {
+      display: none !important;
+    }
+    body.supervisor-page .sup-report-success__mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #059669;
+      color: #ecfdf5;
+      box-shadow: 0 0 0 8px rgba(5, 150, 105, 0.18);
+    }
+    body.supervisor-page .sup-report-success__title {
+      margin: 6px 0 0;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--sup-text);
+    }
+    body.supervisor-page .sup-report-success__msg {
+      margin: 0;
+      max-width: 28rem;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--sup-muted);
     }
     body.supervisor-page .sup-field-modal .sup-crew,
     body.supervisor-page .sup-field-modal .form > .field:last-child {
@@ -1518,6 +1588,15 @@
 
   <div id="supLaborReportModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supLaborReportModalTitle">
     <div class="modal-card sup-field-modal__card">
+      <div id="supLaborSaveSuccess" class="sup-report-success" hidden aria-hidden="true" role="status">
+        <div class="sup-report-success__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="32" height="32" focusable="false">
+            <path fill="currentColor" d="M9.2 16.2 5.8 12.8l-1.4 1.4 4.8 4.8 10.6-10.6-1.4-1.4z"></path>
+          </svg>
+        </div>
+        <div class="sup-report-success__title" id="supLaborSaveSuccessTitle">Reporte guardado</div>
+        <p class="sup-report-success__msg" id="supLaborSaveSuccessMsg"></p>
+      </div>
       <div class="modal-header">
         <div>
           <div class="modal-title" id="supLaborReportModalTitle">Reportar labor</div>
@@ -1526,6 +1605,7 @@
         <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupLaborReport" aria-label="Cerrar">Cerrar</button>
       </div>
       <div class="modal-body">
+        <p id="supEntryFeedback" class="sup-report-feedback" role="status" hidden></p>
         <div class="form">
           <div class="field">
             <label>Fecha</label>
@@ -1583,6 +1663,15 @@
 
   <div id="supExpenseReportModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supExpenseReportModalTitle">
     <div class="modal-card sup-field-modal__card">
+      <div id="supExpenseSaveSuccess" class="sup-report-success" hidden aria-hidden="true" role="status">
+        <div class="sup-report-success__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="32" height="32" focusable="false">
+            <path fill="currentColor" d="M9.2 16.2 5.8 12.8l-1.4 1.4 4.8 4.8 10.6-10.6-1.4-1.4z"></path>
+          </svg>
+        </div>
+        <div class="sup-report-success__title" id="supExpenseSaveSuccessTitle">Gasto guardado</div>
+        <p class="sup-report-success__msg" id="supExpenseSaveSuccessMsg"></p>
+      </div>
       <div class="modal-header">
         <div>
           <div class="modal-title" id="supExpenseReportModalTitle">Reportar gasto imprevisto</div>
@@ -1591,6 +1680,7 @@
         <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Cerrar">Cerrar</button>
       </div>
       <div class="modal-body">
+        <p id="supExtraFeedback" class="sup-report-feedback" role="status" hidden></p>
         <div class="form">
           <div class="field">
             <label>Fecha</label>
@@ -1684,6 +1774,51 @@
       <div class="modal-footer">
         <button type="button" class="btn ghost" id="btnSupExpenseRemoveKeep">Keep expense</button>
         <button type="button" class="btn danger" id="btnSupExpenseRemoveConfirm">Remove expense</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="supLaborRemoveModal" class="modal sup-labor-remove-modal" aria-hidden="true" role="alertdialog" aria-modal="true" aria-labelledby="supLaborRemoveTitle" aria-describedby="supLaborRemoveLead">
+    <div class="modal-card sup-labor-remove-modal__card" role="document">
+      <div class="sup-labor-remove-modal__accent" aria-hidden="true"></div>
+      <div class="modal-header">
+        <div>
+          <span class="badge red">Permanent</span>
+          <div class="modal-title" id="supLaborRemoveTitle">Remove this labor report?</div>
+          <p class="modal-subtitle" id="supLaborRemoveLead">This deletes one recorded labor report from the project. Supervisor cannot restore it.</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <dl class="sup-labor-remove-modal__record">
+          <div>
+            <dt>Date</dt>
+            <dd id="supLaborRemoveDate">—</dd>
+          </div>
+          <div>
+            <dt>Hours</dt>
+            <dd id="supLaborRemoveHours">—</dd>
+          </div>
+          <div>
+            <dt>Days</dt>
+            <dd id="supLaborRemoveDays">—</dd>
+          </div>
+          <div>
+            <dt>Who worked</dt>
+            <dd id="supLaborRemoveCrew">—</dd>
+          </div>
+        </dl>
+        <div class="notice warn">
+          <strong>What changes</strong>
+          <ul>
+            <li>The report leaves this day.</li>
+            <li>Hours and the project labor total update immediately.</li>
+            <li>This action cannot be undone.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnSupLaborRemoveKeep">Keep report</button>
+        <button type="button" class="btn danger" id="btnSupLaborRemoveConfirm">Remove report</button>
       </div>
     </div>
   </div>

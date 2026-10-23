@@ -51,7 +51,24 @@ const report = mapDeviceReportRow({
   tenant_id: "secret",
   created_by: "user",
 });
-ok("a device labor row exposes the crew and hides the marker", report.note === "tile prep" && report.crew.length === 2 && report.tenant_id == null);
+ok("a device labor row exposes the crew and hides the marker", report.note === "tile prep" && report.crew.length === 2 && report.tenant_id == null && report.id == null);
+const removable = mapDeviceReportRow({
+  id: "rep-1",
+  project_id: "proj-1",
+  entry_date: "2026-10-21",
+  hours: 8,
+  days: 1,
+  note: "tile",
+  tenant_id: "secret",
+  created_by: "user",
+});
+ok(
+  "a device labor row can be removed without secrets",
+  removable.id === "rep-1" &&
+    removable.project_id === "proj-1" &&
+    removable.tenant_id == null &&
+    removable.created_by == null
+);
 
 const expense = mapDeviceExpenseRow({
   id: "exp-1",
@@ -84,5 +101,17 @@ ok("labor and expense modals ask who worked", html.includes('id="supEntryCrew"')
 ok("the crew editor saves with the report", app.includes("supervisorCrewForSave") && app.includes("crew: entry.crew") && app.includes("crew: extra.crew"));
 ok("the server requires the day's crew", reportHandler.includes("crew_required") && expenseHandler.includes("crew_required"));
 ok("the server keeps the crew when the column is missing", reportHandler.includes("appendCrewTrailer") && expenseHandler.includes("appendCrewTrailer"));
+ok("labor and expense saves show a success report", html.includes('id="supLaborSaveSuccess"') && html.includes('id="supExpenseSaveSuccess"'));
+ok("a missing hours or days warning stays inside the modal", app.includes("Escribe las horas o los días trabajados.") && !app.includes('alert("Report hours or days worked.")'));
+ok("the saved report modal closes after 3 seconds", app.includes("SUPERVISOR_REPORT_SUCCESS_HOLD_MS = 3000") && app.includes("Reporte guardado") && app.includes("Gasto guardado"));
+ok(
+  "a labor report can be removed like a duplicate expense",
+  html.includes('id="supLaborRemoveModal"') &&
+    html.includes("Remove this labor report?") &&
+    html.includes("Keep report") &&
+    app.includes("data-sup-remove-report") &&
+    app.includes("/.netlify/functions/delete-supervisor-project-report") &&
+    !app.includes("/.netlify/functions/delete-project-report")
+);
 
 console.log("\n" + passed + " passed");
