@@ -3884,6 +3884,12 @@ Thank you.`
     set("supHeroDurationLabel", estInt > 0 ? `${estInt}-Day Project` : "Project timeline pending");
     set("supHeroStatusLine", ctx.status?.headline || paceStatus);
     set("supHeroStart", ctx.schedule.startLabel);
+    const startEditor = $("supStartEdit");
+    const startInput = $("supStartDateInput");
+    if (startInput && (!startEditor || startEditor.hidden)) {
+      startInput.value = ctx.schedule.startIso || "";
+    }
+    bindSupervisorProductionStartEditor();
     set("supHeroTarget", ctx.schedule.targetLabel);
     set("supHeroCrew", ctx.crewSummary);
     const targetHint = $("supHeroTargetHint");
@@ -3919,6 +3925,91 @@ Thank you.`
     syncSupervisorConsoleSidebar();
     syncSupervisorStatusStrip();
   }
+
+  let supervisorProductionStartBound = false;
+  let supervisorProductionStartSaving = false;
+
+  function bindSupervisorProductionStartEditor() {
+    if (supervisorProductionStartBound) return;
+    const editBtn = $("btnSupEditStart");
+    const saveBtn = $("btnSupSaveStart");
+    const cancelBtn = $("btnSupCancelStart");
+    if (!editBtn || !saveBtn || !cancelBtn) return;
+    supervisorProductionStartBound = true;
+    editBtn.onclick = () => {
+      const editor = $("supStartEdit");
+      const feedback = $("supStartEditFeedback");
+      if (feedback) feedback.textContent = "";
+      if (editor) editor.hidden = false;
+      const input = $("supStartDateInput");
+      if (input) input.focus();
+    };
+    cancelBtn.onclick = () => {
+      const editor = $("supStartEdit");
+      const feedback = $("supStartEditFeedback");
+      if (feedback) feedback.textContent = "";
+      if (editor) editor.hidden = true;
+    };
+    saveBtn.onclick = () => {
+      void saveSupervisorProductionStart();
+    };
+  }
+
+  async function saveSupervisorProductionStart() {
+    if (supervisorProductionStartSaving) return;
+    const project = resolveActiveSupervisorProject();
+    const pid = supervisorProjectKey(project?.id);
+    const input = $("supStartDateInput");
+    const feedback = $("supStartEditFeedback");
+    const saveBtn = $("btnSupSaveStart");
+    const startDate = normalizeDateInput(input?.value || "");
+    if (!pid) {
+      if (feedback) feedback.textContent = "Select a project first.";
+      return;
+    }
+    if (!startDate) {
+      if (feedback) feedback.textContent = "Enter a valid start date.";
+      return;
+    }
+    supervisorProductionStartSaving = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (feedback) feedback.textContent = "Saving start date…";
+    try {
+      const res = await fetch("/.netlify/functions/update-supervisor-production-start", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: pid, start_date: startDate }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data || data.ok !== true) {
+        if (feedback) {
+          feedback.textContent = (data && (data.error || data.message)) || "Could not update the start date.";
+        }
+        return;
+      }
+      const target = normalizeDateInput(data.target_finish_date || "");
+      if (project && target) project.dueDate = target;
+      const report = loadSupervisorReport(project);
+      if (report && target) {
+        report.dueDate = target;
+        report.projectedEndDate = target;
+        saveSupervisorReport(pid, report);
+      }
+      const editor = $("supStartEdit");
+      if (editor) editor.hidden = true;
+      if (feedback) feedback.textContent = "";
+      await loadSupervisorOperationalSnapshot(pid, { force: true });
+      scheduleSupervisorRender("production-start");
+    } catch (_err) {
+      if (feedback) feedback.textContent = "Could not update the start date.";
+    } finally {
+      supervisorProductionStartSaving = false;
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  bindSupervisorProductionStartEditor();
 
   function renderSupervisorTodayTarget(plan, startIso, actualDays, migratedCtx, opts) {
     const wrap = $("supTodayTarget");

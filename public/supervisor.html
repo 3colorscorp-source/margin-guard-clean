@@ -536,6 +536,32 @@
       color: var(--sup-text);
       overflow-wrap: anywhere;
     }
+    body.supervisor-page .sup-start-edit-btn {
+      margin-top: 8px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    body.supervisor-page .sup-start-edit {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 220px;
+    }
+    body.supervisor-page .sup-start-edit[hidden] {
+      display: none !important;
+    }
+    body.supervisor-page .sup-start-edit input[type="date"] {
+      width: 100%;
+    }
+    body.supervisor-page .sup-start-edit__actions {
+      display: flex;
+      gap: 8px;
+    }
+    body.supervisor-page .sup-start-edit__feedback {
+      margin: 0;
+      color: var(--sup-muted);
+    }
     body.supervisor-page .supervisor-status-strip__meta-item .sup-exec-hero__hint {
       margin-top: 4px;
       font-size: 11px;
@@ -1023,6 +1049,16 @@
                     Start
                   </span>
                   <strong id="supHeroStart">—</strong>
+                  <button type="button" class="btn ghost sup-start-edit-btn" id="btnSupEditStart">Edit start</button>
+                  <div class="sup-start-edit" id="supStartEdit" hidden>
+                    <label class="visually-hidden" for="supStartDateInput">Production start date</label>
+                    <input id="supStartDateInput" type="date" />
+                    <div class="sup-start-edit__actions">
+                      <button type="button" class="btn" id="btnSupSaveStart">Save</button>
+                      <button type="button" class="btn ghost" id="btnSupCancelStart">Cancel</button>
+                    </div>
+                    <p class="small sup-start-edit__feedback" id="supStartEditFeedback" aria-live="polite"></p>
+                  </div>
                 </div>
                 <div class="supervisor-status-strip__meta-item sup-exec-hero__cell">
                   <span class="sup-exec-hero__label">

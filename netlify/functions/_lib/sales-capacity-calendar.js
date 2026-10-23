@@ -283,11 +283,59 @@ function resolveTargetFinish(project, opRow, baseline) {
   );
 }
 
-function resolveProjectStart(project, baseline) {
+function addCalendarDays(ymd, days) {
+  const dt = parseYmd(ymd);
+  if (!dt) return null;
+  const n = Math.trunc(num(days, 0));
+  dt.setDate(dt.getDate() + n);
+  return formatYmd(dt);
+}
+
+/** Last calendar day of a plan that starts on startYmd and runs estimatedDays days. */
+function productionTargetFromStart(startYmd, estimatedDays) {
+  const start = normDate(startYmd);
+  const days = Math.max(1, Math.ceil(num(estimatedDays, 1)));
+  if (!start) return null;
+  return addCalendarDays(start, days - 1);
+}
+
+function productionCalendarDayIndex(startYmd, estimatedDays, todayYmd) {
+  const start = parseYmd(startYmd);
+  const today = parseYmd(todayYmd);
+  const est = Math.max(1, Math.ceil(num(estimatedDays, 1)));
+  if (!start || !today) return null;
+  start.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+  if (diff < 1) return 1;
+  return Math.min(diff, est);
+}
+
+function productionPositionText(projectName, startYmd, estimatedDays, targetYmd, todayYmd) {
+  const name = String(projectName || "Current project").trim() || "Current project";
+  const start = normDate(startYmd);
+  const est = Math.max(0, Math.round(num(estimatedDays, 0)));
+  if (!start || est <= 0) return "";
+  const today = normDate(todayYmd);
+  if (today && compareYmd(today, start) < 0) {
+    return `${name} is scheduled in production. Day 1 of ${est} starts ${formatDateUS(start)}.`;
+  }
+  const day = productionCalendarDayIndex(start, est, today || start);
+  const finish = normDate(targetYmd);
+  const through = finish ? ` through ${formatDateUS(finish)}` : "";
+  return `${name} is on Day ${day} of ${est} in production${through}.`;
+}
+
+function resolveProjectStart(project, baseline, quote) {
   const signed = project?.signed_at;
   const signedYmd =
     typeof signed === "string" && signed.length >= 10 ? signed.slice(0, 10) : signed;
-  return normDate(baseline?.actual_start_date) || normDate(signedYmd) || null;
+  return (
+    normDate(baseline?.actual_start_date) ||
+    normDate(quote?.start_date) ||
+    normDate(signedYmd) ||
+    null
+  );
 }
 
 function formatDateUS(ymd) {
@@ -366,7 +414,7 @@ function analyzeProjectForCrewAvailability(
     };
   }
 
-  const startDate = resolveProjectStart(project, baseline);
+  const startDate = resolveProjectStart(project, baseline, ctx.quote);
   let targetFinish = resolveTargetFinish(project, opRow, baseline);
   if (!targetFinish && startDate && estimatedDays > 0) {
     targetFinish = projectFinishFromStart(startDate, estimatedDays, settings);
@@ -605,6 +653,13 @@ function serializeProjectForCrewCard(
     supervisor_progress_available: supervisorOk,
     recommended_next_start_date: recommended,
     incomplete_supervisor_reporting: Boolean(analysis.incomplete_supervisor_reporting),
+    production_position: productionPositionText(
+      analysis.project_name,
+      analysis.start_date,
+      est,
+      analysis.target_finish_date || analysis.occupation_end,
+      todayYmd
+    ),
     past_target_incomplete: Boolean(analysis.past_target_incomplete),
     conflict_with_desired: Boolean(analysis.conflict_with_desired),
     released: Boolean(analysis.released),
@@ -684,6 +739,17 @@ function buildCrewAvailabilityDetail({
       const recLabel = formatDateUS(recommended);
       if (recLabel) message += ` Next available start: ${recLabel}.`;
     }
+  }
+
+  if (
+    primary &&
+    !primary.released &&
+    !primary.is_completed_by_supervisor &&
+    primary.production_position
+  ) {
+    message = message
+      ? `${primary.production_position} ${message}`
+      : primary.production_position;
   }
 
   return {
@@ -853,7 +919,7 @@ async function computeSalesCapacityCalendar(params) {
   const tid = encodeURIComponent(tenantId);
   const statusList = ACTIVE_STATUSES.map(encodeURIComponent).join(",");
 
-  const [projectRows, snapshotRows, baselineRows, reportRows] = await Promise.all([
+  const [projectRows, snapshotRows, baselineRows, reportRows, quoteRows] = await Promise.all([
     supabaseRequest(
       `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name,client_name`
     ),
@@ -865,6 +931,9 @@ async function computeSalesCapacityCalendar(params) {
     ),
     safeFetchRows(
       `tenant_project_reports?tenant_id=eq.${tid}&select=project_id,days,created_at`
+    ),
+    safeFetchRows(
+      `quotes?tenant_id=eq.${tid}&select=id,start_date,due_date`
     ),
   ]);
 
@@ -889,6 +958,10 @@ async function computeSalesCapacityCalendar(params) {
   for (const row of Array.isArray(baselineRows) ? baselineRows : []) {
     if (row?.project_id) baselinesByProject.set(String(row.project_id), row);
   }
+  const quotesById = new Map();
+  for (const row of Array.isArray(quoteRows) ? quoteRows : []) {
+    if (row?.id) quotesById.set(String(row.id), row);
+  }
   const reportsByProject = new Map();
   for (const row of Array.isArray(reportRows) ? reportRows : []) {
     if (!row?.project_id) continue;
@@ -909,9 +982,10 @@ async function computeSalesCapacityCalendar(params) {
     const reports = reportsByProject.get(pid) || [];
     const progressRows = dayProgressByProject.get(pid) || [];
 
+    const quote = quotesById.get(String(project.quote_id || "")) || null;
     const analysis = analyzeProjectForCrewAvailability(
       project,
-      { opRow, baseline, reports, dayProgressRows: progressRows },
+      { opRow, baseline, reports, dayProgressRows: progressRows, quote },
       settings,
       todayYmd,
       desiredStartDate
@@ -1052,6 +1126,10 @@ module.exports = {
   loadScheduleSettingsForTenant,
   computeSalesCapacityCalendar,
   analyzeProjectForCrewAvailability,
+  productionTargetFromStart,
+  productionCalendarDayIndex,
+  productionPositionText,
+  resolveProjectStart,
   resolveCompletedDays,
   resolveSupervisorCompletionMetrics,
   isCompletedBySupervisor,
