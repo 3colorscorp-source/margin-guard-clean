@@ -397,6 +397,43 @@
     .pcc-detail { margin-top: 1.5rem; display: none; }
     .pcc-detail.open { display: block; }
     .pcc-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .pcc-money {
+      margin: 14px 0 8px;
+      padding: 14px;
+      border-radius: 14px;
+      background: #0c1420;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .pcc-money__head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .pcc-money__head h4 { margin: 0; }
+    .pcc-money__hint { margin: 4px 0 0; color: #9c9a94; font-size: 0.82rem; }
+    .pcc-money__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+      gap: 10px;
+    }
+    .pcc-money__card {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #141e2e;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .pcc-money__k { font-size: 0.75rem; letter-spacing: 0.02em; color: #9c9a94; }
+    .pcc-money__v { margin-top: 4px; font-size: 1.15rem; font-weight: 700; color: #f4f4f1; }
+    .pcc-money__v--pos { color: #34d399; }
+    .pcc-money__v--warn { color: #fbbf24; }
+    .pcc-money__v--neg { color: #fca5a5; }
+    .pcc-money__sub { margin-top: 4px; font-size: 0.75rem; color: #9c9a94; }
+    .pcc-money__wait { margin: 0; color: #9c9a94; }
+    .pcc-finance-cell { font-size: 0.8rem; line-height: 1.4; white-space: nowrap; }
+    .pcc-finance-cell .sub { color: #9c9a94; }
     .pcc-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; margin: 12px 0; }
     .pcc-kv div { padding: 8px 0; border-bottom: 1px solid var(--border, #eee); }
     .pcc-kv .k { font-size: 0.8rem; color: var(--muted, #666); }
@@ -1002,6 +1039,7 @@
                 <th>Due</th>
                 <th>Progress</th>
                 <th>Status</th>
+                <th>Finances</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1020,6 +1058,16 @@
           </div>
           <button type="button" class="btn ghost" id="pccCloseDetail">Close detail</button>
         </div>
+        <section class="pcc-money" id="pccMoneyBoard" aria-label="Project finances">
+          <div class="pcc-money__head">
+            <div>
+              <h4>Project finances</h4>
+              <p class="pcc-money__hint">Contract, collections, labor, expenses, and owner profit for this project.</p>
+            </div>
+            <button type="button" class="btn primary" id="pccMoneyOpenFull">Open full financials</button>
+          </div>
+          <div class="pcc-money__grid" id="pccMoneyGrid"></div>
+        </section>
         <div class="pcc-baseline-actions">
           <button type="button" class="btn primary" id="pccBtnSetBaseline">Set migrated baseline</button>
           <span class="hint" id="pccBaselineStatus" aria-live="polite"></span>
@@ -1202,6 +1250,123 @@
         return '$' + x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
 
+      function ownerFieldNote(note) {
+        var raw = String(note || '');
+        var marker = '[[mg-crew:v1]]';
+        var idx = raw.lastIndexOf(marker);
+        var crew = '';
+        if (idx >= 0) {
+          try {
+            var people = JSON.parse(raw.slice(idx + marker.length).trim());
+            if (Array.isArray(people)) {
+              var pros = 0;
+              var assistants = 0;
+              people.forEach(function (person) {
+                var role = String(person && person.role || '').toLowerCase();
+                if (role === 'pro') pros += 1;
+                else if (role === 'assistant') assistants += 1;
+              });
+              var bits = [];
+              if (pros) bits.push(pros === 1 ? '1 Pro' : pros + ' Pros');
+              if (assistants) bits.push(assistants === 1 ? '1 Assistant' : assistants + ' Assistants');
+              crew = bits.join(' · ');
+            }
+          } catch (_err) {
+            crew = '';
+          }
+          raw = raw.slice(0, idx);
+        }
+        return { text: raw.replace(/\s+$/g, '').trim(), crew: crew };
+      }
+
+      function ownerNoteCell(note) {
+        var shown = ownerFieldNote(note);
+        var html = esc(shown.text || '—');
+        if (shown.crew) html += '<div class="sub">Who worked: ' + esc(shown.crew) + '</div>';
+        return html;
+      }
+
+      function financeFromDetail(detail) {
+        var k = (detail && detail.kpis) || {};
+        var cc = (detail && detail.contract_collection) || {};
+        var exp = (detail && detail.expenses) || {};
+        var labor = (detail && detail.labor) || {};
+        var profit = (detail && detail.profit) || {};
+        var est = labor.estimated || {};
+        var act = labor.actual || {};
+        return {
+          contract: k.contract_total != null ? k.contract_total : cc.current_contract_total,
+          paid: k.paid_to_date != null ? k.paid_to_date : cc.paid_to_date,
+          balance: k.balance_due != null ? k.balance_due : cc.balance_due,
+          profit: k.current_profit,
+          margin: k.margin_pct,
+          incomplete: Boolean(profit.profit_is_incomplete || k.profit_is_incomplete),
+          expenses: exp.total,
+          expenseCount: exp.count,
+          laborActual: act.labor_cost,
+          laborBudget: est.labor_cost,
+          invoiceStatus: cc.invoice_status || ''
+        };
+      }
+
+      function moneyToneClass(kind, n) {
+        var v = Number(n);
+        var known = n != null && isFinite(v);
+        if (kind === 'balance') return known && v <= 0.01 ? 'pcc-money__v--pos' : 'pcc-money__v--warn';
+        if (kind === 'cost') return known && v > 0.005 ? 'pcc-money__v--neg' : '';
+        if (kind === 'profit') {
+          if (!known) return 'pcc-money__v--warn';
+          if (v < 0) return 'pcc-money__v--neg';
+          if (v > 0) return 'pcc-money__v--pos';
+          return '';
+        }
+        return 'pcc-money__v--pos';
+      }
+
+      function moneyCard(label, value, tone, sub) {
+        return '<article class="pcc-money__card"><div class="pcc-money__k">' + esc(label) +
+          '</div><div class="pcc-money__v ' + tone + '">' + esc(value) + '</div>' +
+          (sub ? '<div class="pcc-money__sub">' + esc(sub) + '</div>' : '') +
+          '</article>';
+      }
+
+      function renderProjectFinanceBoard(row) {
+        var grid = document.getElementById('pccMoneyGrid');
+        if (!grid) return;
+        var fin = row && row.finance;
+        if (!fin) {
+          grid.innerHTML = '<p class="pcc-money__wait">Loading project finances…</p>';
+          return;
+        }
+        if (fin.unavailable) {
+          grid.innerHTML = '<p class="pcc-money__wait">Finances are not available for this project yet.</p>';
+          return;
+        }
+        var laborValue = fin.laborActual != null && fin.laborActual !== '' ? moneyUsd(fin.laborActual) : 'Not calculated';
+        var laborSub = fin.laborBudget != null && isFinite(Number(fin.laborBudget)) ? 'Budget ' + moneyUsd(fin.laborBudget) : '';
+        var profitText = fin.incomplete ? 'Incomplete' : moneyUsd(fin.profit);
+        var marginText = fin.incomplete ? 'Incomplete' : (fin.margin != null && isFinite(Number(fin.margin)) ? String(fin.margin) + '%' : '—');
+        var expenseCount = fin.expenseCount != null ? String(fin.expenseCount) : '0';
+        grid.innerHTML =
+          moneyCard('Contract', moneyUsd(fin.contract), moneyToneClass('contract', fin.contract), '') +
+          moneyCard('Paid', moneyUsd(fin.paid), moneyToneClass('paid', fin.paid), fin.invoiceStatus || '') +
+          moneyCard('Balance due', moneyUsd(fin.balance), moneyToneClass('balance', fin.balance), '') +
+          moneyCard('Labor used', laborValue, fin.laborActual != null ? moneyToneClass('cost', fin.laborActual) : '', laborSub) +
+          moneyCard('Unexpected expenses', moneyUsd(fin.expenses), moneyToneClass('cost', fin.expenses), expenseCount + ' entries') +
+          moneyCard('Owner profit', profitText, fin.incomplete ? 'pcc-money__v--warn' : moneyToneClass('profit', fin.profit), '') +
+          moneyCard('Margin', marginText, fin.incomplete ? 'pcc-money__v--warn' : moneyToneClass('profit', fin.margin), '');
+      }
+
+      function financeListCell(fin) {
+        if (!fin) return '<span class="sub">Loading…</span>';
+        if (fin.unavailable) return '—';
+        var profit = fin.incomplete ? 'Profit incomplete' : ('Profit ' + moneyUsd(fin.profit));
+        var margin = fin.incomplete ? '' : (fin.margin != null && isFinite(Number(fin.margin)) ? ' · ' + fin.margin + '%' : '');
+        return '<div>' + esc(moneyUsd(fin.contract)) + ' contract</div>' +
+          '<div class="sub">Paid ' + esc(moneyUsd(fin.paid)) + ' · Due ' + esc(moneyUsd(fin.balance)) + '</div>' +
+          '<div>' + esc(profit + margin) + '</div>';
+      }
+
       function marginRiskLabel(risk) {
         var r = String(risk || '').toLowerCase();
         if (r === 'incomplete') return 'Incomplete';
@@ -1235,7 +1400,7 @@
       }
 
       function parseExpenseConcept(note) {
-        var raw = String(note || '').trim();
+        var raw = ownerFieldNote(note).text;
         if (!raw) return 'Expense';
         var nl = raw.indexOf('\n');
         return (nl >= 0 ? raw.slice(0, nl) : raw).trim() || 'Expense';
@@ -1618,7 +1783,7 @@
         document.getElementById('pccExpenseBody').innerHTML = rows.length
           ? rows.map(function (r) {
             return '<tr><td>' + esc(fmtDate(r.expense_date)) + '</td><td>' + esc(r.concept || parseExpenseConcept(r.note)) +
-              '</td><td>' + esc(moneyUsd(r.amount)) + '</td><td>' + esc(r.note || '—') + '</td><td>' +
+              '</td><td>' + esc(moneyUsd(r.amount)) + '</td><td>' + ownerNoteCell(r.note) + '</td><td>' +
               esc(r.day_number != null ? String(r.day_number) : '—') + '</td></tr>';
           }).join('')
           : '<tr><td colspan="5" class="sub">No field expenses recorded.</td></tr>';
@@ -1686,16 +1851,24 @@
             );
             var data = await res.json().catch(function () { return {}; });
             if (!res.ok || !data || data.ok !== true || !data.detail) {
+              row.finance = { unavailable: true };
               console.warn('[PCC] Server operational enrich skipped for project', id);
               return;
             }
+            row.finance = financeFromDetail(data.detail);
             applyPccServerOperationalDisplay(row.metrics, data.detail);
           } catch (_err) {
+            row.finance = { unavailable: true };
             console.warn('[PCC] Server operational enrich failed for project', id);
           }
         }));
         renderSummary();
         renderTable();
+        var openDetailEl = document.getElementById('pccDetail');
+        if (openDetailEl && openDetailEl.classList.contains('open') && selectedId) {
+          var current = allRows.find(function (item) { return String(item.project.id) === String(selectedId); });
+          if (current) paintOperationalDetail(current);
+        }
       }
 
       async function openFinancialDetail(id) {
@@ -1794,6 +1967,7 @@
             '<td><span class="badge ' + tone + '"' +
             (m.serverOpAligned ? ' data-pcc-op-source="server"' : '') + '>' +
             esc(m.statusLabel) + '</span></td>' +
+            '<td class="pcc-finance-cell">' + financeListCell(row.finance) + '</td>' +
             '<td class="pcc-row-actions">' +
             '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">Financials</button>' +
             '<button type="button" class="btn pcc-view-reports" data-pcc-action="reports" data-id="' + esc(p.id) + '">Reports &amp; baseline</button>' +
@@ -1965,7 +2139,20 @@
             statusEl.textContent = 'No migrated baseline yet.';
           }
         }
+        paintOperationalDetail(row);
+        document.getElementById('pccDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      function paintOperationalDetail(row) {
+        var m = row.metrics;
+        var fin = row.finance;
+        renderProjectFinanceBoard(row);
         var kv = document.getElementById('pccDetailKv');
+        var expenseValue = String(m.unexpectedExpensesCount) + ' field entries';
+        if (fin && !fin.unavailable && fin.expenses != null) {
+          var count = fin.expenseCount != null ? fin.expenseCount : m.unexpectedExpensesCount;
+          expenseValue = moneyUsd(fin.expenses) + ' · ' + String(count) + ' entries';
+        }
         var kvPairs = [
           ['Due date', fmtDate(m.dueDate)],
           ['Projected finish', m.projectedEndDate ? fmtDate(m.projectedEndDate) : '—'],
@@ -1973,7 +2160,7 @@
           ['Days spent', m.daysSpent.toFixed(2)],
           ['Days remaining', m.daysRemaining.toFixed(2)],
           ['Hours reported', m.reportedHours.toFixed(2)],
-          ['Unexpected expenses (count)', String(m.unexpectedExpensesCount) + ' (field entries in Margin Guard)'],
+          ['Unexpected expenses', expenseValue],
           ['Invoice / payments', 'See Invoices Hub (not part of field baseline)'],
           ['Progress', pct(m.progressPct)],
           ['Plan deviation', m.planDeviationLabel],
@@ -1998,11 +2185,10 @@
         document.getElementById('pccDetailReports').innerHTML = reps.length
           ? reps.map(function (r) {
             return '<tr><td>' + esc(fmtDate(r.entry_date)) + '</td><td>' + esc(Number(r.days || 0).toFixed(2)) + '</td><td>' +
-              esc(Number(r.hours || 0).toFixed(2)) + '</td><td>' + esc(r.note || '') + '</td></tr>';
+              esc(Number(r.hours || 0).toFixed(2)) + '</td><td>' + ownerNoteCell(r.note) + '</td></tr>';
           }).join('')
           : '<tr><td colspan="4" class="sub">No work reports yet.</td></tr>';
         document.getElementById('pccDetail').classList.add('open');
-        document.getElementById('pccDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
 
       function bindFilters() {
@@ -2016,6 +2202,11 @@
           });
         });
       }
+
+      document.getElementById('pccMoneyOpenFull').addEventListener('click', function () {
+        if (!selectedId) return;
+        void openFinancialDetail(selectedId);
+      });
 
       document.getElementById('pccCloseDetail').addEventListener('click', function () {
         selectedId = '';
