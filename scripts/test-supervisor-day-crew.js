@@ -102,8 +102,8 @@ ok("the crew editor saves with the report", app.includes("supervisorCrewForSave"
 ok("the server requires the day's crew", reportHandler.includes("crew_required") && expenseHandler.includes("crew_required"));
 ok("the server keeps the crew when the column is missing", reportHandler.includes("appendCrewTrailer") && expenseHandler.includes("appendCrewTrailer"));
 ok("labor and expense saves show a success report", html.includes('id="supLaborSaveSuccess"') && html.includes('id="supExpenseSaveSuccess"'));
-ok("a missing hours or days warning stays inside the modal", app.includes("Escribe las horas o los días trabajados.") && !app.includes('alert("Report hours or days worked.")'));
-ok("the saved report modal closes after 3 seconds", app.includes("SUPERVISOR_REPORT_SUCCESS_HOLD_MS = 3000") && app.includes("Reporte guardado") && app.includes("Gasto guardado"));
+ok("a missing hours or days warning stays inside the modal", app.includes("Enter the hours or the days worked.") && !app.includes('alert("Report hours or days worked.")'));
+ok("the saved report modal closes after 3 seconds", app.includes("SUPERVISOR_REPORT_SUCCESS_HOLD_MS = 3000") && app.includes("Report saved") && app.includes("Expense saved"));
 ok(
   "a labor report can be removed like a duplicate expense",
   html.includes('id="supLaborRemoveModal"') &&

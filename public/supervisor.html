@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1220,7 +1220,7 @@
 </head>
 <body data-requires-auth="true" data-supervisor-dual-auth="true" class="supervisor-page" data-mg-app-nav data-mg-page-title="Supervisor">
   <div class="container supervisor-console">
-    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+    <div class="account-pill" id="accountEmail">Active account</div>
     <div class="topbar-actions" id="supervisorDeviceLogoutHost" hidden aria-hidden="true" style="display:none"></div>
 
     <header class="card supervisor-top-workflow supervisor-top-workflow--compact sup-active-project">
@@ -1464,10 +1464,10 @@
                 <table class="table">
                   <thead>
                     <tr>
-                      <th>Fecha</th>
-                      <th>Nota</th>
-                      <th>Horas</th>
-                      <th>Dias</th>
+                      <th>Date</th>
+                      <th>Note</th>
+                      <th>Hours</th>
+                      <th>Days</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -1488,10 +1488,10 @@
                 <table class="table">
                   <thead>
                     <tr>
-                      <th>Fecha</th>
-                      <th>Concepto</th>
-                      <th>Monto</th>
-                      <th>Nota</th>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Amount</th>
+                      <th>Note</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -1548,7 +1548,7 @@
           <div class="modal-title" id="supDayDetailTitle">Day detail</div>
           <div class="modal-subtitle" id="supDayDetailSubtitle">—</div>
         </div>
-        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupDayDetail" aria-label="Cerrar">Cerrar</button>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupDayDetail" aria-label="Close">Close</button>
       </div>
       <div class="modal-body">
         <div class="sup-day-detail__meta">
@@ -1594,54 +1594,54 @@
             <path fill="currentColor" d="M9.2 16.2 5.8 12.8l-1.4 1.4 4.8 4.8 10.6-10.6-1.4-1.4z"></path>
           </svg>
         </div>
-        <div class="sup-report-success__title" id="supLaborSaveSuccessTitle">Reporte guardado</div>
+        <div class="sup-report-success__title" id="supLaborSaveSuccessTitle">Report saved</div>
         <p class="sup-report-success__msg" id="supLaborSaveSuccessMsg"></p>
       </div>
       <div class="modal-header">
         <div>
-          <div class="modal-title" id="supLaborReportModalTitle">Reportar labor</div>
-          <div class="modal-subtitle">Registra horas, días y quién trabajó.</div>
+          <div class="modal-title" id="supLaborReportModalTitle">Report labor</div>
+          <div class="modal-subtitle">Record hours, days, and who worked.</div>
         </div>
-        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupLaborReport" aria-label="Cerrar">Cerrar</button>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupLaborReport" aria-label="Close">Close</button>
       </div>
       <div class="modal-body">
         <p id="supEntryFeedback" class="sup-report-feedback" role="status" hidden></p>
         <div class="form">
           <div class="field">
-            <label>Fecha</label>
+            <label>Date</label>
             <input id="supEntryDate" class="sup-field-date-input" type="date" autocomplete="off" />
           </div>
           <div class="field">
-            <label>Horas trabajadas</label>
+            <label>Hours worked</label>
             <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
           </div>
           <div class="field">
-            <label>Dias trabajados</label>
+            <label>Days worked</label>
             <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
           </div>
           <section class="sup-crew" id="supEntryCrew" aria-labelledby="supEntryCrewTitle">
             <div class="sup-crew__head">
               <div>
-                <h3 id="supEntryCrewTitle">Quién trabajó</h3>
-                <p class="small">Pro y asistentes que estuvieron en campo este día.</p>
+                <h3 id="supEntryCrewTitle">Who worked</h3>
+                <p class="small">Pros and assistants who were on site this day.</p>
               </div>
-              <strong class="sup-crew__summary" data-crew-summary>Nadie en campo</strong>
+              <strong class="sup-crew__summary" data-crew-summary>Nobody on site</strong>
             </div>
             <p class="sup-crew__plan small" data-crew-plan hidden></p>
             <div class="sup-crew__grid">
               <article class="sup-crew__role" data-crew-role="pro">
                 <header><span>Pro</span><strong data-crew-count>0</strong></header>
                 <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Quitar Pro">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Agregar Pro">+</button>
+                  <button type="button" data-crew-delta="-1" aria-label="Remove Pro">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Add Pro">+</button>
                 </div>
                 <div class="sup-crew__names" data-crew-names></div>
               </article>
               <article class="sup-crew__role" data-crew-role="assistant">
-                <header><span>Asistente</span><strong data-crew-count>0</strong></header>
+                <header><span>Assistant</span><strong data-crew-count>0</strong></header>
                 <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Quitar asistente">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Agregar asistente">+</button>
+                  <button type="button" data-crew-delta="-1" aria-label="Remove assistant">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Add assistant">+</button>
                 </div>
                 <div class="sup-crew__names" data-crew-names></div>
               </article>
@@ -1649,14 +1649,14 @@
             <p class="sup-crew__error small" data-crew-error></p>
           </section>
           <div class="field">
-            <label>Nota</label>
-            <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
+            <label>Note</label>
+            <input id="supEntryNote" maxlength="100" placeholder="Example: rough plumbing / tile prep / finish" />
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn ghost" id="btnCancelSupLaborReport">Cancelar</button>
-        <button type="button" class="btn primary" id="btnAddSupEntry">Guardar reporte</button>
+        <button type="button" class="btn ghost" id="btnCancelSupLaborReport">Cancel</button>
+        <button type="button" class="btn primary" id="btnAddSupEntry">Save report</button>
       </div>
     </div>
   </div>
@@ -1669,54 +1669,54 @@
             <path fill="currentColor" d="M9.2 16.2 5.8 12.8l-1.4 1.4 4.8 4.8 10.6-10.6-1.4-1.4z"></path>
           </svg>
         </div>
-        <div class="sup-report-success__title" id="supExpenseSaveSuccessTitle">Gasto guardado</div>
+        <div class="sup-report-success__title" id="supExpenseSaveSuccessTitle">Expense saved</div>
         <p class="sup-report-success__msg" id="supExpenseSaveSuccessMsg"></p>
       </div>
       <div class="modal-header">
         <div>
-          <div class="modal-title" id="supExpenseReportModalTitle">Reportar gasto imprevisto</div>
-          <div class="modal-subtitle">Registra el gasto y quién trabajó ese día.</div>
+          <div class="modal-title" id="supExpenseReportModalTitle">Report unexpected expense</div>
+          <div class="modal-subtitle">Record the expense and who worked that day.</div>
         </div>
-        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Cerrar">Cerrar</button>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Close">Close</button>
       </div>
       <div class="modal-body">
         <p id="supExtraFeedback" class="sup-report-feedback" role="status" hidden></p>
         <div class="form">
           <div class="field">
-            <label>Fecha</label>
+            <label>Date</label>
             <input id="supExtraDate" class="sup-field-date-input" type="date" autocomplete="off" />
           </div>
           <div class="field">
-            <label>Concepto</label>
-            <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
+            <label>Description</label>
+            <input id="supExtraItem" maxlength="80" placeholder="Example: fuel, screws, tape" />
           </div>
           <div class="field">
-            <label>Monto</label>
+            <label>Amount</label>
             <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
           </div>
           <section class="sup-crew" id="supExtraCrew" aria-labelledby="supExtraCrewTitle">
             <div class="sup-crew__head">
               <div>
-                <h3 id="supExtraCrewTitle">Quién trabajó</h3>
-                <p class="small">Pro y asistentes que estuvieron en campo este día.</p>
+                <h3 id="supExtraCrewTitle">Who worked</h3>
+                <p class="small">Pros and assistants who were on site this day.</p>
               </div>
-              <strong class="sup-crew__summary" data-crew-summary>Nadie en campo</strong>
+              <strong class="sup-crew__summary" data-crew-summary>Nobody on site</strong>
             </div>
             <p class="sup-crew__plan small" data-crew-plan hidden></p>
             <div class="sup-crew__grid">
               <article class="sup-crew__role" data-crew-role="pro">
                 <header><span>Pro</span><strong data-crew-count>0</strong></header>
                 <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Quitar Pro">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Agregar Pro">+</button>
+                  <button type="button" data-crew-delta="-1" aria-label="Remove Pro">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Add Pro">+</button>
                 </div>
                 <div class="sup-crew__names" data-crew-names></div>
               </article>
               <article class="sup-crew__role" data-crew-role="assistant">
-                <header><span>Asistente</span><strong data-crew-count>0</strong></header>
+                <header><span>Assistant</span><strong data-crew-count>0</strong></header>
                 <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Quitar asistente">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Agregar asistente">+</button>
+                  <button type="button" data-crew-delta="-1" aria-label="Remove assistant">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Add assistant">+</button>
                 </div>
                 <div class="sup-crew__names" data-crew-names></div>
               </article>
@@ -1724,14 +1724,14 @@
             <p class="sup-crew__error small" data-crew-error></p>
           </section>
           <div class="field">
-            <label>Nota</label>
-            <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
+            <label>Note</label>
+            <input id="supExtraNote" maxlength="120" placeholder="Optional" />
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn ghost" id="btnCancelSupExpenseReport">Cancelar</button>
-        <button type="button" class="btn primary" id="btnAddSupExtra">Guardar gasto</button>
+        <button type="button" class="btn ghost" id="btnCancelSupExpenseReport">Cancel</button>
+        <button type="button" class="btn primary" id="btnAddSupExtra">Save expense</button>
       </div>
     </div>
   </div>
@@ -1830,7 +1830,7 @@
           <div class="modal-title" id="supExpenseSummaryTitle">Project Expense Summary</div>
           <div class="modal-subtitle">Recorded unexpected expenses for this project.</div>
         </div>
-        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseSummary" aria-label="Cerrar">Cerrar</button>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseSummary" aria-label="Close">Close</button>
       </div>
       <div class="modal-body sup-expense-summary-modal__screen">
         <div id="supExpenseSummaryLoading" class="sup-expense-summary-loading" hidden>Loading expenses…</div>
