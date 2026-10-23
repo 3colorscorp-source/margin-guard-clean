@@ -118,5 +118,13 @@ ok("saving the start date posts the production start", app.includes("/.netlify/f
 ok("a saved start refreshes the supervisor schedule", /update-supervisor-production-start[\s\S]{0,1200}loadSupervisorOperationalSnapshot\(pid, \{ force: true \}\)/.test(app));
 ok("the start update keeps the assigned supervisor check", handler.includes("loadTenantProjectForSupervisorAction"));
 ok("the start update moves the target with the plan", handler.includes("productionTargetFromStart"));
+ok(
+  "opening day 2 does not fall back to day 1",
+  app.includes("data-sup-day-open") &&
+    app.includes("function supervisorCalendarDayNumber") &&
+    app.includes('el.getAttribute("data-sup-day-open")') &&
+    app.includes("supervisorReportDayFields(entry.date)") &&
+    app.includes("supervisorReportDayFields(extra.date)")
+);
 
 console.log("\n" + passed + " passed");
