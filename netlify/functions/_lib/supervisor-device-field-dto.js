@@ -2,6 +2,8 @@
  * Sanitized supervisor device field DTOs — no tenant/auth/raw row linkage.
  */
 
+const { crewFromStoredRow } = require("./supervisor-day-crew");
+
 function num(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -21,12 +23,14 @@ function optionalDayNumber(row) {
 
 function mapDeviceReportRow(row) {
   if (!row || typeof row !== "object") return null;
+  const stored = crewFromStoredRow(row);
   const out = {
     entry_date: row.entry_date == null ? null : String(row.entry_date).slice(0, 10),
     hours: num(row.hours, 0),
     days: num(row.days, 0),
-    note: row.note == null ? "" : String(row.note),
+    note: stored.note,
   };
+  if (stored.crew.length) out.crew = stored.crew;
   const dayNumber = optionalDayNumber(row);
   if (dayNumber != null) out.day_number = dayNumber;
   const phase = str(row.phase, 500);
@@ -39,13 +43,15 @@ function mapDeviceExpenseRow(row) {
   const id = str(row.id, 128);
   const projectId = str(row.project_id, 128);
   if (!id || !projectId) return null;
+  const stored = crewFromStoredRow(row);
   const out = {
     id,
     project_id: projectId,
     expense_date: row.expense_date == null ? null : String(row.expense_date).slice(0, 10),
     amount: num(row.amount, 0),
-    note: row.note == null ? "" : String(row.note),
+    note: stored.note,
   };
+  if (stored.crew.length) out.crew = stored.crew;
   const dayNumber = optionalDayNumber(row);
   if (dayNumber != null) out.day_number = dayNumber;
   const phase = str(row.phase, 500);

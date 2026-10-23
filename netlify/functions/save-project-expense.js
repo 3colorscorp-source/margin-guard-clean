@@ -2,6 +2,11 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
 const { mapDeviceExpenseRow } = require("./_lib/supervisor-device-field-dto");
 const {
+  appendCrewTrailer,
+  crewFromStoredRow,
+  sanitizeSupervisorCrew,
+} = require("./_lib/supervisor-day-crew");
+const {
   isOwnerContext,
   loadTenantProjectForSupervisorAction,
   resolveOwnerOrSupervisorContext,
@@ -42,17 +47,58 @@ function normExpenseDate(d) {
 
 function mapRow(row) {
   if (!row || typeof row !== "object") return null;
-  return {
+  const stored = crewFromStoredRow(row);
+  const out = {
     id: row.id,
     tenant_id: row.tenant_id,
     project_id: row.project_id,
     expense_date: row.expense_date == null ? null : String(row.expense_date).slice(0, 10),
     amount: Number(row.amount) || 0,
-    note: row.note == null ? "" : String(row.note),
+    note: stored.note,
     created_by: row.created_by ?? null,
     created_at: row.created_at ?? null,
     updated_at: row.updated_at ?? null,
   };
+  if (stored.crew.length) out.crew = stored.crew;
+  return out;
+}
+
+async function insertExpenseRow(row) {
+  return supabaseRequest("tenant_project_expenses", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: row,
+  });
+}
+
+async function insertExpenseWithFallback(row, crew) {
+  try {
+    return await insertExpenseRow(row);
+  } catch (insertErr) {
+    const msg = String(insertErr?.message || insertErr || "");
+    if (!/column/i.test(msg)) throw insertErr;
+    const next = { ...row };
+    if (/crew/i.test(msg)) {
+      delete next.crew;
+      if (crew.length) next.note = appendCrewTrailer(row.note, crew);
+    }
+    if (/day_number|phase/i.test(msg)) {
+      delete next.day_number;
+      delete next.phase;
+    }
+    try {
+      return await insertExpenseRow(next);
+    } catch (retryErr) {
+      const retryMsg = String(retryErr?.message || retryErr || "");
+      if (!/column/i.test(retryMsg)) throw retryErr;
+      const bare = { ...next };
+      delete bare.day_number;
+      delete bare.phase;
+      delete bare.crew;
+      if (crew.length) bare.note = appendCrewTrailer(row.note, crew);
+      return insertExpenseRow(bare);
+    }
+  }
 }
 
 async function resolveOwnerActorUserId(session) {
@@ -91,8 +137,12 @@ exports.handler = async (event) => {
     }
 
     const amount = num(body.amount, 0);
+    const crew = sanitizeSupervisorCrew(body.crew);
     if (amount <= 0) {
       return json(400, { error: "amount must be greater than zero" });
+    }
+    if (!crew.length) {
+      return json(400, { error: "Add at least one Pro or Assistant who worked this day.", code: "crew_required" });
     }
 
     await loadTenantProjectForSupervisorAction(ctx, projectId);
@@ -122,6 +172,7 @@ exports.handler = async (event) => {
       expense_date: expenseDate,
       amount,
       note: str(body.note, 8000),
+      crew,
       created_by: supervisorUserId,
       created_at: now,
       updated_at: now,
@@ -135,25 +186,9 @@ exports.handler = async (event) => {
 
     let inserted;
     try {
-      inserted = await supabaseRequest("tenant_project_expenses", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: baseRow,
-      });
-    } catch (insertErr) {
-      const msg = String(insertErr?.message || insertErr || "");
-      if (/day_number|phase|column/i.test(msg)) {
-        const fallback = { ...baseRow };
-        delete fallback.day_number;
-        delete fallback.phase;
-        inserted = await supabaseRequest("tenant_project_expenses", {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: fallback,
-        });
-      } else {
-        return json(500, { error: "Save failed", code: "save_failed" });
-      }
+      inserted = await insertExpenseWithFallback(baseRow, crew);
+    } catch (_insertErr) {
+      return json(500, { error: "Save failed", code: "save_failed" });
     }
 
     const row = Array.isArray(inserted) ? inserted[0] : inserted;

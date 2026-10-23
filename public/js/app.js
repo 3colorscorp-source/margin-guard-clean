@@ -2518,6 +2518,7 @@ Thank you.`
               hours: e.hours,
               days: e.days,
               note: e.note,
+              crew: e.crew,
               day_number: e.day_number,
             }))
           : [];
@@ -2851,8 +2852,10 @@ Thank you.`
               const dl = d ? formatDateUS(d) || d : "—";
               const hrs = finiteNumber(r.hours, 0);
               const dys = finiteNumber(r.days, 0);
-              const note = String(r.note || "").trim();
-              return `<li><strong>${escapeHtml(dl)}</strong> — ${hrs.toFixed(2)}h / ${dys.toFixed(2)}d${note ? ` · ${escapeHtml(note)}` : ""}</li>`;
+              const presented = supervisorPresentCrew(r);
+              const note = String(presented.note || "").trim();
+              const crew = presented.summary ? ` · ${escapeHtml(presented.summary)}` : "";
+              return `<li><strong>${escapeHtml(dl)}</strong> — ${hrs.toFixed(2)}h / ${dys.toFixed(2)}d${crew}${note ? ` · ${escapeHtml(note)}` : ""}</li>`;
             })
             .join("")
         : '<li class="small">No labor reports for this day yet.</li>';
@@ -2865,7 +2868,8 @@ Thank you.`
             .map((r) => {
               const d = normalizeDateInput(r.expense_date || r.date || "");
               const dl = d ? formatDateUS(d) || d : "—";
-              const raw = String(r.note || "").trim();
+              const presentedExpense = supervisorPresentCrew(r);
+              const raw = String(presentedExpense.note || "").trim();
               const nl = raw.indexOf("\n");
               const item = nl >= 0 ? raw.slice(0, nl).trim() : raw;
               const expenseId = supervisorProjectKey(r.id);
@@ -2876,7 +2880,8 @@ Thank you.`
                 expenseId && projectId
                   ? `<button type="button" class="btn danger sup-expense-remove" data-sup-remove-expense="${escapeHtml(expenseId)}" data-sup-remove-project="${escapeHtml(projectId)}">Remove</button>`
                   : "";
-              return `<li class="sup-day-expense-row"><span><strong>${escapeHtml(dl)}</strong>${item ? ` · ${escapeHtml(item)}` : ""}</span>${removeBtn}</li>`;
+              const crew = presentedExpense.summary ? ` · ${escapeHtml(presentedExpense.summary)}` : "";
+              return `<li class="sup-day-expense-row"><span><strong>${escapeHtml(dl)}</strong>${item ? ` · ${escapeHtml(item)}` : ""}${crew}</span>${removeBtn}</li>`;
             })
             .join("")
         : '<li class="small">No expenses for this day yet.</li>';
@@ -3635,6 +3640,179 @@ Thank you.`
     syncSupConsoleLogsWrap();
   }
 
+  const SUPERVISOR_CREW_MARKER = "\n[[mg-crew:v1]]";
+
+  function supervisorSanitizeCrew(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      const type = String(row.role || row.type || row.worker_type || "")
+        .trim()
+        .toLowerCase();
+      let role = "";
+      if (type === "helper" || type === "assistant" || type === "asistente") role = "assistant";
+      else if (type === "pro" || type === "installer") role = "pro";
+      if (!role) continue;
+      out.push({ role, name: String(row.name || "").trim().slice(0, 80) });
+      if (out.length >= 16) break;
+    }
+    return out;
+  }
+
+  function supervisorSplitCrewNote(note) {
+    const raw = String(note || "");
+    const idx = raw.lastIndexOf(SUPERVISOR_CREW_MARKER);
+    if (idx < 0) return { note: raw.trim(), crew: [] };
+    let crew = [];
+    try {
+      crew = supervisorSanitizeCrew(JSON.parse(raw.slice(idx + SUPERVISOR_CREW_MARKER.length).trim()));
+    } catch (_err) {
+      crew = [];
+    }
+    return { note: raw.slice(0, idx).trim(), crew };
+  }
+
+  function supervisorPresentCrew(row) {
+    const split = supervisorSplitCrewNote(row && row.note);
+    const fromColumn = supervisorSanitizeCrew(row && row.crew);
+    const crew = fromColumn.length ? fromColumn : split.crew;
+    let pro = 0;
+    let assistant = 0;
+    const names = [];
+    for (const person of crew) {
+      if (person.role === "assistant") assistant += 1;
+      else pro += 1;
+      if (person.name) names.push(person.name);
+    }
+    const parts = [];
+    if (pro) parts.push(`${pro} Pro`);
+    if (assistant) parts.push(`${assistant} Asistente${assistant === 1 ? "" : "s"}`);
+    const summary = parts.length
+      ? names.length
+        ? `${parts.join(" · ")} · ${names.join(", ")}`
+        : parts.join(" · ")
+      : "";
+    return { note: split.note, crew, summary };
+  }
+
+  function supervisorCrewPeopleFromPlan(workers) {
+    const people = [];
+    for (const worker of Array.isArray(workers) ? workers : []) {
+      const rawType = String(worker?.worker_type || worker?.type || worker?.role || "").toLowerCase();
+      const role = /helper|assistant|asistente/.test(rawType)
+        ? "assistant"
+        : /pro|install/.test(rawType)
+          ? "pro"
+          : "";
+      if (!role) continue;
+      const count = Math.max(1, Math.min(8, Math.floor(finiteNumber(worker.worker_count || worker.count, 1))));
+      const rawName = String(worker.name || "").trim();
+      const name = /^(installer|assistant|helper|pro|worker)(\s*\d+)?$/i.test(rawName) ? "" : rawName;
+      for (let i = 0; i < count; i += 1) people.push({ role, name: i === 0 ? name : "" });
+    }
+    return people.slice(0, 16);
+  }
+
+  function supervisorCrewRead(root) {
+    if (!root) return [];
+    const people = [];
+    root.querySelectorAll("[data-crew-role]").forEach((roleEl) => {
+      const role = roleEl.getAttribute("data-crew-role") === "assistant" ? "assistant" : "pro";
+      roleEl.querySelectorAll("[data-crew-name]").forEach((input) => {
+        people.push({ role, name: String(input.value || "").trim().slice(0, 80) });
+      });
+    });
+    return people;
+  }
+
+  function supervisorCrewPaint(root, people, opts) {
+    if (!root) return;
+    const list = supervisorSanitizeCrew(people);
+    const focusRole = opts && opts.focusRole ? opts.focusRole : "";
+    ["pro", "assistant"].forEach((role) => {
+      const roleEl = root.querySelector(`[data-crew-role="${role}"]`);
+      if (!roleEl) return;
+      const names = list.filter((person) => person.role === role).slice(0, 8);
+      const countEl = roleEl.querySelector("[data-crew-count]");
+      if (countEl) countEl.textContent = String(names.length);
+      const namesEl = roleEl.querySelector("[data-crew-names]");
+      if (namesEl) {
+        namesEl.innerHTML = names
+          .map((person, index) => {
+            const label = role === "assistant" ? "Asistente" : "Pro";
+            return `<input data-crew-name type="text" maxlength="80" value="${escapeHtml(person.name)}" placeholder="${label} ${index + 1}" aria-label="Nombre de ${label} ${index + 1}" />`;
+          })
+          .join("");
+      }
+      roleEl.querySelectorAll("[data-crew-delta]").forEach((btn) => {
+        const delta = Number(btn.getAttribute("data-crew-delta") || 0);
+        btn.disabled = (delta < 0 && names.length === 0) || (delta > 0 && names.length >= 8);
+      });
+    });
+    const summary = root.querySelector("[data-crew-summary]");
+    if (summary) {
+      const presented = supervisorPresentCrew({ crew: list });
+      summary.textContent = presented.summary || "Nadie en campo";
+    }
+    const error = root.querySelector("[data-crew-error]");
+    if (error) error.textContent = "";
+    if (focusRole) {
+      const inputs = root.querySelectorAll(`[data-crew-role="${focusRole}"] [data-crew-name]`);
+      const last = inputs[inputs.length - 1];
+      if (last && typeof last.focus === "function") last.focus();
+    }
+  }
+
+  function supervisorCrewSetPlanHint(root, people) {
+    const hint = root && root.querySelector("[data-crew-plan]");
+    if (!hint) return;
+    const presented = supervisorPresentCrew({ crew: people });
+    if (!presented.summary) {
+      hint.hidden = true;
+      hint.textContent = "";
+      return;
+    }
+    hint.hidden = false;
+    hint.textContent = `El plan espera ${presented.summary}. Ajusta quién trabajó de verdad.`;
+  }
+
+  function bindSupervisorCrewEditor(root) {
+    if (!root || root.dataset.crewBound === "1") return;
+    root.dataset.crewBound = "1";
+    root.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-crew-delta]");
+      if (!btn || !root.contains(btn)) return;
+      event.preventDefault();
+      const role = btn.closest("[data-crew-role]")?.getAttribute("data-crew-role") === "assistant" ? "assistant" : "pro";
+      const delta = Number(btn.getAttribute("data-crew-delta") || 0);
+      const people = supervisorCrewRead(root);
+      const rolePeople = people.filter((person) => person.role === role);
+      const others = people.filter((person) => person.role !== role);
+      if (delta > 0 && rolePeople.length < 8) rolePeople.push({ role, name: "" });
+      if (delta < 0 && rolePeople.length) rolePeople.pop();
+      supervisorCrewPaint(root, others.concat(rolePeople), { focusRole: delta > 0 ? role : "" });
+    });
+    root.addEventListener("input", (event) => {
+      if (!event.target.matches("[data-crew-name]")) return;
+      const summary = root.querySelector("[data-crew-summary]");
+      if (!summary) return;
+      const presented = supervisorPresentCrew({ crew: supervisorCrewRead(root) });
+      summary.textContent = presented.summary || "Nadie en campo";
+    });
+  }
+
+  function supervisorCrewForSave(root) {
+    const people = supervisorCrewRead(root);
+    const error = root && root.querySelector("[data-crew-error]");
+    if (!people.length) {
+      if (error) error.textContent = "Agrega al menos un Pro o un asistente.";
+      return null;
+    }
+    if (error) error.textContent = "";
+    return people;
+  }
+
   function openSupFieldModal(kind, dayCtx) {
     if (dayCtx && typeof dayCtx === "object") {
       supervisorActiveDayContext = { ...(supervisorActiveDayContext || {}), ...dayCtx };
@@ -3661,6 +3839,9 @@ Thank you.`
         }
         const focusEl = $("supEntryDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
+        const seed = supervisorCrewPeopleFromPlan(ctx?.workers);
+        supervisorCrewPaint($("supEntryCrew"), seed);
+        supervisorCrewSetPlanHint($("supEntryCrew"), seed);
       }
     } else {
       if (labor) {
@@ -3679,6 +3860,9 @@ Thank you.`
         }
         const focusEl = $("supExtraDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
+        const seed = supervisorCrewPeopleFromPlan(ctx?.workers);
+        supervisorCrewPaint($("supExtraCrew"), seed);
+        supervisorCrewSetPlanHint($("supExtraCrew"), seed);
       }
     }
     document.body.style.overflow = "hidden";
@@ -3730,6 +3914,8 @@ Thank you.`
     const dayModal = $("supDayDetailModal");
     bindSupFieldDatePicker($("supEntryDate"));
     bindSupFieldDatePicker($("supExtraDate"));
+    bindSupervisorCrewEditor($("supEntryCrew"));
+    bindSupervisorCrewEditor($("supExtraCrew"));
     const wire = (id, handler) => {
       const el = $(id);
       if (el) el.onclick = handler;
@@ -3886,7 +4072,12 @@ Thank you.`
     set("supHeroStart", ctx.schedule.startLabel);
     const startEditor = $("supStartEdit");
     const startInput = $("supStartDateInput");
-    if (startInput && (!startEditor || startEditor.hidden)) {
+    const planDays = Math.max(0, Math.round(finiteNumber(ctx.estimatedDays, 0)));
+    if (startEditor) {
+      startEditor.dataset.startIso = ctx.schedule.startIso || "";
+      startEditor.dataset.estimatedDays = String(planDays);
+    }
+    if (startInput && startEditor && startEditor.getAttribute("aria-hidden") !== "false") {
       startInput.value = ctx.schedule.startIso || "";
     }
     bindSupervisorProductionStartEditor();
@@ -3928,28 +4119,158 @@ Thank you.`
 
   let supervisorProductionStartBound = false;
   let supervisorProductionStartSaving = false;
+  let supervisorStartCalView = null;
+
+  function supervisorProductionStartPreview(startIso, estimatedDays) {
+    const start = normalizeDateInput(startIso);
+    const days = Math.max(0, Math.round(finiteNumber(estimatedDays, 0)));
+    if (!start || days <= 0) {
+      return "This project has no plan length yet, so the finish date cannot move.";
+    }
+    const finish = addDaysToInputValue(start, days - 1);
+    const today = todayLocalDateOnly();
+    const startDate = parseLocalDateOnly(start);
+    const finishDate = parseLocalDateOnly(finish);
+    if (!startDate || !finishDate) return "Enter a valid start date.";
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    finishDate.setHours(0, 0, 0, 0);
+    const finishLabel = formatDateUS(finish) || finish;
+    if (today.getTime() < startDate.getTime()) {
+      return `Day 1 starts ${formatDateUS(start) || start}. Target finish moves to ${finishLabel}. The project will show as scheduled.`;
+    }
+    const diff = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1;
+    const day = Math.min(Math.max(diff, 1), days);
+    const behindDays = Math.round((today.getTime() - finishDate.getTime()) / 86400000);
+    if (behindDays > 2) {
+      return `Today would still be past the new finish ${finishLabel}. Pick a later start so the project is not behind.`;
+    }
+    return `Today becomes Day ${day} of ${days}. Target finish moves to ${finishLabel}.`;
+  }
+
+  function refreshSupervisorProductionStartPreview() {
+    const editor = $("supStartEdit");
+    const preview = $("supStartEditPreview");
+    const input = $("supStartDateInput");
+    if (!preview || !editor) return;
+    preview.textContent = supervisorProductionStartPreview(
+      input?.value || "",
+      editor.dataset.estimatedDays
+    );
+  }
+
+  function renderSupervisorProductionStartCalendar() {
+    const root = $("supStartDateCal");
+    const input = $("supStartDateInput");
+    if (!root || !input) return;
+    const selected = normalizeDateInput(input.value || "");
+    const anchor = parseLocalDateOnly(selected) || todayLocalDateOnly();
+    if (!supervisorStartCalView) {
+      supervisorStartCalView = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    }
+    const year = supervisorStartCalView.getFullYear();
+    const month = supervisorStartCalView.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = todayInputValue();
+    const monthLabel = new Date(year, month, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+    let cells = "";
+    for (let i = 0; i < firstDow; i += 1) cells += '<span class="sup-start-cal-pad"></span>';
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const cls = ["sup-start-cal-day"];
+      if (iso === selected) cls.push("is-selected");
+      if (iso === today) cls.push("is-today");
+      cells += `<button type="button" class="${cls.join(" ")}" data-sup-start-day="${iso}">${day}</button>`;
+    }
+    root.innerHTML = `<div class="sup-start-cal-nav">
+      <button type="button" class="sup-start-cal-nav-btn" data-sup-start-shift="-1" aria-label="Previous month">‹</button>
+      <div class="sup-start-cal-month">${escapeHtml(monthLabel)}</div>
+      <button type="button" class="sup-start-cal-nav-btn" data-sup-start-shift="1" aria-label="Next month">›</button>
+    </div>
+    <div class="sup-start-cal-dow">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
+    <div class="sup-start-cal-grid">${cells}</div>`;
+    root.querySelectorAll("[data-sup-start-shift]").forEach((btn) => {
+      btn.onclick = (event) => {
+        event.preventDefault();
+        const shift = Number(btn.getAttribute("data-sup-start-shift") || 0);
+        supervisorStartCalView = new Date(year, month + shift, 1);
+        renderSupervisorProductionStartCalendar();
+      };
+    });
+    root.querySelectorAll("[data-sup-start-day]").forEach((btn) => {
+      btn.onclick = (event) => {
+        event.preventDefault();
+        input.value = btn.getAttribute("data-sup-start-day") || "";
+        refreshSupervisorProductionStartPreview();
+        renderSupervisorProductionStartCalendar();
+      };
+    });
+  }
+
+  function closeSupervisorProductionStartModal() {
+    const editor = $("supStartEdit");
+    const feedback = $("supStartEditFeedback");
+    if (feedback) feedback.textContent = "";
+    if (!editor) return;
+    editor.setAttribute("aria-hidden", "true");
+    editor.style.display = "";
+    const dayOpen = $("supDayDetailModal")?.getAttribute("aria-hidden") === "false";
+    if (!dayOpen) document.body.style.overflow = "";
+  }
+
+  function openSupervisorProductionStartModal() {
+    const editor = $("supStartEdit");
+    const input = $("supStartDateInput");
+    const feedback = $("supStartEditFeedback");
+    if (!editor || !input) return;
+    const startIso = editor.dataset.startIso || input.value || "";
+    const days = Math.max(0, Math.round(finiteNumber(editor.dataset.estimatedDays, 0)));
+    input.value = startIso;
+    if ($("supStartEditCurrent")) {
+      $("supStartEditCurrent").textContent = startIso ? formatDateUS(startIso) || startIso : "Not set";
+    }
+    if ($("supStartEditDays")) {
+      $("supStartEditDays").textContent = days > 0 ? `${days} day${days === 1 ? "" : "s"}` : "Not set";
+    }
+    if (feedback) feedback.textContent = "";
+    const parsed = parseLocalDateOnly(startIso);
+    const anchor = parsed || todayLocalDateOnly();
+    supervisorStartCalView = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    refreshSupervisorProductionStartPreview();
+    renderSupervisorProductionStartCalendar();
+    editor.setAttribute("aria-hidden", "false");
+    editor.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
 
   function bindSupervisorProductionStartEditor() {
     if (supervisorProductionStartBound) return;
     const editBtn = $("btnSupEditStart");
     const saveBtn = $("btnSupSaveStart");
     const cancelBtn = $("btnSupCancelStart");
-    if (!editBtn || !saveBtn || !cancelBtn) return;
+    const closeBtn = $("btnSupStartClose");
+    const editor = $("supStartEdit");
+    const input = $("supStartDateInput");
+    if (!editBtn || !saveBtn || !cancelBtn || !editor) return;
     supervisorProductionStartBound = true;
-    editBtn.onclick = () => {
-      const editor = $("supStartEdit");
-      const feedback = $("supStartEditFeedback");
-      if (feedback) feedback.textContent = "";
-      if (editor) editor.hidden = false;
-      const input = $("supStartDateInput");
-      if (input) input.focus();
+    editBtn.onclick = () => openSupervisorProductionStartModal();
+    cancelBtn.onclick = () => closeSupervisorProductionStartModal();
+    if (closeBtn) closeBtn.onclick = () => closeSupervisorProductionStartModal();
+    if (input) {
+      input.addEventListener("input", refreshSupervisorProductionStartPreview);
+      input.addEventListener("change", refreshSupervisorProductionStartPreview);
+    }
+    editor.onclick = (event) => {
+      if (event.target === editor) closeSupervisorProductionStartModal();
     };
-    cancelBtn.onclick = () => {
-      const editor = $("supStartEdit");
-      const feedback = $("supStartEditFeedback");
-      if (feedback) feedback.textContent = "";
-      if (editor) editor.hidden = true;
-    };
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (editor.getAttribute("aria-hidden") === "false") {
+        event.preventDefault();
+        closeSupervisorProductionStartModal();
+      }
+    });
     saveBtn.onclick = () => {
       void saveSupervisorProductionStart();
     };
@@ -3996,8 +4317,7 @@ Thank you.`
         report.projectedEndDate = target;
         saveSupervisorReport(pid, report);
       }
-      const editor = $("supStartEdit");
-      if (editor) editor.hidden = true;
+      closeSupervisorProductionStartModal();
       if (feedback) feedback.textContent = "";
       await loadSupervisorOperationalSnapshot(pid, { force: true });
       scheduleSupervisorRender("production-start");
@@ -4337,7 +4657,8 @@ Thank you.`
       date: d,
       hours: Number(row.hours) || 0,
       days: Number(row.days) || 0,
-      note: row.note == null ? "" : String(row.note),
+      note: supervisorPresentCrew(row).note,
+      crew: supervisorPresentCrew(row).crew,
     };
   }
 
@@ -4389,12 +4710,14 @@ Thank you.`
       item: parsed.concept,
       amount: parsed.amount,
       note: parsed.note,
+      crew: parsed.crew,
     };
   }
 
   function parseSupervisorExpenseRow(row) {
     if (!row || typeof row !== "object") return null;
-    const rawNote = row.note == null ? "" : String(row.note);
+    const presentedCrew = supervisorPresentCrew(row);
+    const rawNote = presentedCrew.note;
     const nl = rawNote.indexOf("\n");
     const concept = (nl >= 0 ? rawNote.slice(0, nl) : rawNote).trim();
     const note = nl >= 0 ? rawNote.slice(nl + 1).trim() : "";
@@ -4414,6 +4737,7 @@ Thank you.`
       concept: concept || "Expense",
       amount: finiteNumber(row.amount, 0),
       note,
+      crew: presentedCrew.crew,
       day_number: dayNumber,
       created_at: createdAt || null,
       sortMs: Math.max(
@@ -12615,10 +12939,11 @@ function renderSupervisor() {
         $("supEntriesBody").innerHTML = state.entries.map((row, index) => {
           const dateIso = normalizeDateInput(row.date);
           const dateLabel = dateIso ? formatDateUS(dateIso) || dateIso : row.date || "-";
+          const crewLine = supervisorPresentCrew(row).summary;
           return `
           <tr>
             <td>${escapeHtml(dateLabel)}</td>
-            <td>${escapeHtml(row.note || "-")}</td>
+            <td>${escapeHtml(row.note || "-")}${crewLine ? `<div class="small">${escapeHtml(crewLine)}</div>` : ""}</td>
             <td>${Number(row.hours || 0).toFixed(2)}</td>
             <td>${Number(row.days || 0).toFixed(2)}</td>
             <td><button class="btn danger" data-delete-entry="${index}">Delete</button></td>
@@ -12676,12 +13001,13 @@ function renderSupervisor() {
         $("supExtrasBody").innerHTML = state.extras.map((row, index) => {
           const dateIso = normalizeDateInput(row.date);
           const dateLabel = dateIso ? formatDateUS(dateIso) || dateIso : row.date || "-";
+          const crewLine = supervisorPresentCrew(row).summary;
           return `
           <tr>
             <td>${escapeHtml(dateLabel)}</td>
             <td>${escapeHtml(row.item || "-")}</td>
             <td>${money(row.amount || 0, settings.currency)}</td>
-            <td>${escapeHtml(row.note || "-")}</td>
+            <td>${escapeHtml(row.note || "-")}${crewLine ? `<div class="small">${escapeHtml(crewLine)}</div>` : ""}</td>
             <td><button class="btn danger" data-delete-extra="${index}">Delete</button></td>
           </tr>
         `;
@@ -12715,15 +13041,18 @@ function renderSupervisor() {
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
+        const entryCrew = supervisorCrewForSave($("supEntryCrew"));
         const entry = {
           date: normalizeDateInput(val("supEntryDate")),
           hours: num("supEntryHours", 0),
           days: num("supEntryDays", 0),
           note: val("supEntryNote").trim(),
+          crew: entryCrew || [],
           serverProjectId: rowPid
         };
         if (!entry.date) return alert("Entry date is required.");
         if (entry.hours <= 0 && entry.days <= 0) return alert("Report hours or days worked.");
+        if (!entryCrew) return;
 
         if (isServerListedSupervisorProject(currentProject.id)) {
           try {
@@ -12737,6 +13066,7 @@ function renderSupervisor() {
                 hours: entry.hours,
                 days: entry.days,
                 note: entry.note,
+                crew: entry.crew,
                 day_number: finiteNumber(supervisorActiveDayContext?.day_number, 0) || undefined,
                 phase: String(supervisorActiveDayContext?.phase || "").trim() || undefined
               })
@@ -12760,6 +13090,7 @@ function renderSupervisor() {
             setNum("supEntryHours", 0);
             setNum("supEntryDays", 0);
             setVal("supEntryNote", "");
+            supervisorCrewPaint($("supEntryCrew"), []);
             await recalcProjectProfitIfListed(currentProject.id);
             await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
             await pullSupervisorProjectsFromApi();
@@ -12778,6 +13109,7 @@ function renderSupervisor() {
         setNum("supEntryHours", 0);
         setNum("supEntryDays", 0);
         setVal("supEntryNote", "");
+        supervisorCrewPaint($("supEntryCrew"), []);
         saveSupervisorReport(currentProject.id, state);
         closeSupFieldModal("labor");
         refresh();
@@ -12790,16 +13122,19 @@ function renderSupervisor() {
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
+        const extraCrew = supervisorCrewForSave($("supExtraCrew"));
         const extra = {
           date: normalizeDateInput(val("supExtraDate")),
           item: val("supExtraItem").trim(),
           amount: num("supExtraAmount", 0),
           note: val("supExtraNote").trim(),
+          crew: extraCrew || [],
           serverProjectId: rowPid
         };
         if (!extra.date) return alert("Extra expense date is required.");
         if (!extra.item) return alert("Extra expense concept is required.");
         if (extra.amount <= 0) return alert("Enter an amount greater than zero.");
+        if (!extraCrew) return;
 
         if (isServerListedSupervisorProject(currentProject.id)) {
           try {
@@ -12812,6 +13147,7 @@ function renderSupervisor() {
                 expense_date: extra.date,
                 amount: extra.amount,
                 note: packSupervisorExpenseNote(extra.item, extra.note),
+                crew: extra.crew,
                 day_number: finiteNumber(supervisorActiveDayContext?.day_number, 0) || undefined,
                 phase: String(supervisorActiveDayContext?.phase || "").trim() || undefined
               })
@@ -12835,6 +13171,7 @@ function renderSupervisor() {
             setVal("supExtraItem", "");
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
+            supervisorCrewPaint($("supExtraCrew"), []);
             await recalcProjectProfitIfListed(currentProject.id);
             await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
             await pullSupervisorProjectsFromApi();
@@ -12853,6 +13190,7 @@ function renderSupervisor() {
         setVal("supExtraItem", "");
         setNum("supExtraAmount", 0);
         setVal("supExtraNote", "");
+        supervisorCrewPaint($("supExtraCrew"), []);
         saveSupervisorReport(currentProject.id, state);
         closeSupFieldModal("extra");
         refresh();

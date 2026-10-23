@@ -105,6 +105,15 @@ const stale = analyzeProjectForCrewAvailability(
 ok("the old same-day target is past due", stale.past_target_incomplete === true);
 
 ok("supervisor can edit the start date", html.includes('id="btnSupEditStart"') && html.includes('id="supStartDateInput"'));
+ok("the start date opens in a modal", html.includes('id="supStartEdit"') && html.includes('aria-modal="true"') && html.includes("Move production start"));
+ok("the start modal previews the moved plan", app.includes("Today becomes Day"));
+ok(
+  "the start modal shows the system month calendar",
+  html.includes('id="supStartDateCal"') &&
+    html.includes('class="sup-start-cal"') &&
+    app.includes("sup-start-cal-day") &&
+    app.includes("data-sup-start-day")
+);
 ok("saving the start date posts the production start", app.includes("/.netlify/functions/update-supervisor-production-start"));
 ok("a saved start refreshes the supervisor schedule", /update-supervisor-production-start[\s\S]{0,1200}loadSupervisorOperationalSnapshot\(pid, \{ force: true \}\)/.test(app));
 ok("the start update keeps the assigned supervisor check", handler.includes("loadTenantProjectForSupervisorAction"));

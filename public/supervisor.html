@@ -541,26 +541,96 @@
       padding: 4px 10px;
       font-size: 12px;
     }
-    body.supervisor-page .sup-start-edit {
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-width: 220px;
+    body.supervisor-page .sup-start-modal__card {
+      width: min(420px, calc(100vw - 32px));
     }
-    body.supervisor-page .sup-start-edit[hidden] {
-      display: none !important;
+    body.supervisor-page .sup-start-modal__facts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
     }
-    body.supervisor-page .sup-start-edit input[type="date"] {
-      width: 100%;
-    }
-    body.supervisor-page .sup-start-edit__actions {
-      display: flex;
-      gap: 8px;
-    }
-    body.supervisor-page .sup-start-edit__feedback {
-      margin: 0;
+    body.supervisor-page .sup-start-modal__label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
       color: var(--sup-muted);
+    }
+    body.supervisor-page .sup-start-modal__facts strong {
+      font-size: 1rem;
+    }
+    body.supervisor-page .sup-start-modal input[type="date"] {
+      display: none;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-month {
+      font-size: 14px;
+      font-weight: 800;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-nav-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--sup-line-strong);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--sup-text);
+      cursor: pointer;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-dow,
+    body.supervisor-page .sup-start-modal .sup-start-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      text-align: center;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-dow {
+      color: var(--sup-muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-day,
+    body.supervisor-page .sup-start-modal .sup-start-cal-pad {
+      min-height: 36px;
+      border-radius: 8px;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-day {
+      border: 0;
+      background: transparent;
+      color: var(--sup-text);
+      cursor: pointer;
+      font-weight: 650;
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-day:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-day.is-today {
+      box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.55);
+    }
+    body.supervisor-page .sup-start-modal .sup-start-cal-day.is-selected {
+      background: #0f766e;
+      color: #fff;
+    }
+    body.supervisor-page .sup-start-modal__preview {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--sup-line);
+      background: rgba(255, 255, 255, 0.03);
+      line-height: 1.45;
+    }
+    body.supervisor-page .sup-start-modal__feedback {
+      margin: 10px 0 0;
+      min-height: 1.2em;
     }
     body.supervisor-page .supervisor-status-strip__meta-item .sup-exec-hero__hint {
       margin-top: 4px;
@@ -952,6 +1022,122 @@
     body.supervisor-page .sup-expense-remove-modal .notice li + li {
       margin-top: 4px;
     }
+    body.supervisor-page #supLaborReportModal .sup-field-modal__card,
+    body.supervisor-page #supExpenseReportModal .sup-field-modal__card {
+      width: min(640px, 96vw);
+    }
+    body.supervisor-page .sup-field-modal .sup-crew,
+    body.supervisor-page .sup-field-modal .form > .field:last-child {
+      grid-column: 1 / -1;
+    }
+    body.supervisor-page #supLaborReportModal .modal-body,
+    body.supervisor-page #supExpenseReportModal .modal-body {
+      max-height: min(68vh, 720px);
+      overflow: auto;
+    }
+    body.supervisor-page .sup-crew {
+      margin-top: 4px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--sup-line-strong);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    body.supervisor-page .sup-crew__head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    body.supervisor-page .sup-crew__head > div {
+      min-width: 0;
+    }
+    body.supervisor-page .sup-crew__head h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    body.supervisor-page .sup-crew__head p,
+    body.supervisor-page .sup-crew__plan,
+    body.supervisor-page .sup-crew__error {
+      margin: 4px 0 0;
+    }
+    body.supervisor-page .sup-crew__summary {
+      flex: 0 1 240px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.18);
+      color: #99f6e4;
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: right;
+    }
+    body.supervisor-page .sup-crew__grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    body.supervisor-page .sup-crew__role {
+      min-width: 0;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--sup-line);
+      background: rgba(0, 0, 0, 0.18);
+    }
+    body.supervisor-page .sup-crew__role header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    body.supervisor-page .sup-crew__role header span {
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+    body.supervisor-page .sup-crew__role[data-crew-role="pro"] header span {
+      color: #86efac;
+    }
+    body.supervisor-page .sup-crew__role[data-crew-role="assistant"] header span {
+      color: #fcd34d;
+    }
+    body.supervisor-page .sup-crew__stepper {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    body.supervisor-page .sup-crew__stepper button {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--sup-line-strong);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--sup-text);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    body.supervisor-page .sup-crew__stepper button:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    body.supervisor-page .sup-crew__names {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    body.supervisor-page .sup-crew__names input {
+      width: 100%;
+      min-height: 36px;
+    }
+    body.supervisor-page .sup-crew__error {
+      color: var(--sup-red);
+      min-height: 1.2em;
+    }
+    @media (max-width: 640px) {
+      body.supervisor-page .sup-crew__grid {
+        grid-template-columns: 1fr;
+      }
+    }
     @media (prefers-reduced-motion: reduce) {
       body.supervisor-page .btn,
       body.supervisor-page .sup-exec-progress__fill,
@@ -1050,15 +1236,6 @@
                   </span>
                   <strong id="supHeroStart">—</strong>
                   <button type="button" class="btn ghost sup-start-edit-btn" id="btnSupEditStart">Edit start</button>
-                  <div class="sup-start-edit" id="supStartEdit" hidden>
-                    <label class="visually-hidden" for="supStartDateInput">Production start date</label>
-                    <input id="supStartDateInput" type="date" />
-                    <div class="sup-start-edit__actions">
-                      <button type="button" class="btn" id="btnSupSaveStart">Save</button>
-                      <button type="button" class="btn ghost" id="btnSupCancelStart">Cancel</button>
-                    </div>
-                    <p class="small sup-start-edit__feedback" id="supStartEditFeedback" aria-live="polite"></p>
-                  </div>
                 </div>
                 <div class="supervisor-status-strip__meta-item sup-exec-hero__cell">
                   <span class="sup-exec-hero__label">
@@ -1261,6 +1438,39 @@
   </div>
 
 
+  <div id="supStartEdit" class="modal sup-start-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="supStartEditTitle">
+    <div class="modal-card sup-start-modal__card" role="document">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="supStartEditTitle">Move production start</div>
+          <p class="modal-subtitle">The calendar and target finish move with this date.</p>
+        </div>
+        <button type="button" class="btn ghost" id="btnSupStartClose" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="sup-start-modal__facts">
+          <div>
+            <span class="sup-start-modal__label">Current start</span>
+            <strong id="supStartEditCurrent">—</strong>
+          </div>
+          <div>
+            <span class="sup-start-modal__label">Plan length</span>
+            <strong id="supStartEditDays">—</strong>
+          </div>
+        </div>
+        <label id="supStartDateLabel">New start date</label>
+        <input id="supStartDateInput" class="sup-field-date-input" type="date" autocomplete="off" hidden />
+        <div id="supStartDateCal" class="sup-start-cal" role="group" aria-labelledby="supStartDateLabel"></div>
+        <div class="sup-start-modal__preview" id="supStartEditPreview" aria-live="polite">Pick a start date to see the new finish.</div>
+        <p class="small sup-start-modal__feedback" id="supStartEditFeedback" aria-live="polite"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnSupCancelStart">Cancel</button>
+        <button type="button" class="btn primary" id="btnSupSaveStart">Save start date</button>
+      </div>
+    </div>
+  </div>
+
   <div id="supDayDetailModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supDayDetailTitle">
     <div class="modal-card sup-field-modal__card sup-day-detail__card">
       <div class="modal-header">
@@ -1311,7 +1521,7 @@
       <div class="modal-header">
         <div>
           <div class="modal-title" id="supLaborReportModalTitle">Reportar labor</div>
-          <div class="modal-subtitle">Registra horas y dias trabajados en campo.</div>
+          <div class="modal-subtitle">Registra horas, días y quién trabajó.</div>
         </div>
         <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupLaborReport" aria-label="Cerrar">Cerrar</button>
       </div>
@@ -1329,6 +1539,35 @@
             <label>Dias trabajados</label>
             <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
           </div>
+          <section class="sup-crew" id="supEntryCrew" aria-labelledby="supEntryCrewTitle">
+            <div class="sup-crew__head">
+              <div>
+                <h3 id="supEntryCrewTitle">Quién trabajó</h3>
+                <p class="small">Pro y asistentes que estuvieron en campo este día.</p>
+              </div>
+              <strong class="sup-crew__summary" data-crew-summary>Nadie en campo</strong>
+            </div>
+            <p class="sup-crew__plan small" data-crew-plan hidden></p>
+            <div class="sup-crew__grid">
+              <article class="sup-crew__role" data-crew-role="pro">
+                <header><span>Pro</span><strong data-crew-count>0</strong></header>
+                <div class="sup-crew__stepper">
+                  <button type="button" data-crew-delta="-1" aria-label="Quitar Pro">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Agregar Pro">+</button>
+                </div>
+                <div class="sup-crew__names" data-crew-names></div>
+              </article>
+              <article class="sup-crew__role" data-crew-role="assistant">
+                <header><span>Asistente</span><strong data-crew-count>0</strong></header>
+                <div class="sup-crew__stepper">
+                  <button type="button" data-crew-delta="-1" aria-label="Quitar asistente">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Agregar asistente">+</button>
+                </div>
+                <div class="sup-crew__names" data-crew-names></div>
+              </article>
+            </div>
+            <p class="sup-crew__error small" data-crew-error></p>
+          </section>
           <div class="field">
             <label>Nota</label>
             <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
@@ -1347,7 +1586,7 @@
       <div class="modal-header">
         <div>
           <div class="modal-title" id="supExpenseReportModalTitle">Reportar gasto imprevisto</div>
-          <div class="modal-subtitle">Gasolina, materiales, o gastos no planeados.</div>
+          <div class="modal-subtitle">Registra el gasto y quién trabajó ese día.</div>
         </div>
         <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Cerrar">Cerrar</button>
       </div>
@@ -1365,6 +1604,35 @@
             <label>Monto</label>
             <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
           </div>
+          <section class="sup-crew" id="supExtraCrew" aria-labelledby="supExtraCrewTitle">
+            <div class="sup-crew__head">
+              <div>
+                <h3 id="supExtraCrewTitle">Quién trabajó</h3>
+                <p class="small">Pro y asistentes que estuvieron en campo este día.</p>
+              </div>
+              <strong class="sup-crew__summary" data-crew-summary>Nadie en campo</strong>
+            </div>
+            <p class="sup-crew__plan small" data-crew-plan hidden></p>
+            <div class="sup-crew__grid">
+              <article class="sup-crew__role" data-crew-role="pro">
+                <header><span>Pro</span><strong data-crew-count>0</strong></header>
+                <div class="sup-crew__stepper">
+                  <button type="button" data-crew-delta="-1" aria-label="Quitar Pro">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Agregar Pro">+</button>
+                </div>
+                <div class="sup-crew__names" data-crew-names></div>
+              </article>
+              <article class="sup-crew__role" data-crew-role="assistant">
+                <header><span>Asistente</span><strong data-crew-count>0</strong></header>
+                <div class="sup-crew__stepper">
+                  <button type="button" data-crew-delta="-1" aria-label="Quitar asistente">−</button>
+                  <button type="button" data-crew-delta="1" aria-label="Agregar asistente">+</button>
+                </div>
+                <div class="sup-crew__names" data-crew-names></div>
+              </article>
+            </div>
+            <p class="sup-crew__error small" data-crew-error></p>
+          </section>
           <div class="field">
             <label>Nota</label>
             <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
