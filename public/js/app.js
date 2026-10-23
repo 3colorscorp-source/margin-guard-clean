@@ -3695,7 +3695,7 @@ Thank you.`
     }
     const parts = [];
     if (pro) parts.push(`${pro} Pro`);
-    if (assistant) parts.push(`${assistant} Asistente${assistant === 1 ? "" : "s"}`);
+    if (assistant) parts.push(`${assistant} Assistant${assistant === 1 ? "" : "s"}`);
     const summary = parts.length
       ? names.length
         ? `${parts.join(" · ")} · ${names.join(", ")}`
@@ -3748,8 +3748,8 @@ Thank you.`
       if (namesEl) {
         namesEl.innerHTML = names
           .map((person, index) => {
-            const label = role === "assistant" ? "Asistente" : "Pro";
-            return `<input data-crew-name type="text" maxlength="80" value="${escapeHtml(person.name)}" placeholder="${label} ${index + 1}" aria-label="Nombre de ${label} ${index + 1}" />`;
+            const label = role === "assistant" ? "Assistant" : "Pro";
+            return `<input data-crew-name type="text" maxlength="80" value="${escapeHtml(person.name)}" placeholder="${label} ${index + 1}" aria-label="${label} ${index + 1} name" />`;
           })
           .join("");
       }
@@ -3761,7 +3761,7 @@ Thank you.`
     const summary = root.querySelector("[data-crew-summary]");
     if (summary) {
       const presented = supervisorPresentCrew({ crew: list });
-      summary.textContent = presented.summary || "Nadie en campo";
+      summary.textContent = presented.summary || "Nobody on site";
     }
     const error = root.querySelector("[data-crew-error]");
     if (error) error.textContent = "";
@@ -3782,7 +3782,7 @@ Thank you.`
       return;
     }
     hint.hidden = false;
-    hint.textContent = `El plan espera ${presented.summary}. Ajusta quién trabajó de verdad.`;
+    hint.textContent = `The plan expects ${presented.summary}. Adjust who actually worked.`;
   }
 
   function bindSupervisorCrewEditor(root) {
@@ -3806,7 +3806,7 @@ Thank you.`
       const summary = root.querySelector("[data-crew-summary]");
       if (!summary) return;
       const presented = supervisorPresentCrew({ crew: supervisorCrewRead(root) });
-      summary.textContent = presented.summary || "Nadie en campo";
+      summary.textContent = presented.summary || "Nobody on site";
     });
   }
 
@@ -3814,7 +3814,7 @@ Thank you.`
     const people = supervisorCrewRead(root);
     const error = root && root.querySelector("[data-crew-error]");
     if (!people.length) {
-      if (error) error.textContent = "Agrega al menos un Pro o un asistente.";
+      if (error) error.textContent = "Add at least one Pro or Assistant.";
       return null;
     }
     if (error) error.textContent = "";
@@ -12602,9 +12602,9 @@ function renderSupervisor() {
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "No client")}</option>
           `).join("")
-        : `<option value="">Sin proyectos firmados</option>`;
+        : `<option value="">No signed projects</option>`;
       picker.value = selectedProject?.id || "";
       picker.onchange = () => {
         const prevId = supervisorProjectKey(loadSupervisorSelectedProjectId());
@@ -12722,9 +12722,9 @@ function renderSupervisor() {
         const cur = supervisorProjectKey(picker.value || "");
         picker.innerHTML = uiList.length
           ? uiList.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "No client")}</option>
           `).join("")
-          : `<option value="">Sin proyectos firmados</option>`;
+          : `<option value="">No signed projects</option>`;
         const still = uiList.find((p) => supervisorProjectKey(p.id) === cur);
         if (still) {
           picker.value = still.id;
@@ -13239,7 +13239,7 @@ function renderSupervisor() {
         const currentProject = resolveActiveSupervisorProject();
         clearSupervisorReportFeedback("labor");
         if (!currentProject) {
-          showSupervisorReportFeedback("labor", "Selecciona un proyecto primero.", "error");
+          showSupervisorReportFeedback("labor", "Select a project first.", "error");
           return;
         }
         const state = loadSupervisorReport(currentProject);
@@ -13254,11 +13254,11 @@ function renderSupervisor() {
           serverProjectId: rowPid
         };
         if (!entry.date) {
-          showSupervisorReportFeedback("labor", "Elige la fecha del reporte.", "warn", ["supEntryDate"]);
+          showSupervisorReportFeedback("labor", "Choose the report date.", "warn", ["supEntryDate"]);
           return;
         }
         if (entry.hours <= 0 && entry.days <= 0) {
-          showSupervisorReportFeedback("labor", "Escribe las horas o los días trabajados.", "warn", ["supEntryHours", "supEntryDays"]);
+          showSupervisorReportFeedback("labor", "Enter the hours or the days worked.", "warn", ["supEntryHours", "supEntryDays"]);
           return;
         }
         if (!entryCrew) return;
@@ -13266,7 +13266,7 @@ function renderSupervisor() {
         const successDetail = [`${entry.hours.toFixed(2)} h`, `${entry.days.toFixed(2)} d`, crewLabel].filter(Boolean).join(" · ");
         if (saveBtn) {
           saveBtn.disabled = true;
-          saveBtn.textContent = "Guardando…";
+          saveBtn.textContent = "Saving…";
         }
 
         try {
@@ -13297,7 +13297,7 @@ function renderSupervisor() {
             setNum("supEntryDays", 0);
             setVal("supEntryNote", "");
             supervisorCrewPaint($("supEntryCrew"), []);
-            await presentSupervisorReportSuccess("labor", "Reporte guardado", successDetail, async () => {
+            await presentSupervisorReportSuccess("labor", "Report saved", successDetail, async () => {
               delete supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)];
               const fresh = await fetchProjectReports(currentProject.id);
               supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)] =
@@ -13323,14 +13323,14 @@ function renderSupervisor() {
           setVal("supEntryNote", "");
           supervisorCrewPaint($("supEntryCrew"), []);
           saveSupervisorReport(currentProject.id, state);
-          await presentSupervisorReportSuccess("labor", "Reporte guardado", successDetail);
+          await presentSupervisorReportSuccess("labor", "Report saved", successDetail);
           refresh();
         } catch (_e) {
-          showSupervisorReportFeedback("labor", "No se pudo guardar el reporte. Inténtalo de nuevo.", "error");
+          showSupervisorReportFeedback("labor", "Could not save the report. Try again.", "error");
         } finally {
           if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = "Guardar reporte";
+            saveBtn.textContent = "Save report";
           }
         }
       };
@@ -13342,7 +13342,7 @@ function renderSupervisor() {
         const currentProject = resolveActiveSupervisorProject();
         clearSupervisorReportFeedback("extra");
         if (!currentProject) {
-          showSupervisorReportFeedback("extra", "Selecciona un proyecto primero.", "error");
+          showSupervisorReportFeedback("extra", "Select a project first.", "error");
           return;
         }
         const state = loadSupervisorReport(currentProject);
@@ -13357,15 +13357,15 @@ function renderSupervisor() {
           serverProjectId: rowPid
         };
         if (!extra.date) {
-          showSupervisorReportFeedback("extra", "Elige la fecha del gasto.", "warn", ["supExtraDate"]);
+          showSupervisorReportFeedback("extra", "Choose the expense date.", "warn", ["supExtraDate"]);
           return;
         }
         if (!extra.item) {
-          showSupervisorReportFeedback("extra", "Escribe el concepto del gasto.", "warn", ["supExtraItem"]);
+          showSupervisorReportFeedback("extra", "Enter the expense description.", "warn", ["supExtraItem"]);
           return;
         }
         if (extra.amount <= 0) {
-          showSupervisorReportFeedback("extra", "Escribe un monto mayor a cero.", "warn", ["supExtraAmount"]);
+          showSupervisorReportFeedback("extra", "Enter an amount greater than zero.", "warn", ["supExtraAmount"]);
           return;
         }
         if (!extraCrew) return;
@@ -13373,7 +13373,7 @@ function renderSupervisor() {
         const successDetail = [money(extra.amount), extra.item, crewLabel].filter(Boolean).join(" · ");
         if (saveBtn) {
           saveBtn.disabled = true;
-          saveBtn.textContent = "Guardando…";
+          saveBtn.textContent = "Saving…";
         }
 
         try {
@@ -13403,7 +13403,7 @@ function renderSupervisor() {
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
             supervisorCrewPaint($("supExtraCrew"), []);
-            await presentSupervisorReportSuccess("extra", "Gasto guardado", successDetail, async () => {
+            await presentSupervisorReportSuccess("extra", "Expense saved", successDetail, async () => {
               delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
               const fresh = await fetchProjectExpenses(currentProject.id);
               supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)] =
@@ -13429,14 +13429,14 @@ function renderSupervisor() {
           setVal("supExtraNote", "");
           supervisorCrewPaint($("supExtraCrew"), []);
           saveSupervisorReport(currentProject.id, state);
-          await presentSupervisorReportSuccess("extra", "Gasto guardado", successDetail);
+          await presentSupervisorReportSuccess("extra", "Expense saved", successDetail);
           refresh();
         } catch (_e) {
-          showSupervisorReportFeedback("extra", "No se pudo guardar el gasto. Inténtalo de nuevo.", "error");
+          showSupervisorReportFeedback("extra", "Could not save the expense. Try again.", "error");
         } finally {
           if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = "Guardar gasto";
+            saveBtn.textContent = "Save expense";
           }
         }
       };

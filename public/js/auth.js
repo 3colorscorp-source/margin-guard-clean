@@ -51,15 +51,15 @@
 
   function paintAccount(data) {
     const email = document.getElementById("accountEmail");
-    if (email) email.textContent = data.email || "Cuenta activa";
+    if (email) email.textContent = data.email || "Active account";
 
     const plan = document.getElementById("planStatus");
     if (plan) {
       if (data.is_admin) {
-        plan.textContent = "Acceso admin (sin suscripción requerida)";
+        plan.textContent = "Admin access (no subscription required)";
       } else {
         const renewText = data.renewsAt ? new Date(data.renewsAt).toLocaleDateString() : "";
-        plan.textContent = renewText ? `Plan anual activo · Renueva ${renewText}` : "Plan anual activo";
+        plan.textContent = renewText ? `Annual plan active · Renews ${renewText}` : "Annual plan active";
       }
     }
 
