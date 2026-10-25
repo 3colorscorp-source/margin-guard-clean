@@ -19,6 +19,7 @@ const {
 } = require("./operational-plan");
 const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
 const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
+const { crewFromStoredRow } = require("./supervisor-day-crew");
 const { supabaseRequest } = require("./supabase-admin");
 
 const DEFAULT_HOURS_PER_DAY = 8;
@@ -158,7 +159,58 @@ function laborRatesFromSettings(mg) {
     assistant_rate: round2(assistantRate),
     role_rates_missing: roleRatesMissing,
     missing: roleRatesMissing,
-    missing_message: "Labor rate settings missing. Configure Business Settings.",
+    missing_message:
+      "Pro base cost and Assistant base cost are missing in Business Settings.",
+  };
+}
+
+function laborCostFromSettingsRates(reports, rates) {
+  const proRate = num(rates?.pro_rate, 0);
+  const assistantRate = num(rates?.assistant_rate, 0);
+  if (!(proRate > 0) || !(assistantRate > 0)) return null;
+  const list = Array.isArray(reports) ? reports : [];
+  let proHours = 0;
+  let assistantHours = 0;
+  for (const report of list) {
+    const hours = num(report?.hours, 0);
+    if (hours <= 0) continue;
+    const people = crewFromStoredRow(report).crew;
+    const pros = people.filter((person) => person.role === "pro").length;
+    const assistants = people.filter((person) => person.role === "assistant").length;
+    const heads = pros + assistants;
+    if (heads > 0) {
+      proHours += hours * (pros / heads);
+      assistantHours += hours * (assistants / heads);
+    } else {
+      proHours += hours;
+    }
+  }
+  if (proHours + assistantHours <= 0) return null;
+  return {
+    pro_hours: round2(proHours),
+    assistant_hours: round2(assistantHours),
+    cost: round2(proHours * proRate + assistantHours * assistantRate),
+  };
+}
+
+function businessSettingsForReport(mg) {
+  const bs = parseBusinessSettingsForOwnerProfit(mg);
+  return {
+    pro_rate: bs.pro_rate,
+    assistant_rate: bs.assistant_rate,
+    labor_rates_ok: bs.labor_rates_ok,
+    burden_pct_total: bs.burden_pct_total,
+    burden_ok: bs.burden_ok,
+    overhead_per_hour: bs.overhead_per_hour,
+    overhead_ok: bs.overhead_ok,
+    sales_commission_pct: bs.sales_commission_pct,
+    commission_ok: bs.commission_ok,
+    supervisor_bonus_pct: bs.supervisor_bonus_pct,
+    supervisor_bonus_ok: bs.supervisor_bonus_ok,
+    reserve_pct: bs.reserve_pct,
+    reserve_ok: bs.reserve_ok,
+    target_margin_pct: bs.profit_pct,
+    target_margin_ok: bs.profit_pct != null,
   };
 }
 
@@ -391,6 +443,12 @@ function computeLaborCostSection({
     estimatedLaborCost = planEst.estimatedLaborCost;
   }
 
+  if (!(estimatedLaborCost > 0) && !rates.role_rates_missing && estimatedHours > 0) {
+    estimatedLaborCost = rolePlan.has_role_breakdown
+      ? round2(rolePlan.pro_hours * rates.pro_rate + rolePlan.assistant_hours * rates.assistant_rate)
+      : round2(estimatedHours * rates.pro_rate);
+  }
+
   const base = {
     estimated: {
       hours: estimatedHours,
@@ -412,6 +470,9 @@ function computeLaborCostSection({
     cost_method: null,
     labor_rates_missing: false,
     labor_rates_message: null,
+    rate_basis: rates.role_rates_missing
+      ? null
+      : `Pro $${rates.pro_rate}/h · Assistant $${rates.assistant_rate}/h`,
     pro_rate: rates.role_rates_missing ? null : rates.pro_rate,
     assistant_rate: rates.role_rates_missing ? null : rates.assistant_rate,
     blended_rate: null,
@@ -496,22 +557,32 @@ function computeLaborCostSection({
     }
     actualCost = proH * rates.pro_rate + asstH * rates.assistant_rate;
   } else if (reportedHours > 0) {
-    if (blended <= 0) {
+    if (blended > 0) {
+      method = "field_reports";
+      proH = reportedHours;
+      actualCost = reportedHours * blended;
+    } else {
+      const fromSettings = laborCostFromSettingsRates(reports, rates);
+      if (!fromSettings) {
+        base.cost_method = "legacy_fallback";
+        base.labor_rates_missing = true;
+        base.labor_rates_message = rates.missing_message;
+        return base;
+      }
+      method = "business_settings_rates";
+      proH = fromSettings.pro_hours;
+      asstH = fromSettings.assistant_hours;
+      actualCost = fromSettings.cost;
+    }
+  } else if (blended <= 0) {
+    if (rates.role_rates_missing) {
       base.cost_method = "legacy_fallback";
       base.labor_rates_missing = true;
-      base.labor_rates_message =
-        "Labor rate settings missing. Configure Business Settings.";
+      base.labor_rates_message = rates.missing_message;
       return base;
     }
-    method = "field_reports";
-    proH = reportedHours;
-    actualCost = reportedHours * blended;
-  } else if (blended <= 0) {
-    base.cost_method = "legacy_fallback";
-    base.labor_rates_missing = true;
-    base.labor_rates_message =
-      "Labor rate settings missing. Configure Business Settings.";
-    return base;
+    method = "business_settings_rates";
+    actualCost = 0;
   } else {
     method = "legacy_fallback";
     proH = reportedHours;
@@ -990,7 +1061,7 @@ function buildOwnerProfitBreakdown({
   if (!bs.supervisor_bonus_ok) {
     supervisorBonusNote = "Supervisor bonus not configured.";
   } else if (supervisorLaborBase <= 0) {
-    supervisorBonusNote = "Supervisor bonus not configured.";
+    supervisorBonusNote = "Labor cost is not available yet.";
   } else {
     const bonusCalc = computeSupervisorExecutionBonus({
       laborBudget: supervisorLaborBase,
@@ -1352,6 +1423,7 @@ function buildProjectFinancialDetail({
     },
     contract_collection: collection,
     labor,
+    business_settings: businessSettingsForReport(mg),
     expenses: {
       total: expenseTotal,
       count: expenseRows.length,
@@ -1383,5 +1455,7 @@ module.exports = {
   sumLedgerPaidByInvoiceId,
   extractMgSettings,
   laborRatesFromSettings,
+  laborCostFromSettingsRates,
+  businessSettingsForReport,
   mapExpenseRow,
 };
