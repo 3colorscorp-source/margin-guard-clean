@@ -1392,6 +1392,20 @@
         return moneyUsd(val);
       }
 
+      function laborMethodLabel(method) {
+        var key = String(method || '');
+        if (key === 'business_settings_rates') return 'Business Settings rates';
+        if (key === 'field_reports') return 'Field reports';
+        if (key === 'completed_plan_days') return 'Completed plan days';
+        if (key === 'quoted_labor_plan_fallback') return 'Quoted labor plan';
+        if (key === 'legacy_fallback') return 'Project labor budget';
+        return key || '—';
+      }
+
+      function settingMini(label, ready, value) {
+        return finMini(label, ready ? value : 'Missing', ready ? finMoneyClass('neutral') : finMoneyClass('warning'));
+      }
+
       function fmtActualLaborCost(actL, labor) {
         if (actL.labor_cost != null && actL.labor_cost !== '') return moneyUsd(actL.labor_cost);
         if (labor.labor_rates_missing || labor.cost_method === 'no_rate') return 'Not calculated';
@@ -1656,7 +1670,8 @@
           finMini('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—', laborVarianceClass(varL.days)) +
           finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—', laborVarianceClass(varL.cost)) +
           '</div>' +
-          (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true, money: neu }) + '</div>' : '') +
+          (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', laborMethodLabel(labor.cost_method), { wide: true, money: neu }) + '</div>' : '') +
+          (labor.rate_basis ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Rates used', labor.rate_basis, { wide: true, money: neu }) + '</div>' : '') +
           laborNote +
           '</section>';
 
@@ -1710,8 +1725,29 @@
           '<button type="button" class="btn ghost" id="pccFinBtnExpenseReport">View expense report</button>' +
           '</div></section>';
 
+        var bs = detail.business_settings || null;
+        var settingsHtml = '';
+        if (bs) {
+          settingsHtml =
+            '<section class="pcc-fin-section">' +
+            '<h4>From Business Settings</h4>' +
+            '<div class="pcc-fin-mini-grid">' +
+            settingMini('Pro $/h', bs.pro_rate != null, bs.pro_rate != null ? moneyUsd(bs.pro_rate) : '') +
+            settingMini('Assistant $/h', bs.assistant_rate != null, bs.assistant_rate != null ? moneyUsd(bs.assistant_rate) : '') +
+            settingMini('Employer burden', bs.burden_ok && bs.burden_pct_total != null, bs.burden_pct_total != null ? String(bs.burden_pct_total) + '%' : '') +
+            settingMini('Overhead / hour', bs.overhead_ok && bs.overhead_per_hour != null, bs.overhead_per_hour != null ? moneyUsd(bs.overhead_per_hour) : '') +
+            settingMini('Seller commission', bs.commission_ok && bs.sales_commission_pct != null, bs.sales_commission_pct != null ? String(bs.sales_commission_pct) + '%' : '') +
+            settingMini('Supervisor bonus', bs.supervisor_bonus_ok && bs.supervisor_bonus_pct != null, bs.supervisor_bonus_pct != null ? String(bs.supervisor_bonus_pct) + '%' : '') +
+            settingMini('Savings reserve', bs.reserve_ok && bs.reserve_pct != null, bs.reserve_pct != null ? String(bs.reserve_pct) + '%' : '') +
+            settingMini('Target margin', bs.target_margin_ok && bs.target_margin_pct != null, bs.target_margin_pct != null ? String(bs.target_margin_pct) + '%' : '') +
+            '</div>' +
+            '<p class="pcc-fin-note">Labor, burden, overhead, commission, bonus, and reserve use these Business Settings. A missing rate stays out of the profit until it is set.</p>' +
+            '</section>';
+        }
+
         content.innerHTML =
           profitBanner +
+          settingsHtml +
           '<div class="pcc-fin-kpis">' +
           finKpi('Contract total', moneyUsd(k.contract_total), pos) +
           finKpi('Paid to date', moneyUsd(k.paid_to_date), pos) +
