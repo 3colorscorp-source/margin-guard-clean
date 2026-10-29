@@ -274,6 +274,19 @@ async function runMultiAreaVoiceScopeTests() {
   eq("Confirm and apply does not publish or price", confirmed.published === false && confirmed.priced === false, true);
   ok("a later publish still creates one quote and one PDF path", publish.includes("estimate-public.html?token=") && publish.indexOf("calculateQuotePublishFinancials") < publish.indexOf("buildLaborAreaBreakdown"));
   ok("public estimate and PDF show each area scope without a sell price", publicBuilder.includes("area.scope") && !publicBuilder.includes("area.sell_subtotal") && pdf.includes("area && area.scope") && !pdf.includes("area.sell_subtotal"));
+  ok(
+    "public scope and client PDF include quote terms in Scope of Work without area sell prices",
+    publicBuilder.includes("mg-terms-in-scope") &&
+      publicBuilder.includes("safe(next && next.terms)") &&
+      publicBuilder.includes('style="white-space:pre-wrap;margin-top:16px;"') &&
+      !publicBuilder.includes("next.notes") &&
+      !publicBuilder.includes("area.sell_subtotal") &&
+      pdf.includes("terms-in-scope") &&
+      pdf.includes("drawQuoteTermsInScope(quoteTerms)") &&
+      pdf.includes("drawSectionTitle('Project Investment')") &&
+      !pdf.includes("area.sell_subtotal") &&
+      !pdf.includes("data.notes")
+  );
 
   const { createHandler } = await import("../netlify/functions/voice-operational-plan-command.mjs");
   const transcript = [
@@ -349,7 +362,7 @@ async function runMultiAreaVoiceScopeTests() {
   return passed;
 }
 
-const EXPECTED = 68;
+const EXPECTED = 69;
 
 module.exports = { runMultiAreaVoiceScopeTests, EXPECTED };
 

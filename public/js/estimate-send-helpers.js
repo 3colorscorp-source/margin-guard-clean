@@ -595,6 +595,30 @@
 
   y = headerBottom + 24;
 
+  const quoteTerms = String(data.terms || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+  function drawQuoteTermsInScope(termsText) {
+    // terms-in-scope: quote terms print inside Scope of Work. Email notes are not used.
+    const raw = String(termsText || '').trim();
+    if (!raw) return;
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+    doc.setTextColor(...textDark);
+    raw.split('\n').forEach(function (para) {
+      if (!String(para).trim()) {
+        ensureSpace(12);
+        y += 10;
+        return;
+      }
+      doc.splitTextToSize(para, contentWidth).forEach(function (line) {
+        ensureSpace(16);
+        doc.text(line, left, y);
+        y += 14;
+      });
+    });
+  }
+
   const laborAreas = Array.isArray(data.laborAreas) ? data.laborAreas : [];
   if (laborAreas.length) {
     drawSectionTitle('Scope of Work');
@@ -612,9 +636,11 @@
       });
       y += 8;
     });
+    drawQuoteTermsInScope(quoteTerms);
   } else {
     drawSectionTitle('Scope of Work');
     drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+    drawQuoteTermsInScope(quoteTerms);
   }
 
   y += 8;
