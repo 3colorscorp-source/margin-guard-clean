@@ -103,6 +103,7 @@
     "scripts/test-cancel-tenant-invoice-modern-owner-session.js",
     "scripts/test-record-tenant-payment-modern-owner-session.js",
     "scripts/test-invoice-hub-remaining-modern-owner-session.js",
+    "scripts/test-invoice-hub-accepted-quote-link.js",
     "scripts/test-publish-public-invoice-modern-owner-session.js"
   ],
   "optionalRegressionTests": [

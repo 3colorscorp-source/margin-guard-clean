@@ -13702,7 +13702,11 @@ window.renderSupervisor = renderSupervisor;
       status: invoice.status || "draft",
       due_date: invoice.due_date,
       invoice_label: invoice.invoice_label,
-      notes: invoice.notes
+      notes: invoice.notes,
+      quote_id: invoice.quote_id,
+      project_id: invoice.project_id,
+      public_token: invoice.public_token,
+      quotes: invoice.quotes
     });
     if (!norm?.invoiceId) return;
     const prev = Array.isArray(hubServerNormalizedInvoicesCache) ? hubServerNormalizedInvoicesCache.slice() : [];
@@ -18705,6 +18709,105 @@ window.renderSupervisor = renderSupervisor;
   let hubServerInvoicesFetchStarted = false;
   let hubMergedRowsForProjectBilling = [];
 
+  function hubAcceptedQuoteIdFromLocation() {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const qid = String(params.get("quote_id") || "").trim();
+      return MG_SERVER_INVOICE_UUID_RE.test(qid) ? qid : "";
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function hubMoneyLabelFromQuoteTotal(total) {
+    const n = Math.round(Number(total) * 100) / 100;
+    if (!(n > 0)) return "";
+    return "$" + n.toFixed(2);
+  }
+
+  function hubIsoDateOk(value) {
+    const s = String(value || "");
+    if (s.length !== 10 || s.charAt(4) !== "-" || s.charAt(7) !== "-") return false;
+    for (let i = 0; i < 10; i += 1) {
+      if (i === 4 || i === 7) continue;
+      const c = s.charAt(i);
+      if (c < "0" || c > "9") return false;
+    }
+    return true;
+  }
+
+  function hubBuildLinkedQuoteInvoiceDraft(quote, nowIsoDate) {
+    const quoteId = String(quote && quote.id != null ? quote.id : "").trim();
+    if (!MG_SERVER_INVOICE_UUID_RE.test(quoteId)) return null;
+    const amount = Math.round(Number(quote && quote.total) * 100) / 100;
+    if (!(amount > 0)) return null;
+    const email = String(quote && quote.client_email != null ? quote.client_email : "").trim();
+    if (!email.includes("@")) return null;
+    const customerName = String(quote && quote.client_name != null ? quote.client_name : "").trim();
+    const projectName = String((quote && (quote.project_name || quote.title)) || "").trim();
+    if (!customerName || !projectName) return null;
+    const today = hubIsoDateOk(nowIsoDate) ? String(nowIsoDate) : new Date().toISOString().slice(0, 10);
+    const dueRaw = String(quote && quote.due_date != null ? quote.due_date : "").slice(0, 10);
+    const body = {
+      quote_id: quoteId,
+      customer_name: customerName,
+      customer_email: email,
+      project_name: projectName,
+      amount: amount,
+      paid_amount: 0,
+      balance_due: amount,
+      status: "draft",
+      issue_date: today,
+      type: "PROGRESS",
+      invoice_label: "Contract",
+      notes:
+        "Contract invoice linked to the accepted quote. Record the deposit on this invoice, then create a project payment draft and type the progress amount."
+    };
+    if (hubIsoDateOk(dueRaw)) body.due_date = dueRaw;
+    return body;
+  }
+
+  function hubLinkedQuoteInvoiceOffer(quote, locks) {
+    const status = String(quote && quote.status != null ? quote.status : "")
+      .trim()
+      .toLowerCase();
+    const accepted =
+      status === "accepted" || Boolean(String((quote && quote.accepted_at) || "").trim());
+    if (!quote || !accepted) return { mode: "hidden", message: "" };
+    if (locks && locks.has_invoice) {
+      return {
+        mode: "exists",
+        message:
+          "This accepted quote already has a linked invoice. Open that row, record the deposit with Custom amount, then use Create Project Payment Invoice and type the progress amount."
+      };
+    }
+    if (!locks || !locks.has_project) {
+      return {
+        mode: "blocked",
+        message: "This accepted quote has no project yet. A linked invoice was not created."
+      };
+    }
+    if (!hubBuildLinkedQuoteInvoiceDraft(quote, "2000-01-01")) {
+      return {
+        mode: "blocked",
+        message:
+          "This accepted quote is missing a client name, email, project name, or total, so a linked invoice cannot be created."
+      };
+    }
+    const label = String(quote.quote_number_display || quote.project_name || "Accepted quote").trim();
+    const client = String(quote.client_name || "").trim();
+    const totalLabel = hubMoneyLabelFromQuoteTotal(quote.total);
+    return {
+      mode: "create",
+      message:
+        label +
+        " for " +
+        client +
+        " is accepted and has no invoice. Create linked invoice saves a draft for the quote total and links it to this quote and its project. It does not record a payment, does not charge the client, and does not choose a progress amount." +
+        (totalLabel ? " Quote total " + totalLabel + "." : "")
+    };
+  }
+
   function renderEstimatesHub() {
     if (!$("hubTableBody")) return;
 
@@ -21819,6 +21922,152 @@ window.renderSupervisor = renderSupervisor;
       };
     }
 
+    let hubLinkedQuoteBannerQuote = null;
+    let hubLinkedQuoteCreating = false;
+
+    function hubSetAcceptedQuoteBanner(message, showButton) {
+      const banner = $("hubAcceptedQuoteInvoiceBanner");
+      const text = $("hubAcceptedQuoteInvoiceText");
+      const btn = $("btnHubCreateLinkedQuoteInvoice");
+      if (!banner || !text || !btn) return;
+      if (!message) {
+        banner.style.display = "none";
+        text.textContent = "";
+        btn.style.display = "none";
+        return;
+      }
+      banner.style.display = "";
+      text.textContent = message;
+      btn.style.display = showButton ? "" : "none";
+    }
+
+    function hubFindLoadedInvoiceForQuote(quoteId) {
+      const qid = String(quoteId || "").trim();
+      if (!qid) return null;
+      return lastMergedHubRows.find((r) => String(r.hubQuoteId || "").trim() === qid) || null;
+    }
+
+    async function syncHubAcceptedQuoteInvoiceOffer() {
+      const quoteId = hubAcceptedQuoteIdFromLocation();
+      hubLinkedQuoteBannerQuote = null;
+      if (!quoteId) {
+        hubSetAcceptedQuoteBanner("", false);
+        return;
+      }
+      let payload = null;
+      try {
+        const res = await fetch(
+          "/.netlify/functions/get-tenant-quote-edit?quote_id=" + encodeURIComponent(quoteId),
+          { credentials: "same-origin", headers: { Accept: "application/json" } }
+        );
+        payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload || payload.ok !== true || !payload.quote) {
+          hubSetAcceptedQuoteBanner("Could not load this accepted quote. Refresh and try again.", false);
+          return;
+        }
+      } catch (_err) {
+        hubSetAcceptedQuoteBanner("Could not load this accepted quote. Refresh and try again.", false);
+        return;
+      }
+      const offer = hubLinkedQuoteInvoiceOffer(payload.quote, payload.locks || {});
+      if (offer.mode === "create" || offer.mode === "exists") {
+        if ($("hubStatusFilter") && val("hubStatusFilter") !== "all") {
+          setVal("hubStatusFilter", "all");
+          refresh();
+        }
+      }
+      if (offer.mode === "create") hubLinkedQuoteBannerQuote = payload.quote;
+      hubSetAcceptedQuoteBanner(offer.message, offer.mode === "create");
+      if (offer.mode === "exists") {
+        const existing = hubFindLoadedInvoiceForQuote(quoteId);
+        if (existing) openHubDrawer(existing);
+      }
+    }
+
+    async function createHubLinkedQuoteInvoice() {
+      if (hubLinkedQuoteCreating) return;
+      const quote = hubLinkedQuoteBannerQuote;
+      const draft = hubBuildLinkedQuoteInvoiceDraft(quote);
+      if (!draft) {
+        setHubFeedback("This quote cannot be linked to an invoice yet.", "warn");
+        return;
+      }
+      hubLinkedQuoteCreating = true;
+      const btn = $("btnHubCreateLinkedQuoteInvoice");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Creating…";
+      }
+      try {
+        const res = await fetch("/.netlify/functions/upsert-tenant-invoice-draft", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(draft)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || data.ok !== true || !data.invoice || !data.invoice.id) {
+          const raw = String((data && (data.error || data.message)) || "");
+          const duplicate = /unique|quote_id|23505/i.test(raw);
+          setHubFeedback(
+            duplicate
+              ? "An invoice is already linked to this quote. Refresh the list and open that row."
+              : "Could not create the linked invoice. Refresh and try again.",
+            "err"
+          );
+          return;
+        }
+        const serverRow = data.invoice;
+        const createdId = String(serverRow.id);
+        if (typeof window.__mgHubRefetchServerInvoices === "function") {
+          await window.__mgHubRefetchServerInvoices({ warnOnFailure: false });
+        } else {
+          refresh();
+        }
+        let row = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === createdId);
+        if (!row) {
+          seedHubServerInvoiceFromCreateResponse({
+            ...serverRow,
+            quotes: {
+              id: draft.quote_id,
+              total: quote.total,
+              status: quote.status,
+              accepted_at: quote.accepted_at || ""
+            }
+          });
+          refresh();
+          row = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === createdId);
+        }
+        if (row) openHubDrawer(row);
+        const projectId = String(
+          serverRow.project_id || (row && row.hubTenantProjectId) || ""
+        ).trim();
+        const linked = MG_SERVER_INVOICE_UUID_RE.test(projectId);
+        setHubFeedback(
+          linked
+            ? "Linked invoice created. Record the deposit with Custom amount, payment type deposit, and the real paid date. Do not use Full amount. Then open Actions, choose Create Project Payment Invoice, select Enter manual amount, and type the progress amount yourself."
+            : "Invoice was saved on the quote, but a project was not linked. Do not record a payment until the project link is confirmed.",
+          linked ? "ok" : "warn"
+        );
+        hubLinkedQuoteBannerQuote = null;
+        hubSetAcceptedQuoteBanner("", false);
+      } catch (_err) {
+        setHubFeedback("Could not create the linked invoice. Refresh and try again.", "err");
+      } finally {
+        hubLinkedQuoteCreating = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Create linked invoice";
+        }
+      }
+    }
+
+    if ($("btnHubCreateLinkedQuoteInvoice")) {
+      $("btnHubCreateLinkedQuoteInvoice").onclick = () => {
+        void createHubLinkedQuoteInvoice();
+      };
+    }
+
     window.__mgHubTableRefresh = refresh;
     window.__mgHubRefreshSelectedRow = refreshSelectedRow;
     bindHubQuoteEditHandlers(settings);
@@ -21840,6 +22089,7 @@ window.renderSupervisor = renderSupervisor;
         hubDebugLog("[HUB] normalized invoices:", result);
         applyHubServerInvoiceListResult(result, { warnOnFailure: true });
         if ($("hubTableBody")) refresh();
+        await syncHubAcceptedQuoteInvoiceOffer();
       })();
     }
   }
