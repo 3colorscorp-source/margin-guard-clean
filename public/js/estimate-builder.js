@@ -1298,16 +1298,13 @@
     const wrap = $("publicEstimateTerms");
     if (!wrap) return;
 
-    const st = String(next.status || "").toLowerCase();
+    const st = String((next && next.status) || "").toLowerCase();
     const card = wrap.closest(".estimate-subcard");
+    if (card) card.style.display = "";
+
+    // quote.terms stays stored for Scope of Work and the signed contract.
+    // This card always uses the short notice, even when terms are filled in.
     if (st === "accepted" || st === "approved") {
-      const customTerms = safe(next.terms);
-      if (customTerms) {
-        if (card) card.style.display = "";
-        wrap.textContent = customTerms;
-        return;
-      }
-      if (card) card.style.display = "";
       wrap.innerHTML = `
         <div class="premium-terms-copy">
           The Initial Scheduling Payment amount and payment options are shown in the
@@ -1315,14 +1312,6 @@
           Initial Scheduling Payments are non-refundable if you cancel the project.
         </div>
       `;
-      return;
-    }
-    if (card) card.style.display = "";
-
-    const customTerms = safe(next.terms);
-
-    if (customTerms) {
-      wrap.textContent = customTerms;
       return;
     }
 
