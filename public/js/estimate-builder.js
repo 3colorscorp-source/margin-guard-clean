@@ -1251,12 +1251,11 @@
         .map(function (area) {
           const name = escapeHtml(area && area.name ? area.name : "Area");
           const scope = escapeHtml(uniquePublicScopeLines(area && area.scope).join("\n"));
-          const sell = money(area && area.sell_subtotal, next.currency);
           return (
             '<div class="mg-public-area">' +
             '<div class="mg-public-area__name">' + name + "</div>" +
             (scope ? '<div class="mg-public-area__scope">' + scope + "</div>" : "") +
-            '<div class="mg-public-area__sell">Subtotal ' + escapeHtml(sell) + "</div></div>"
+            "</div>"
           );
         })
         .join("");

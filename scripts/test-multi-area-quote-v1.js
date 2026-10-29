@@ -113,8 +113,8 @@ async function runMultiAreaQuoteV1Tests() {
   ok("public area response hides ids and internal labor", !/area_id|worker|rate|cost|margin|overhead|profit/.test(JSON.stringify(built.publicAreas)));
   eq("stored breakdown projects to the same two public areas", publicAreasFromBreakdown(built.breakdown).length, 2);
 
-  ok("public estimate renders each area scope and subtotal", publicBuilder.includes("area.scope") && publicBuilder.includes("area.sell_subtotal"));
-  ok("PDF renders each area scope and subtotal", pdf.includes("area && area.scope") && pdf.includes("doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' })"));
+  ok("public estimate renders each area scope without a sell price", publicBuilder.includes("area.scope") && !publicBuilder.includes("mg-public-area__sell") && !publicBuilder.includes("area.sell_subtotal"));
+  ok("PDF renders each area scope without a sell price", pdf.includes("area && area.scope") && !pdf.includes("area.sell_subtotal"));
   ok("public PDF download keeps the modal area subtotals", publicBuilder.includes("laborAreas: Array.isArray(next.labor_areas)") && sales.includes("doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' })"));
   ok("public estimate fetch is tenant-bound", getPublic.includes("tenant_id=not.is.null") && getPublic.includes("labor_area_breakdown"));
   ok("publish still creates one public URL from one token", publish.includes("estimate-public.html?token=") && !/area.*public_token/i.test(publish));

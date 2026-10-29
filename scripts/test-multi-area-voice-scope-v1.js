@@ -273,7 +273,7 @@ async function runMultiAreaVoiceScopeTests() {
   });
   eq("Confirm and apply does not publish or price", confirmed.published === false && confirmed.priced === false, true);
   ok("a later publish still creates one quote and one PDF path", publish.includes("estimate-public.html?token=") && publish.indexOf("calculateQuotePublishFinancials") < publish.indexOf("buildLaborAreaBreakdown"));
-  ok("public estimate and PDF still show each area scope and subtotal", publicBuilder.includes("area.scope") && publicBuilder.includes("area.sell_subtotal") && pdf.includes("area && area.scope") && pdf.includes("area && area.sell_subtotal"));
+  ok("public estimate and PDF show each area scope without a sell price", publicBuilder.includes("area.scope") && !publicBuilder.includes("area.sell_subtotal") && pdf.includes("area && area.scope") && !pdf.includes("area.sell_subtotal"));
 
   const { createHandler } = await import("../netlify/functions/voice-operational-plan-command.mjs");
   const transcript = [
