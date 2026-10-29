@@ -130,6 +130,17 @@ async function runMultiAreaQuoteV1Tests() {
       !pdf.includes("area.sell_subtotal") &&
       !pdf.includes("data.notes")
   );
+  const renderTermsSrc = publicBuilder.slice(
+    publicBuilder.indexOf("function renderTerms"),
+    publicBuilder.indexOf("function renderTotals")
+  );
+  ok(
+    "public Terms card keeps the short scheduling notice and does not repeat quote.terms",
+    renderTermsSrc.includes("The Initial Scheduling Payment will be applied toward your final invoice.") &&
+      renderTermsSrc.includes("Deposits are non-refundable in the event of project cancellation by the client.") &&
+      !renderTermsSrc.includes("next.terms") &&
+      !renderTermsSrc.includes("textContent")
+  );
   ok("public PDF download keeps the modal area subtotals", publicBuilder.includes("laborAreas: Array.isArray(next.labor_areas)") && sales.includes("doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' })"));
   ok("public estimate fetch is tenant-bound", getPublic.includes("tenant_id=not.is.null") && getPublic.includes("labor_area_breakdown"));
   ok("publish still creates one public URL from one token", publish.includes("estimate-public.html?token=") && !/area.*public_token/i.test(publish));
@@ -185,7 +196,7 @@ async function runMultiAreaQuoteV1Tests() {
   return passed;
 }
 
-const EXPECTED = 36;
+const EXPECTED = 37;
 
 module.exports = { runMultiAreaQuoteV1Tests, EXPECTED };
 
