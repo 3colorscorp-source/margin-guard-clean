@@ -610,12 +610,7 @@
       scopeLines.forEach(function (line) {
         drawWrapped(line, left, contentWidth, { size: 10.5, leading: 14 });
       });
-      ensureSpace(18);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(...textDark);
-      doc.text('Subtotal  ' + formatUsd(area && area.sell_subtotal), right, y, { align: 'right' });
-      y += 20;
+      y += 8;
     });
   } else {
     drawSectionTitle('Scope of Work');
