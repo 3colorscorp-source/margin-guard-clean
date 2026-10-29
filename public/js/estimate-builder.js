@@ -1247,6 +1247,12 @@
     if (areas.length) {
       section.style.display = "";
       wrap.style.whiteSpace = "normal";
+      const termsText = safe(next && next.terms);
+      const termsBlock = termsText
+        ? '<div class="mg-terms-in-scope" style="white-space:pre-wrap;margin-top:16px;">' +
+          escapeHtml(termsText) +
+          "</div>"
+        : "";
       wrap.innerHTML = areas
         .map(function (area) {
           const name = escapeHtml(area && area.name ? area.name : "Area");
@@ -1258,7 +1264,7 @@
             "</div>"
           );
         })
-        .join("");
+        .join("") + termsBlock;
       return;
     }
 
