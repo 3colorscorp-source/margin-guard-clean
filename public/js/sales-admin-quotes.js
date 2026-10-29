@@ -76,9 +76,10 @@
       recommended: null,
     },
     manualDriver: "none",
-    pricingAnchorsBusy: false,
-    quoteTotal: null,
-    laborAreas: [],
+      pricingAnchorsBusy: false,
+      pricingAnchorBlock: "",
+      quoteTotal: null,
+      laborAreas: [],
     laborAreaPublic: [],
   };
   let pricingAnchorsTimer = null;
@@ -607,6 +608,17 @@
   function updatePricingAnchorsGuard() {
     const manual = readManualPricingState();
     if (manual.active) return;
+    if (editState.pricingAnchorsBusy) {
+      setManualGuardMessage(
+        "Protected pricing is still loading. Please wait before applying a manual price.",
+        null
+      );
+      return;
+    }
+    if (editState.pricingAnchorBlock && !hasReadyPricingAnchors()) {
+      setManualGuardMessage(editState.pricingAnchorBlock, "err");
+      return;
+    }
     if (pricingAnchorsStillLoading()) {
       setManualGuardMessage(
         "Protected pricing is still loading. Please wait before applying a manual price.",
@@ -808,6 +820,8 @@
     const workers = readWorkersFromUI();
     const workerErr = validateWorkersForReprice(workers);
     if (workerErr) {
+      editState.pricingAnchorsBusy = false;
+      editState.pricingAnchorBlock = workerErr;
       if (!hasReadyPricingAnchors()) {
         editState.pricingAnchors = { minimum: null, negotiation: null, recommended: null };
         updatePricingRefsDisplay();
@@ -817,6 +831,7 @@
       return;
     }
 
+    editState.pricingAnchorBlock = "";
     editState.pricingAnchorsBusy = true;
     updatePricingAnchorsGuard();
     updateApplyPriceButtonState();
@@ -828,6 +843,8 @@
       ]);
       const ok = (r) => r.response.ok && r.data?.ok === true && r.data?.pricing;
       if (!ok(minRes) || !ok(negRes) || !ok(recRes)) {
+        editState.pricingAnchorBlock =
+          "Protected prices could not be calculated. Check the labor lines and try again.";
         return;
       }
       const merged = { ...(editState.pricingAnchors || {}) };
@@ -845,7 +862,10 @@
       updatePricingRefsDisplay();
       updateManualPricingUI();
     } catch (_err) {
-      /* keep hydrated anchors */
+      if (!hasReadyPricingAnchors()) {
+        editState.pricingAnchorBlock =
+          "Protected prices could not be calculated. Check the labor lines and try again.";
+      }
     } finally {
       editState.pricingAnchorsBusy = false;
       updatePricingAnchorsGuard();
@@ -1251,6 +1271,7 @@
       pricingAnchors: { minimum: null, negotiation: null, recommended: null },
       manualDriver: "none",
       pricingAnchorsBusy: false,
+      pricingAnchorBlock: "",
       quoteTotal: null,
       laborAreas: [],
       laborAreaPublic: [],

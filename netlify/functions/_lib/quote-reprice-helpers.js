@@ -244,10 +244,45 @@ function normalizeReason(raw) {
   return s;
 }
 
+function workerLineHasLabor(worker) {
+  return (
+    Math.max(0, Number(worker && worker.days)) > 0 ||
+    Math.max(0, Number(worker && worker.hours)) > 0
+  );
+}
+
+function parseBreakdownWorkers(breakdown) {
+  let parsed = breakdown;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch (_err) {
+      return [];
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.workers)) return [];
+  return parsed.workers;
+}
+
+/**
+ * Published quotes store labor inside labor_area_breakdown.workers.
+ * pricing_workers is filled only after an owner reprice. Prefer the column
+ * when it already has labor; otherwise use the breakdown so Edit Quote can
+ * calculate Minimum, Negotiation, and Recommended.
+ */
+function pricingWorkersForEditor(row) {
+  const r = row && typeof row === "object" ? row : {};
+  const column = Array.isArray(r.pricing_workers) ? r.pricing_workers : [];
+  if (column.some(workerLineHasLabor)) return column;
+  const fromBreakdown = parseBreakdownWorkers(r.labor_area_breakdown);
+  if (fromBreakdown.some(workerLineHasLabor)) return fromBreakdown;
+  return column.length ? column : null;
+}
+
 function serializeRepriceState(row) {
   const r = row && typeof row === "object" ? row : {};
   return {
-    pricing_workers: Array.isArray(r.pricing_workers) ? r.pricing_workers : null,
+    pricing_workers: pricingWorkersForEditor(r),
     pricing_stage:
       r.pricing_stage === null || r.pricing_stage === undefined
         ? null
@@ -447,6 +482,7 @@ module.exports = {
   parsePricingStage,
   normalizeReason,
   serializeRepriceState,
+  pricingWorkersForEditor,
   fetchQuoteRepriceRow,
   buildSettingsSnapshotForAudit,
   buildEngineResultForAudit,
