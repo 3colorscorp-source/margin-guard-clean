@@ -193,6 +193,22 @@ ok(
 ok("day status does not read project holds", !statusFn.includes("project_holds"));
 ok("the labor day index helper ignores holds", app.includes("laborDayIndex") && app.includes("MgSupervisorProjectHold"));
 ok("the pause control is on the supervisor project header", html.includes('id="btnSupPauseProject"') && html.includes("Pause / other trade"));
+ok(
+  "pause date range uses the same month calendar as edit start",
+  html.includes('id="supHoldRangeStartCal"') &&
+    html.includes('id="supHoldRangeEndCal"') &&
+    html.includes('class="sup-start-cal"') &&
+    app.includes("function renderSupervisorDayCalendar") &&
+    app.includes("supHoldRangeStartCal") &&
+    app.includes("supHoldRangeEndCal") &&
+    app.includes("data-sup-start-day")
+);
+ok(
+  "a picked pause day stays yyyy-mm-dd for the existing range parser",
+  html.includes('id="supHoldRangeStart"') &&
+    html.includes('id="supHoldRangeEnd"') &&
+    app.includes('input.value = btn.getAttribute("data-sup-start-day")')
+);
 ok("the page loads the hold clock before the app", html.indexOf("/js/supervisor-project-hold.js") < html.indexOf("/js/app.js"));
 ok("edit start remains on the page", html.includes('id="btnSupEditStart"'));
 ok("the hold save posts to the hold endpoint", app.includes("/.netlify/functions/update-supervisor-project-hold"));

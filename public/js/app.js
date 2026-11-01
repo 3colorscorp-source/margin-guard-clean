@@ -4302,6 +4302,8 @@ Thank you.`
   let supervisorProductionStartBound = false;
   let supervisorProductionStartSaving = false;
   let supervisorStartCalView = null;
+  let supervisorHoldStartCalView = null;
+  let supervisorHoldEndCalView = null;
 
   function supervisorProductionStartPreview(startIso, estimatedDays) {
     const start = normalizeDateInput(startIso);
@@ -4341,17 +4343,17 @@ Thank you.`
     );
   }
 
-  function renderSupervisorProductionStartCalendar() {
-    const root = $("supStartDateCal");
-    const input = $("supStartDateInput");
+  function renderSupervisorDayCalendar(root, input, getView, setView, onPick) {
     if (!root || !input) return;
     const selected = normalizeDateInput(input.value || "");
     const anchor = parseLocalDateOnly(selected) || todayLocalDateOnly();
-    if (!supervisorStartCalView) {
-      supervisorStartCalView = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    let view = getView();
+    if (!view) {
+      view = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      setView(view);
     }
-    const year = supervisorStartCalView.getFullYear();
-    const month = supervisorStartCalView.getMonth();
+    const year = view.getFullYear();
+    const month = view.getMonth();
     const firstDow = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = todayInputValue();
@@ -4376,18 +4378,66 @@ Thank you.`
       btn.onclick = (event) => {
         event.preventDefault();
         const shift = Number(btn.getAttribute("data-sup-start-shift") || 0);
-        supervisorStartCalView = new Date(year, month + shift, 1);
-        renderSupervisorProductionStartCalendar();
+        setView(new Date(year, month + shift, 1));
+        renderSupervisorDayCalendar(root, input, getView, setView, onPick);
       };
     });
     root.querySelectorAll("[data-sup-start-day]").forEach((btn) => {
       btn.onclick = (event) => {
         event.preventDefault();
         input.value = btn.getAttribute("data-sup-start-day") || "";
-        refreshSupervisorProductionStartPreview();
-        renderSupervisorProductionStartCalendar();
+        if (typeof onPick === "function") onPick();
+        renderSupervisorDayCalendar(root, input, getView, setView, onPick);
       };
     });
+  }
+
+  function renderSupervisorProductionStartCalendar() {
+    renderSupervisorDayCalendar(
+      $("supStartDateCal"),
+      $("supStartDateInput"),
+      () => supervisorStartCalView,
+      (next) => {
+        supervisorStartCalView = next;
+      },
+      refreshSupervisorProductionStartPreview
+    );
+  }
+
+  function syncSupervisorHoldRangeValue(inputId, valueId) {
+    const el = $(valueId);
+    if (!el) return;
+    const iso = normalizeDateInput($(inputId)?.value || "");
+    el.textContent = iso ? formatDateUS(iso) || iso : "Pick a day on the calendar";
+  }
+
+  function renderSupervisorHoldRangeCalendars() {
+    renderSupervisorDayCalendar(
+      $("supHoldRangeStartCal"),
+      $("supHoldRangeStart"),
+      () => supervisorHoldStartCalView,
+      (next) => {
+        supervisorHoldStartCalView = next;
+      },
+      () => {
+        syncSupervisorHoldRangeValue("supHoldRangeStart", "supHoldRangeStartValue");
+        refreshSupervisorHoldPreview();
+      }
+    );
+    renderSupervisorDayCalendar(
+      $("supHoldRangeEndCal"),
+      $("supHoldRangeEnd"),
+      () => supervisorHoldEndCalView,
+      (next) => {
+        supervisorHoldEndCalView = next;
+      },
+      () => {
+        syncSupervisorHoldRangeValue("supHoldRangeEnd", "supHoldRangeEndValue");
+        refreshSupervisorHoldPreview();
+      }
+    );
+    syncSupervisorHoldRangeValue("supHoldRangeStart", "supHoldRangeStartValue");
+    syncSupervisorHoldRangeValue("supHoldRangeEnd", "supHoldRangeEndValue");
   }
 
   function closeSupervisorProductionStartModal() {
@@ -4658,6 +4708,7 @@ Thank you.`
     const range = $("supHoldRangeFields");
     if (count) count.hidden = mode !== "count";
     if (range) range.hidden = mode !== "range";
+    if (mode === "range") renderSupervisorHoldRangeCalendars();
     refreshSupervisorHoldPreview();
   }
 
@@ -4682,6 +4733,12 @@ Thank you.`
     }
     const countMode = document.querySelector('input[name="supHoldMode"][value="count"]');
     if (countMode) countMode.checked = true;
+    const startInput = $("supHoldRangeStart");
+    const endInput = $("supHoldRangeEnd");
+    if (startInput) startInput.value = "";
+    if (endInput) endInput.value = "";
+    supervisorHoldStartCalView = null;
+    supervisorHoldEndCalView = null;
     syncSupervisorHoldMode();
     renderSupervisorHoldList();
     const feedback = $("supHoldFeedback");
