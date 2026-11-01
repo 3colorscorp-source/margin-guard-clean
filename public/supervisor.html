@@ -541,6 +541,59 @@
       padding: 4px 10px;
       font-size: 12px;
     }
+    body.supervisor-page .sup-hold-modal__card {
+      width: min(460px, calc(100vw - 32px));
+    }
+    body.supervisor-page .sup-hold-modal__modes {
+      display: flex;
+      gap: 16px;
+      margin: 12px 0;
+    }
+    body.supervisor-page .sup-hold-modal__modes label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+    }
+    body.supervisor-page .sup-hold-modal__count[hidden],
+    body.supervisor-page .sup-hold-modal__range[hidden] {
+      display: none;
+    }
+    body.supervisor-page .sup-hold-modal__count {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    body.supervisor-page .sup-hold-modal__count input,
+    body.supervisor-page .sup-hold-modal__count select,
+    body.supervisor-page .sup-hold-modal input[type="text"],
+    body.supervisor-page .sup-hold-modal input[type="date"] {
+      width: 100%;
+      margin-top: 4px;
+    }
+    body.supervisor-page .sup-hold-modal__range {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    body.supervisor-page .sup-hold-modal__preview {
+      margin-top: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    body.supervisor-page .sup-hold-list {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+    }
+    body.supervisor-page .sup-hold-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 0;
+      border-top: 1px solid var(--sup-line);
+    }
     body.supervisor-page .sup-start-modal__card {
       width: min(420px, calc(100vw - 32px));
     }
@@ -1314,6 +1367,7 @@
                   </span>
                   <strong id="supHeroTarget">—</strong>
                   <span class="sup-exec-hero__hint" id="supHeroTargetHint" style="display:none;"></span>
+                  <button type="button" class="btn ghost sup-start-edit-btn" id="btnSupPauseProject">Pause / other trade</button>
                 </div>
                 <div class="supervisor-status-strip__meta-item sup-exec-hero__cell">
                   <span class="sup-exec-hero__label">
@@ -1537,6 +1591,58 @@
       <div class="modal-footer">
         <button type="button" class="btn ghost" id="btnSupCancelStart">Cancel</button>
         <button type="button" class="btn primary" id="btnSupSaveStart">Save start date</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="supProjectHold" class="modal sup-hold-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="supProjectHoldTitle">
+    <div class="modal-card sup-hold-modal__card" role="document">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="supProjectHoldTitle">Pause for another trade</div>
+          <p class="modal-subtitle">The calendar target moves forward. Labor days stay on the days you actually worked.</p>
+        </div>
+        <button type="button" class="btn ghost" id="btnSupHoldClose" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <label for="supHoldReason">Reason</label>
+        <input id="supHoldReason" type="text" maxlength="200" value="Other trade on site" autocomplete="off" />
+        <div class="sup-hold-modal__modes" role="radiogroup" aria-label="How long is the pause">
+          <label><input type="radio" name="supHoldMode" value="count" checked /> Number of days</label>
+          <label><input type="radio" name="supHoldMode" value="range" /> Date range</label>
+        </div>
+        <div id="supHoldCountFields" class="sup-hold-modal__count">
+          <div>
+            <label for="supHoldAmount">How long</label>
+            <input id="supHoldAmount" type="number" min="1" max="366" step="1" value="3" inputmode="numeric" />
+          </div>
+          <div>
+            <label for="supHoldUnit">Unit</label>
+            <select id="supHoldUnit">
+              <option value="days" selected>Days</option>
+              <option value="weeks">Weeks</option>
+            </select>
+          </div>
+        </div>
+        <div id="supHoldRangeFields" class="sup-hold-modal__range" hidden>
+          <div>
+            <label for="supHoldRangeStart">First paused day</label>
+            <input id="supHoldRangeStart" type="date" autocomplete="off" />
+          </div>
+          <div>
+            <label for="supHoldRangeEnd">Last paused day</label>
+            <input id="supHoldRangeEnd" type="date" autocomplete="off" />
+          </div>
+        </div>
+        <p class="small">Weeks count as 7 calendar days. A date range includes the first and last day.</p>
+        <div class="sup-hold-modal__preview" id="supHoldPreview" aria-live="polite">Add a pause to move the target finish.</div>
+        <h3 class="sup-section-title" style="margin-top:16px;">Recorded pauses</h3>
+        <ul class="sup-hold-list" id="supHoldList"></ul>
+        <p class="small" id="supHoldFeedback" aria-live="polite"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnSupCancelHold">Cancel</button>
+        <button type="button" class="btn primary" id="btnSupSaveHold">Save pause</button>
       </div>
     </div>
   </div>
@@ -2359,6 +2465,7 @@
   <script src="/js/device-portal-auth.js"></script>
   <script src="/js/supervisor-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
+  <script src="/js/supervisor-project-hold.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

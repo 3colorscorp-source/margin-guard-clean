@@ -3161,21 +3161,31 @@ Thank you.`
   }
 
   function supervisorCurrentPlanDayIndex(plan, startIso, actualDays) {
-    const maxDay =
+    const numbered =
       Array.isArray(plan) && plan.length
         ? Math.max(...plan.map((d) => Number(d.day_number) || 0))
         : 0;
+    const maxDay = Array.isArray(plan) && plan.length ? Math.max(plan.length, numbered) : numbered;
+    const api = globalThis.MgSupervisorProjectHold;
+    if (api && typeof api.laborDayIndex === "function") {
+      return api.laborDayIndex({
+        planLength: maxDay,
+        actualDays,
+        startIso: normalizeDateInput(startIso || ""),
+        todayIso: todayInputValue(),
+      });
+    }
+    const worked = Math.max(0, Math.floor(finiteNumber(actualDays, 0)));
     if (startIso) {
       const start = parseLocalDateOnly(startIso);
       const today = todayLocalDateOnly();
       if (start) {
         start.setHours(0, 0, 0, 0);
-        const diff = Math.floor((today - start) / 86400000) + 1;
-        if (diff >= 1) return Math.min(diff, maxDay || diff);
-        return 1;
+        if (today.getTime() < start.getTime()) return 1;
       }
     }
-    return Math.max(1, Math.min(Math.floor(actualDays) + 1, maxDay || 999));
+    const index = worked + 1;
+    return maxDay > 0 ? Math.min(index, maxDay) : Math.max(1, index);
   }
 
   function findOperationalPlanDay(plan, dayIndex) {
@@ -3226,6 +3236,26 @@ Thank you.`
           subline: "On schedule",
         };
       }
+    }
+
+    if (opts.holdClock === true) {
+      const calendarBehindDays = Math.max(0, Math.floor(finiteNumber(opts.calendarBehindDays, 0)));
+      const laborLate = est > 0 && actual > est;
+      if (calendarBehindDays > 0 || laborLate) {
+        const n = Math.max(1, calendarBehindDays, laborLate ? Math.ceil(actual - est) : 0);
+        return {
+          tone: "red",
+          badge: "BEHIND SCHEDULE",
+          headline: `${n} day${n === 1 ? "" : "s"} over schedule`,
+          subline: laborLate && calendarBehindDays <= 0 ? "Labor days are past the plan" : "Bonus at risk",
+        };
+      }
+      return {
+        tone: "green",
+        badge: "ON SCHEDULE",
+        headline: "On pace",
+        subline: `${Math.floor(actual)} of ${estInt} days used`,
+      };
     }
 
     const overBy = Math.max(
@@ -4217,6 +4247,20 @@ Thank you.`
       startInput.value = ctx.schedule.startIso || "";
     }
     bindSupervisorProductionStartEditor();
+    bindSupervisorProjectHoldEditor();
+    const holdEditor = $("supProjectHold");
+    if (holdEditor) {
+      holdEditor.dataset.originalTarget = ctx.schedule.originalTargetIso || ctx.schedule.targetIso || "";
+      holdEditor.dataset.startIso = ctx.schedule.startIso || "";
+      holdEditor.dataset.estimatedDays = String(planDays);
+      holdEditor.dataset.actualDays = String(Math.floor(finiteNumber(ctx.actualDays, 0)));
+      holdEditor.dataset.planLength = String(
+        Math.max(planDays, Math.floor(finiteNumber(ctx.planLength, planDays)))
+      );
+      holdEditor.dataset.holds = JSON.stringify(
+        Array.isArray(ctx.schedule.projectHolds) ? ctx.schedule.projectHolds : []
+      );
+    }
     set("supHeroTarget", ctx.schedule.targetLabel);
     set("supHeroCrew", ctx.crewSummary);
     const targetHint = $("supHeroTargetHint");
@@ -4466,6 +4510,259 @@ Thank you.`
   }
 
   bindSupervisorProductionStartEditor();
+
+  let supervisorProjectHoldBound = false;
+  let supervisorProjectHoldSaving = false;
+
+  function supervisorReadProjectHolds(schedule) {
+    const sched = schedule && typeof schedule === "object" ? schedule : {};
+    return Array.isArray(sched.project_holds) ? sched.project_holds : [];
+  }
+
+  function supervisorHoldTargetLabel(clock) {
+    if (!clock || !clock.holdDays || !clock.adjustedTarget) return "";
+    const original = formatDateUS(clock.originalTarget) || clock.originalTarget;
+    const adjusted = formatDateUS(clock.adjustedTarget) || clock.adjustedTarget;
+    const n = Math.max(0, Math.floor(finiteNumber(clock.holdDays, 0)));
+    return `Original ${original} · Hold ${n} day${n === 1 ? "" : "s"} · Target finish ${adjusted}`;
+  }
+
+  function supervisorEvaluateHoldClock(originalTarget, holds, startIso, actualDays, estimatedDays, planLength) {
+    const api = globalThis.MgSupervisorProjectHold;
+    const today = todayInputValue();
+    if (api && typeof api.evaluateSchedule === "function") {
+      return api.evaluateSchedule({
+        originalTarget,
+        holds,
+        today,
+        startIso,
+        actualDays,
+        estimatedDays,
+        planLength,
+      });
+    }
+    return {
+      originalTarget: normalizeDateInput(originalTarget || ""),
+      adjustedTarget: normalizeDateInput(originalTarget || ""),
+      holdDays: 0,
+      holds: Array.isArray(holds) ? holds : [],
+      laborDayIndex: Math.max(1, Math.floor(finiteNumber(actualDays, 0)) + 1),
+      calendarBehindDays: 0,
+      laborLate: false,
+      behind: false,
+    };
+  }
+
+  function supervisorHoldDraftFromForm() {
+    const mode = document.querySelector('input[name="supHoldMode"]:checked')?.value || "count";
+    return {
+      reason: $("supHoldReason")?.value || "",
+      mode,
+      amount: $("supHoldAmount")?.value || "",
+      unit: $("supHoldUnit")?.value || "days",
+      range_start: $("supHoldRangeStart")?.value || "",
+      range_end: $("supHoldRangeEnd")?.value || "",
+    };
+  }
+
+  function refreshSupervisorHoldPreview() {
+    const editor = $("supProjectHold");
+    const preview = $("supHoldPreview");
+    if (!editor || !preview) return;
+    const api = globalThis.MgSupervisorProjectHold;
+    const existing = (() => {
+      try {
+        const parsed = JSON.parse(editor.dataset.holds || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_err) {
+        return [];
+      }
+    })();
+    if (!api || typeof api.addProjectHold !== "function") {
+      preview.textContent = "Pause is unavailable in this build.";
+      return;
+    }
+    const draft = api.addProjectHold(existing, { ...supervisorHoldDraftFromForm(), id: "preview-hold" });
+    if (!draft.ok) {
+      preview.textContent = draft.error || "Enter a reason and how long the other trade will stop the job.";
+      return;
+    }
+    const clock = api.evaluateSchedule({
+      originalTarget: editor.dataset.originalTarget || "",
+      holds: draft.holds,
+      today: todayInputValue(),
+      startIso: editor.dataset.startIso || "",
+      actualDays: editor.dataset.actualDays || 0,
+      estimatedDays: editor.dataset.estimatedDays || 0,
+      planLength: editor.dataset.planLength || 0,
+    });
+    const before = api.evaluateSchedule({
+      originalTarget: editor.dataset.originalTarget || "",
+      holds: existing,
+      today: todayInputValue(),
+      startIso: editor.dataset.startIso || "",
+      actualDays: editor.dataset.actualDays || 0,
+      estimatedDays: editor.dataset.estimatedDays || 0,
+      planLength: editor.dataset.planLength || 0,
+    });
+    if (!clock.originalTarget) {
+      preview.textContent = "Set a target finish before pausing. Edit start can set it from the plan length.";
+      return;
+    }
+    const fromLabel = formatDateUS(before.adjustedTarget || clock.originalTarget) || clock.originalTarget;
+    const toLabel = formatDateUS(clock.adjustedTarget) || clock.adjustedTarget;
+    preview.textContent = `Target finish moves from ${fromLabel} to ${toLabel}. Labor day stays Day ${before.laborDayIndex}.`;
+  }
+
+  function renderSupervisorHoldList() {
+    const editor = $("supProjectHold");
+    const list = $("supHoldList");
+    if (!editor || !list) return;
+    let holds = [];
+    try {
+      const parsed = JSON.parse(editor.dataset.holds || "[]");
+      holds = Array.isArray(parsed) ? parsed : [];
+    } catch (_err) {
+      holds = [];
+    }
+    if (!holds.length) {
+      list.innerHTML = '<li><span>No pauses recorded.</span></li>';
+      return;
+    }
+    list.innerHTML = holds
+      .map((row) => {
+        const days = Math.max(1, Math.floor(finiteNumber(row.days, 0)));
+        const reason = String(row.reason || "").trim() || "Pause";
+        const range =
+          row.range_start && row.range_end
+            ? ` · ${formatDateUS(row.range_start) || row.range_start}–${formatDateUS(row.range_end) || row.range_end}`
+            : "";
+        return `<li><span>${escapeHtml(reason)} · ${days} day${days === 1 ? "" : "s"}${escapeHtml(range)}</span><button type="button" class="btn small ghost" data-sup-hold-remove="${escapeHtml(String(row.id || ""))}">Remove hold</button></li>`;
+      })
+      .join("");
+    list.querySelectorAll("[data-sup-hold-remove]").forEach((btn) => {
+      btn.onclick = () => {
+        const id = btn.getAttribute("data-sup-hold-remove") || "";
+        if (!id) return;
+        if (!window.confirm("Remove this hold? The target finish moves back by those days.")) return;
+        void saveSupervisorProjectHold({ action: "remove", hold_id: id });
+      };
+    });
+  }
+
+  function syncSupervisorHoldMode() {
+    const mode = document.querySelector('input[name="supHoldMode"]:checked')?.value || "count";
+    const count = $("supHoldCountFields");
+    const range = $("supHoldRangeFields");
+    if (count) count.hidden = mode !== "count";
+    if (range) range.hidden = mode !== "range";
+    refreshSupervisorHoldPreview();
+  }
+
+  function closeSupervisorProjectHoldModal() {
+    const editor = $("supProjectHold");
+    const feedback = $("supHoldFeedback");
+    if (feedback) feedback.textContent = "";
+    if (!editor) return;
+    editor.setAttribute("aria-hidden", "true");
+    editor.style.display = "";
+    const dayOpen = $("supDayDetailModal")?.getAttribute("aria-hidden") === "false";
+    const startOpen = $("supStartEdit")?.getAttribute("aria-hidden") === "false";
+    if (!dayOpen && !startOpen) document.body.style.overflow = "";
+  }
+
+  function openSupervisorProjectHoldModal() {
+    const editor = $("supProjectHold");
+    if (!editor) return;
+    const reason = $("supHoldReason");
+    if (reason && !String(reason.value || "").trim()) {
+      reason.value = globalThis.MgSupervisorProjectHold?.DEFAULT_HOLD_REASON || "Other trade on site";
+    }
+    const countMode = document.querySelector('input[name="supHoldMode"][value="count"]');
+    if (countMode) countMode.checked = true;
+    syncSupervisorHoldMode();
+    renderSupervisorHoldList();
+    const feedback = $("supHoldFeedback");
+    if (feedback) feedback.textContent = "";
+    editor.setAttribute("aria-hidden", "false");
+    editor.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+
+  function bindSupervisorProjectHoldEditor() {
+    if (supervisorProjectHoldBound) return;
+    const editBtn = $("btnSupPauseProject");
+    const saveBtn = $("btnSupSaveHold");
+    const cancelBtn = $("btnSupCancelHold");
+    const closeBtn = $("btnSupHoldClose");
+    const editor = $("supProjectHold");
+    if (!editBtn || !saveBtn || !cancelBtn || !editor) return;
+    supervisorProjectHoldBound = true;
+    editBtn.onclick = () => openSupervisorProjectHoldModal();
+    cancelBtn.onclick = () => closeSupervisorProjectHoldModal();
+    if (closeBtn) closeBtn.onclick = () => closeSupervisorProjectHoldModal();
+    editor.onclick = (event) => {
+      if (event.target === editor) closeSupervisorProjectHoldModal();
+    };
+    document.querySelectorAll('input[name="supHoldMode"]').forEach((input) => {
+      input.addEventListener("change", syncSupervisorHoldMode);
+    });
+    ["supHoldReason", "supHoldAmount", "supHoldUnit", "supHoldRangeStart", "supHoldRangeEnd"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("input", refreshSupervisorHoldPreview);
+      el.addEventListener("change", refreshSupervisorHoldPreview);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (editor.getAttribute("aria-hidden") === "false") {
+        event.preventDefault();
+        closeSupervisorProjectHoldModal();
+      }
+    });
+    saveBtn.onclick = () => {
+      void saveSupervisorProjectHold({ action: "add", ...supervisorHoldDraftFromForm() });
+    };
+  }
+
+  async function saveSupervisorProjectHold(payload) {
+    if (supervisorProjectHoldSaving) return;
+    const project = resolveActiveSupervisorProject();
+    const pid = supervisorProjectKey(project?.id);
+    const feedback = $("supHoldFeedback");
+    const saveBtn = $("btnSupSaveHold");
+    if (!pid) {
+      if (feedback) feedback.textContent = "Select a project first.";
+      return;
+    }
+    supervisorProjectHoldSaving = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (feedback) feedback.textContent = payload.action === "remove" ? "Removing pause…" : "Saving pause…";
+    try {
+      const res = await fetch("/.netlify/functions/update-supervisor-project-hold", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: pid, ...payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data || data.ok !== true) {
+        if (feedback) {
+          feedback.textContent = (data && (data.error || data.message)) || "Could not save the pause.";
+        }
+        return;
+      }
+      closeSupervisorProjectHoldModal();
+      if (feedback) feedback.textContent = "";
+      await loadSupervisorOperationalSnapshot(pid, { force: true });
+      scheduleSupervisorRender("project-hold");
+    } catch (_err) {
+      if (feedback) feedback.textContent = "Could not save the pause.";
+    } finally {
+      supervisorProjectHoldSaving = false;
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
 
   function renderSupervisorTodayTarget(plan, startIso, actualDays, migratedCtx, opts) {
     const wrap = $("supTodayTarget");
@@ -13041,6 +13338,24 @@ function renderSupervisor() {
         estimatedBudgetDays
       );
       const fieldCtx = opCache?.migrated_field_context;
+      const projectHolds = supervisorReadProjectHolds(opCache?.schedule);
+      const planLength = Math.max(
+        Array.isArray(execPlan) ? execPlan.length : 0,
+        Math.round(finiteNumber(estimatedBudgetDays, 0))
+      );
+      const holdClock = supervisorEvaluateHoldClock(
+        scheduleLabels.targetIso,
+        projectHolds,
+        scheduleLabels.startIso,
+        actualDays,
+        estimatedBudgetDays,
+        planLength
+      );
+      scheduleLabels.projectHolds = projectHolds;
+      scheduleLabels.originalTargetIso = holdClock.originalTarget || scheduleLabels.targetIso;
+      scheduleLabels.adjustedTargetIso = holdClock.adjustedTarget || scheduleLabels.targetIso;
+      const holdLabel = supervisorHoldTargetLabel(holdClock);
+      if (holdLabel) scheduleLabels.targetLabel = holdLabel;
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -13052,9 +13367,10 @@ function renderSupervisor() {
           dayDelta = Math.round((projectedD - dueD) / 86400000);
         }
       }
-      if (scheduleLabels.targetIso && scheduleLabels.startIso) {
+      const calendarTargetIso = scheduleLabels.adjustedTargetIso || scheduleLabels.targetIso;
+      if (calendarTargetIso && scheduleLabels.startIso) {
         const startD = parseLocalDateOnly(scheduleLabels.startIso);
-        const targetD = parseLocalDateOnly(scheduleLabels.targetIso);
+        const targetD = parseLocalDateOnly(calendarTargetIso);
         const todayD = todayLocalDateOnly();
         if (startD && targetD && todayD.getTime() >= startD.getTime()) {
           targetD.setHours(0, 0, 0, 0);
@@ -13068,14 +13384,14 @@ function renderSupervisor() {
         estimatedDays: estimatedBudgetDays,
         actualDays,
         calendarDayDelta: dayDelta,
+        calendarBehindDays: holdClock.calendarBehindDays,
+        holdClock: true,
         startIso: scheduleLabels.startIso,
-        targetIso: scheduleLabels.targetIso,
+        targetIso: calendarTargetIso,
       });
-      const planDayIndex = supervisorCurrentPlanDayIndex(
-        execPlan,
-        scheduleLabels.startIso,
-        actualDays
-      );
+      const planDayIndex = showMigratedExecution
+        ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
+        : holdClock.laborDayIndex;
       const crewSummary = supervisorFormatHeroCrewSummary(
         execPlan,
         currentProject,
@@ -13087,6 +13403,7 @@ function renderSupervisor() {
         estimatedDays: estimatedBudgetDays,
         actualDays,
         planDayIndex,
+        planLength,
         status: smartStatus,
         schedule: scheduleLabels,
         crewSummary,
@@ -13128,13 +13445,7 @@ function renderSupervisor() {
         migrationBaseline,
         showMigratedExecution
       );
-      const calendarCurrentDay = showMigratedExecution
-        ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
-        : supervisorCurrentPlanDayIndex(
-            execPlan,
-            scheduleLabels.startIso,
-            actualDays
-          );
+      const calendarCurrentDay = planDayIndex;
       const opSnapshotLoading = supervisorOperationalSnapshotLoading(pid);
       const canRenderCalendar =
         execPlan.length > 0 || Math.ceil(finiteNumber(estimatedBudgetDays, 0)) > 0;

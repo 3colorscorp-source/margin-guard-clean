@@ -9,6 +9,10 @@ const {
   planHasDays,
   parseOperationalPlanJsonb,
 } = require("./operational-plan");
+const {
+  extractProjectHolds,
+  planValueWithHolds,
+} = require("../../public/js/supervisor-project-hold.js");
 
 function num(v, fallback = 0) {
   const n = Number(v);
@@ -89,6 +93,7 @@ async function persistOperationalSnapshot(params) {
   );
   const existing = Array.isArray(existingRows) ? existingRows[0] : null;
   const existingPlan = parseOperationalPlanJsonb(existing?.operational_plan);
+  const existingHolds = extractProjectHolds(existing?.operational_plan);
   if (existing?.locked_at && planHasDays(existingPlan)) {
     return { ok: true, skipped: true, id: existing.id };
   }
@@ -101,7 +106,7 @@ async function persistOperationalSnapshot(params) {
     tenant_id: tenantId,
     project_id: projectId,
     quote_id: params?.quoteId ? String(params.quoteId).trim() : null,
-    operational_plan: normalized,
+    operational_plan: planValueWithHolds(normalized, existingHolds),
     estimated_days: metrics.estimated_days,
     estimated_hours: metrics.estimated_hours,
     worker_count: Math.max(0, Math.floor(metrics.worker_count)),

@@ -26,6 +26,10 @@ const {
   planHasDays,
   crewSummaryFromOperationalPlan,
 } = require("./_lib/operational-plan");
+const {
+  extractProjectHolds,
+  summarizeTarget,
+} = require("../../public/js/supervisor-project-hold.js");
 
 function json(statusCode, payload) {
   return {
@@ -426,6 +430,15 @@ exports.handler = async (event) => {
         crew_summary: crewSummaryFromOperationalPlan(operational_plan),
       };
     }
+    const projectHolds = extractProjectHolds(opRow && opRow.operational_plan);
+    const holdSummary = summarizeTarget(schedule.target_finish_date, projectHolds);
+    schedule = {
+      ...schedule,
+      project_holds: holdSummary.holds,
+      hold_days: holdSummary.holdDays,
+      original_target_finish_date: holdSummary.originalTarget,
+      adjusted_target_finish_date: holdSummary.adjustedTarget,
+    };
 
     const show_migrated_execution = has_migrated_baseline;
     const operational_plan_out = has_migrated_baseline ? [] : operational_plan;
