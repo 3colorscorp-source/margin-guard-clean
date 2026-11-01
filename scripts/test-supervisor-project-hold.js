@@ -80,8 +80,56 @@ const past = hold.evaluateSchedule({
   planLength: 8,
   startIso: "2026-10-15",
 });
-ok("behind stays true when today is past the adjusted target", past.behind === true && past.calendarBehindDays === 1);
+ok(
+  "a saved hold clears behind when labor is on pace even one day past the adjusted target",
+  past.behind === false && past.laborLate === false && past.calendarBehindDays === 1
+);
 ok("being past the adjusted target still does not move the labor day", past.laborDayIndex === withHold.laborDayIndex);
+
+const erinPace = hold.evaluateSchedule({
+  originalTarget: "2026-10-22",
+  holds: added.holds,
+  today: "2026-11-01",
+  estimatedDays: 8,
+  actualDays: 5,
+  planLength: 8,
+  startIso: "2026-10-15",
+});
+ok(
+  "3-day hold on 2026-11-01 does not show behind when the labor day index is on pace",
+  erinPace.adjustedTarget === "2026-10-25" &&
+    erinPace.laborDayIndex === 6 &&
+    erinPace.laborLate === false &&
+    erinPace.behind === false
+);
+
+const erinLate = hold.evaluateSchedule({
+  originalTarget: "2026-10-22",
+  holds: added.holds,
+  today: "2026-11-01",
+  estimatedDays: 8,
+  actualDays: 9,
+  planLength: 8,
+  startIso: "2026-10-15",
+});
+ok(
+  "the same 2026-11-01 dates stay behind when worked labor days are past the plan",
+  erinLate.behind === true && erinLate.laborLate === true && erinLate.laborDayIndex === 8
+);
+
+const noHoldPast = hold.evaluateSchedule({
+  originalTarget: "2026-10-22",
+  holds: [],
+  today: "2026-11-01",
+  estimatedDays: 8,
+  actualDays: 5,
+  planLength: 8,
+  startIso: "2026-10-15",
+});
+ok(
+  "with zero holds, today past the target is still behind",
+  noHoldPast.holdDays === 0 && noHoldPast.behind === true && noHoldPast.calendarBehindDays === 10
+);
 
 const laborOver = hold.evaluateSchedule({
   originalTarget: "2026-10-22",

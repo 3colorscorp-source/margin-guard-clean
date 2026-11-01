@@ -245,20 +245,27 @@
       startIso: body.startIso,
       todayIso: today,
     });
-    var calendarBehindDays = 0;
-    if (today && summary.adjustedTarget && today > summary.adjustedTarget) {
-      calendarBehindDays = diffCalendarDays(summary.adjustedTarget, today);
-    }
+    var hasHold = summary.holds.length > 0;
     var laborLate = estimatedDays > 0 && actualDays > estimatedDays;
+    var calendarBehindDays = 0;
+    var calendarTarget = hasHold ? summary.adjustedTarget : summary.originalTarget;
+    if (today && calendarTarget && today > calendarTarget) {
+      calendarBehindDays = diffCalendarDays(calendarTarget, today);
+    }
+    // A saved pause excuses calendar slip, including days still past the adjusted finish.
+    // The labor-day index stays on worked days and does not count hold days.
+    // Labor is late only when worked days themselves run past the plan.
+    var behind = hasHold ? laborLate : calendarBehindDays > 0 || laborLate;
     return {
       originalTarget: summary.originalTarget,
       holdDays: summary.holdDays,
       adjustedTarget: summary.adjustedTarget,
       holds: summary.holds,
+      hasHold: hasHold,
       laborDayIndex: index,
       calendarBehindDays: calendarBehindDays,
       laborLate: laborLate,
-      behind: calendarBehindDays > 0 || laborLate,
+      behind: behind,
     };
   }
 

@@ -3241,13 +3241,15 @@ Thank you.`
     if (opts.holdClock === true) {
       const calendarBehindDays = Math.max(0, Math.floor(finiteNumber(opts.calendarBehindDays, 0)));
       const laborLate = est > 0 && actual > est;
-      if (calendarBehindDays > 0 || laborLate) {
-        const n = Math.max(1, calendarBehindDays, laborLate ? Math.ceil(actual - est) : 0);
+      const hasHold = opts.hasHold === true;
+      const scheduleBehind = opts.behind === true || (!hasHold && (calendarBehindDays > 0 || laborLate)) || (hasHold && laborLate);
+      if (scheduleBehind) {
+        const n = Math.max(1, hasHold ? 0 : calendarBehindDays, laborLate ? Math.ceil(actual - est) : 0);
         return {
           tone: "red",
           badge: "BEHIND SCHEDULE",
           headline: `${n} day${n === 1 ? "" : "s"} over schedule`,
-          subline: laborLate && calendarBehindDays <= 0 ? "Labor days are past the plan" : "Bonus at risk",
+          subline: laborLate ? "Labor days are past the plan" : "Bonus at risk",
         };
       }
       return {
@@ -13385,6 +13387,8 @@ function renderSupervisor() {
         actualDays,
         calendarDayDelta: dayDelta,
         calendarBehindDays: holdClock.calendarBehindDays,
+        hasHold: holdClock.hasHold === true || finiteNumber(holdClock.holdDays, 0) > 0,
+        behind: holdClock.behind === true,
         holdClock: true,
         startIso: scheduleLabels.startIso,
         targetIso: calendarTargetIso,
