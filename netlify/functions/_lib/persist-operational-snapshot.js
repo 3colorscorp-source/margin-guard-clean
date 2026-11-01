@@ -12,7 +12,7 @@ const {
 const {
   extractProjectHolds,
   planValueWithHolds,
-} = require("../../public/js/supervisor-project-hold.js");
+} = require("../../../public/js/supervisor-project-hold.js");
 
 function num(v, fallback = 0) {
   const n = Number(v);

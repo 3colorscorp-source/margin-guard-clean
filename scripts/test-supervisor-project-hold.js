@@ -199,5 +199,11 @@ ok("the hold save posts to the hold endpoint", app.includes("/.netlify/functions
 ok("the hold endpoint does not rewrite the stored finish date", !/due_date\s*:/.test(handler) && !/commitment_date\s*:/.test(handler.replace("commitment_date: null", "")));
 ok("the hold endpoint keeps the assigned supervisor check", handler.includes("loadTenantProjectForSupervisorAction"));
 ok("a later plan save keeps recorded holds", persist.includes("planValueWithHolds") && persist.includes("extractProjectHolds"));
+ok(
+  "the snapshot writer can load the hold module",
+  persist.includes('require("../../../public/js/supervisor-project-hold.js")')
+);
+require("../netlify/functions/_lib/persist-operational-snapshot.js");
+ok("requiring the snapshot writer does not throw", true);
 
 console.log("\n" + passed + " passed");
