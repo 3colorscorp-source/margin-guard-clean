@@ -18620,7 +18620,9 @@ window.renderSupervisor = renderSupervisor;
     const currentId = hubRowBillingInvoiceUuid(row);
     const others = (group.members || []).filter((member) => {
       const id = hubRowBillingInvoiceUuid(member);
-      return id && id !== currentId;
+      if (!id || id === currentId) return false;
+      if (hubRowMaterialBillForBalance(member) && HUB_INCLUDED_IN_BALANCE_RE.test(hubRowNotesText(member))) return false;
+      return true;
     });
     includeEl.innerHTML = others.length
       ? others
@@ -18821,6 +18823,156 @@ window.renderSupervisor = renderSupervisor;
     return sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
   }
 
+  const HUB_INCLUDED_IN_BALANCE_RE = /\[included_in_contract_balance\]/i;
+
+  function hubRowMaterialBillForBalance(row) {
+    if (!row || hubRowIsArchivedOrVoidBilling(row)) return false;
+    return hubRowIsProjectExpenseInvoice(row) || hubRowIsMaterialCostInvoice(row);
+  }
+
+  function hubMaterialBillLines(row) {
+    const notes = hubRowNotesText(row);
+    const lines = [];
+    let on = false;
+    notes.split(/\r?\n/).forEach((line) => {
+      const trimmed = String(line || "").trim();
+      if (/^project expenses:/i.test(trimmed)) {
+        on = true;
+        return;
+      }
+      if (/^invoice total:/i.test(trimmed)) {
+        on = false;
+        return;
+      }
+      if (on && trimmed && trimmed.charAt(0) !== "[") lines.push(trimmed);
+    });
+    return lines;
+  }
+
+  function hubMaterialBalanceSplit(row) {
+    const group = hubDrawerResolveBillingGroup(row);
+    const readyRows = [];
+    let ready = 0;
+    let included = 0;
+    (group.members || []).forEach((member) => {
+      if (!hubRowMaterialBillForBalance(member)) return;
+      const due = hubRowInvoiceScopedBalance(member);
+      if (!(due > 0)) return;
+      if (HUB_INCLUDED_IN_BALANCE_RE.test(hubRowNotesText(member))) included += due;
+      else {
+        ready += due;
+        readyRows.push(member);
+      }
+    });
+    return {
+      ready: Math.round(ready * 100) / 100,
+      included: Math.round(included * 100) / 100,
+      readyRows,
+    };
+  }
+
+  function hubDrawerApplyRemaining(contractTotal, paid, row, settings) {
+    const split = hubMaterialBalanceSplit(row);
+    const remaining =
+      Math.round(Math.max(0, finiteNumber(contractTotal, 0) - finiteNumber(paid, 0) + split.included) * 100) / 100;
+    const remEl = $("hubDrawerLedgerRemainingBig");
+    if (remEl) remEl.textContent = money(remaining, settings.currency);
+    const sub = $("hubDrawerLedgerRemainingSub");
+    if (sub) {
+      sub.textContent =
+        split.included > 0.005 ? "Contract balance plus materials" : "Original contract balance";
+    }
+    return remaining;
+  }
+
+  function renderHubDrawerMaterialsReady(row, settings) {
+    const box = $("hubDrawerMaterialsReady");
+    if (!box) return;
+    const split = hubMaterialBalanceSplit(row);
+    if (split.ready <= 0.005 && split.included <= 0.005) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    const note = $("hubDrawerMaterialsReadyNote");
+    const linesEl = $("hubDrawerMaterialsReadyLines");
+    const amountEl = $("hubDrawerMaterialsReadyAmount");
+    const btn = $("btnHubAddMaterialsToBalance");
+    const status = $("hubDrawerMaterialsReadyStatus");
+    const lines = [];
+    split.readyRows.forEach((bill) => {
+      hubMaterialBillLines(bill).forEach((line) => lines.push(line));
+    });
+    if (linesEl) linesEl.textContent = lines.join("\n");
+    if (split.ready > 0.005) {
+      if (note) note.textContent = "These reported materials are ready to add to the balance.";
+      if (amountEl) amountEl.textContent = money(split.ready, settings.currency);
+      if (btn) {
+        btn.hidden = false;
+        btn.disabled = false;
+        btn.textContent = "Add to balance";
+        btn.onclick = () => {
+          void addHubMaterialsToBalance(row, settings);
+        };
+      }
+    } else {
+      if (note) note.textContent = "These reported materials are on the balance.";
+      if (amountEl) amountEl.textContent = money(split.included, settings.currency);
+      if (btn) btn.hidden = true;
+    }
+    if (status) status.hidden = true;
+  }
+
+  async function addHubMaterialsToBalance(row, settings) {
+    const btn = $("btnHubAddMaterialsToBalance");
+    const status = $("hubDrawerMaterialsReadyStatus");
+    if (btn) btn.disabled = true;
+    try {
+      const split = hubMaterialBalanceSplit(row);
+      for (const bill of split.readyRows) {
+        const id = hubRowBillingInvoiceUuid(bill);
+        if (!id) throw new Error("Material invoice is missing an id.");
+        const res = await fetch("/.netlify/functions/include-material-in-balance", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ invoice_id: id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Could not add the materials to the balance.");
+        }
+        const notes = hubRowNotesText(bill);
+        const next = HUB_INCLUDED_IN_BALANCE_RE.test(notes)
+          ? notes
+          : (notes ? notes + "\n" : "") + "[included_in_contract_balance]";
+        bill.hubInvoiceNotes = next;
+        if (bill.project && bill.project.invoice) bill.project.invoice.notes = next;
+      }
+      renderHubDrawerMaterialsReady(row, settings);
+      const pack = hubDrawerFolderLedgerPackCache.pack;
+      const contractTotal =
+        pack && Number.isFinite(pack.contractTotal)
+          ? pack.contractTotal
+          : Math.max(finiteNumber(row.projectContractTotal, 0), 0);
+      const paid =
+        pack && Number.isFinite(pack.netSum)
+          ? pack.netSum
+          : finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
+      hubDrawerApplyRemaining(contractTotal, paid, row, settings);
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Added to the balance. The contract total stays the same.";
+      }
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      if (status) {
+        status.hidden = false;
+        status.textContent = err && err.message ? err.message : "Could not add the materials to the balance.";
+      }
+    }
+  }
+
   function renderHubDrawerDetails(row, settings, handlers) {
     if (!row) return;
     const invoice = getProjectInvoiceState(row.project);
@@ -18870,8 +19022,11 @@ window.renderSupervisor = renderSupervisor;
     }
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row) || useFolderLedger;
+    const materialSplit = hubMaterialBalanceSplit(row);
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
-    const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, contractTotal - localPaid), settings.currency);
+    const remainingLabel = ledgerApiOk
+      ? "…"
+      : money(Math.max(0, contractTotal - localPaid + materialSplit.included), settings.currency);
 
     if ($("hubDrawerStats")) {
       $("hubDrawerStats").className = "supervisor-summary-grid hub-drawer-payment-stats";
@@ -18896,9 +19051,11 @@ window.renderSupervisor = renderSupervisor;
           <div class="title">Remaining balance</div>
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
           <div class="small" id="hubDrawerLedgerRemainingSub">${
-            useFolderLedger
-              ? "Original contract balance"
-              : "Project contract total minus payments recorded"
+            materialSplit.included > 0.005
+              ? "Contract balance plus materials"
+              : useFolderLedger
+                ? "Original contract balance"
+                : "Project contract total minus payments recorded"
           }</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-secondary">
@@ -18954,7 +19111,7 @@ window.renderSupervisor = renderSupervisor;
         if (!paidEl || !remEl) return;
         if (!pack || !Number.isFinite(pack.netSum)) {
           paidEl.textContent = "—";
-          remEl.textContent = money(Math.max(0, contractTotal - localPaid), settings.currency);
+          hubDrawerApplyRemaining(contractTotal, localPaid, row, settings);
           if (lb) {
             hubDrawerSetLedgerEmptyState(false);
             lb.innerHTML = `<tr><td>Could not load payments.</td></tr>`;
@@ -18966,7 +19123,7 @@ window.renderSupervisor = renderSupervisor;
         }
         const paidForCards = pack.netSum;
         paidEl.textContent = money(paidForCards, settings.currency);
-        remEl.textContent = money(Math.max(0, contractTotal - paidForCards), settings.currency);
+        hubDrawerApplyRemaining(contractTotal, paidForCards, row, settings);
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) {
           subPaid.textContent = useFolderLedger
@@ -19041,6 +19198,7 @@ window.renderSupervisor = renderSupervisor;
       if (payCtx) payCtx.style.display = "";
     }
     hubDrawerRenderWorkDetails(row);
+    renderHubDrawerMaterialsReady(row, settings);
   }
 
   function renderHubTableSection(config) {

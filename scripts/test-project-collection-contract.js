@@ -62,6 +62,7 @@ assert.strictEqual(section.current_contract_total, 9114.61);
 assert.strictEqual(section.total_invoiced, 9114.61);
 assert.notStrictEqual(section.total_invoiced, 15471.61);
 assert.strictEqual(section.outside_contract, 557);
+assert.strictEqual(section.materials_on_balance, 0);
 assert.strictEqual(section.paid_to_date, 1000);
 assert.strictEqual(section.balance_due, 8114.61);
 assert.strictEqual(section.invoice_status, "Deposit paid");
@@ -114,5 +115,24 @@ assert.strictEqual(material.total_invoiced, 9114.61);
 assert.strictEqual(material.outside_contract, 80);
 assert.strictEqual(material.paid_to_date, 1000);
 assert.strictEqual(material.balance_due, 8114.61);
+
+const added = buildCollectionSection({
+  project,
+  invoices: [
+    erinInvoices[0],
+    erinInvoices[1],
+    Object.assign({}, erinInvoices[2], {
+      notes: erinInvoices[2].notes + "\n[included_in_contract_balance]",
+    }),
+  ],
+  payments: [{ id: "pay-contract", invoice_id: "contract", amount: 1000, paid_at: "2026-10-29" }],
+  changeOrders: [],
+  ledgerPaidByInvoiceId: new Map(),
+});
+assert.strictEqual(added.total_invoiced, 9114.61);
+assert.strictEqual(added.outside_contract, 0);
+assert.strictEqual(added.materials_on_balance, 557);
+assert.strictEqual(added.paid_to_date, 1000);
+assert.strictEqual(added.balance_due, 8671.61);
 
 console.log("PASS contract collection stays on the real contract");

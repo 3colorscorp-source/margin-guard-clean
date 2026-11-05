@@ -21,6 +21,7 @@ const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
 const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
 const { crewFromStoredRow } = require("./supervisor-day-crew");
 const { supabaseRequest } = require("./supabase-admin");
+const { notesIncludeBalanceMarker } = require("./material-balance");
 
 const DEFAULT_HOURS_PER_DAY = 8;
 const INVOICE_SELECT =
@@ -718,6 +719,13 @@ function invoiceIsOutsideContract(inv) {
   return invoiceIsProjectExpense(inv) || invoiceIsMaterialBill(inv);
 }
 
+function materialStillDue(inv, ledgerMap) {
+  const iid = invoiceRowId(inv);
+  const ledgerPaid = iid && ledgerMap ? num(ledgerMap.get(iid), 0) : 0;
+  const paid = round2(Math.max(num(inv?.paid_amount, 0), ledgerPaid));
+  return round2(Math.max(0, num(inv?.amount, 0) - paid));
+}
+
 /**
  * A later bill for part of the same contract (progress, final, remaining).
  * Its amount is already inside the contract invoice, so it is not added again.
@@ -960,8 +968,11 @@ function buildCollectionSection({
       sliceInvoices.reduce((s, inv) => s + Math.max(0, num(inv.amount, 0)), 0)
     );
   }
-  const outsideContract = round2(
-    outsideInvoices.reduce((s, inv) => s + Math.max(0, num(inv.amount, 0)), 0)
+  const stillOutside = outsideInvoices.filter((inv) => !notesIncludeBalanceMarker(inv && inv.notes));
+  const addedMaterials = outsideInvoices.filter((inv) => notesIncludeBalanceMarker(inv && inv.notes));
+  const outsideContract = round2(stillOutside.reduce((s, inv) => s + materialStillDue(inv, ledgerMap), 0));
+  const materialsOnBalance = round2(
+    addedMaterials.reduce((s, inv) => s + materialStillDue(inv, ledgerMap), 0)
   );
 
   let paidToDate = 0;
@@ -984,7 +995,7 @@ function buildCollectionSection({
   );
   if (ledgerPaymentTotal > paidToDate) paidToDate = ledgerPaymentTotal;
 
-  const balanceDue = round2(Math.max(0, currentContractTotal - paidToDate));
+  const balanceDue = round2(Math.max(0, currentContractTotal - paidToDate + materialsOnBalance));
 
   const lastPay = contractPayments
     .map((p) => p.paid_at || p.created_at)
@@ -1010,6 +1021,7 @@ function buildCollectionSection({
     current_contract_total: currentContractTotal,
     total_invoiced: totalInvoiced,
     outside_contract: outsideContract,
+    materials_on_balance: materialsOnBalance,
     paid_to_date: paidToDate,
     balance_due: balanceDue,
     invoice_status: invStatus.label,

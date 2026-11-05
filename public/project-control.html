@@ -1704,6 +1704,9 @@
           finRow('Current contract', moneyUsd(cc.current_contract_total), { money: pos }) +
           finRow('Invoiced on contract', moneyUsd(cc.total_invoiced), { money: pos }) +
           finRow('Paid to date', moneyUsd(cc.paid_to_date), { money: pos }) +
+          (Number(cc.materials_on_balance) > 0.005
+            ? finRow('Materials on the balance', moneyUsd(cc.materials_on_balance), { money: neu })
+            : '') +
           finRow('Balance due', moneyUsd(cc.balance_due), { money: balanceDueMoneyClass(cc.balance_due) }) +
           finRow('Invoice status', cc.invoice_status || '—', { money: invoiceStatusMoneyClass(cc.invoice_status) }) +
           finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—', { money: neu }) +
