@@ -1895,6 +1895,24 @@
           <p class="hub-drawer-billing-note" id="hubDrawerProjectBillingNote">Invoices and payments for this project.</p>
           <div class="hub-drawer-billing-totals" id="hubDrawerProjectBillingTotals"></div>
           <div id="hubDrawerProjectBillingGroups"></div>
+          <div id="hubDrawerSendBundle" class="hub-drawer-send-bundle" hidden>
+            <div class="sub" style="margin:12px 0 6px;font-size:12px;">One send</div>
+            <p class="hub-billing-extra-note">Add an item or include another invoice on this email. Send a separate invoice only when the client needs a separate bill.</p>
+            <div id="hubDrawerSendInclude"></div>
+            <div class="hub-form-grid">
+              <div class="field">
+                <label for="hubSendItemDesc">Add item</label>
+                <input id="hubSendItemDesc" maxlength="120" placeholder="Description" />
+              </div>
+              <div class="field">
+                <label for="hubSendItemAmount">Amount</label>
+                <input id="hubSendItemAmount" type="number" min="0" step="0.01" placeholder="0.00" />
+              </div>
+            </div>
+            <button type="button" class="btn" id="btnHubSendAddItem">Add item</button>
+            <ul id="hubSendItemList" class="hub-send-item-list"></ul>
+            <button type="button" class="btn" id="btnHubCreateMaterialInside">Create material invoice</button>
+          </div>
         </div>
         <div id="hubDrawerChangeOrdersWrap" class="hub-drawer-section">
           <div class="sub" style="margin:0 0 8px;font-size:12px;">Supervisor change orders</div>

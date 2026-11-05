@@ -16435,8 +16435,13 @@ window.renderSupervisor = renderSupervisor;
     let workDetails = "";
     let laborAmount = "";
     let materialsAmount = "";
+    const sendExtras = hubSendBundleExtras(row);
     if (workApi && typeof workApi.formatClientFacingWorkDetails === "function") {
       workDetails = String(workApi.formatClientFacingWorkDetails(notes) || "").trim();
+    }
+    if (sendExtras.lines.length) {
+      const extraBlock = ["Included in this send", ...sendExtras.lines.map((line) => "- " + line)].join("\n");
+      workDetails = workDetails ? workDetails + "\n\n" + extraBlock : extraBlock;
     }
     if (workApi && typeof workApi.parseNotes === "function") {
       const parsed = workApi.parseNotes(notes) || {};
@@ -16500,9 +16505,10 @@ window.renderSupervisor = renderSupervisor;
         currency: nonEmptyString(settings.currency, row?.currency),
         contractTotal: finiteNumber(row?.projectContractTotal, finiteNumber(row?.salePrice, 0)),
         contractTotalLabel: "Contract total",
-        invoiceAmount: finiteNumber(row?.amount, finiteNumber(row?.project?.invoice?.baseAmount, 0)),
+        invoiceAmount:
+          finiteNumber(row?.amount, finiteNumber(row?.project?.invoice?.baseAmount, 0)) + sendExtras.extraDue,
         paidToDate: finiteNumber(row?.paid, finiteNumber(row?.project?.invoice?.receivedApplied, 0)),
-        remainingBalance: finiteNumber(row?.balance, 0),
+        remainingBalance: finiteNumber(row?.balance, 0) + sendExtras.extraDue,
         paymentInstructions
       });
     } catch (_err) {
@@ -17848,6 +17854,7 @@ window.renderSupervisor = renderSupervisor;
     remaining: 4,
     change: 5,
     material: 6,
+    expenses: 6,
     other: 7
   };
 
@@ -18036,10 +18043,19 @@ window.renderSupervisor = renderSupervisor;
     return Math.max(0, Math.round((amt - paid) * 100) / 100);
   }
 
+  const HUB_PROJECT_EXPENSES_RE = /\[invoice_type:project_expenses\]/i;
+
+  function hubRowIsProjectExpenseInvoice(row) {
+    if (!row) return false;
+    const label = hubRowInvoiceLabelNormalized(row).toLowerCase();
+    if (label === "project expenses") return true;
+    return HUB_PROJECT_EXPENSES_RE.test(hubRowNotesText(row));
+  }
+
   function hubRowIsBillingChildInvoice(row) {
     if (!row) return false;
     if (hubRowSourceInvoiceIdFromNotes(row)) return true;
-    if (hubRowIsMaterialCostInvoice(row)) return true;
+    if (hubRowIsMaterialCostInvoice(row) || hubRowIsProjectExpenseInvoice(row)) return true;
     const label = hubRowInvoiceLabelNormalized(row);
     if (label && HUB_PROJECT_PAYMENT_STAGE_SET.has(label.toLowerCase()) && !hubLedgerTargetIds(row).quoteId) {
       return true;
@@ -18048,6 +18064,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function hubBillingInvoiceKind(row) {
+    if (hubRowIsProjectExpenseInvoice(row)) return "expenses";
     if (hubRowIsMaterialCostInvoice(row)) return "material";
     const label = hubRowInvoiceLabelNormalized(row).toLowerCase();
     if (label === "change order") return "change";
@@ -18060,7 +18077,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function hubBillingKindGroupLabel(kind) {
-    if (kind === "material" || kind === "change") return "Extra billing";
+    if (kind === "material" || kind === "change" || kind === "expenses") return "Materials and extra invoices";
     if (kind === "contract") return "Contract";
     return "Project payments";
   }
@@ -18070,6 +18087,7 @@ window.renderSupervisor = renderSupervisor;
     const label = hubRowInvoiceDisplayLabel(row);
     if (kind === "contract") return label || "Contract / accepted quote";
     if (kind === "material") return label || "Material Cost";
+    if (kind === "expenses") return label || "Project expenses";
     if (kind === "change") return label || "Change Order";
     return label || "Project payment";
   }
@@ -18158,6 +18176,58 @@ window.renderSupervisor = renderSupervisor;
     if (!group || !Array.isArray(group.members)) return false;
     if (group.members.length >= 2) return true;
     return Boolean(group.currentIsChild);
+  }
+
+  function hubProjectGroupKey(row) {
+    const ledger = hubLedgerTargetIds(row);
+    const fromLedger = String(ledger.projectId || "").trim().toLowerCase();
+    if (fromLedger) return "p:" + fromLedger;
+    const raw = String(row?.projectId || row?.hubTenantProjectId || "").trim().toLowerCase();
+    if (raw) return "p:" + raw;
+    const quoteId = String(ledger.quoteId || "").trim().toLowerCase();
+    if (quoteId) return "q:" + quoteId;
+    const title = String(row?.title || "").trim().toLowerCase();
+    const customer = String(row?.customer || "").trim().toLowerCase();
+    if (title && customer) return "n:" + customer + "|" + title;
+    return "";
+  }
+
+  function hubPickOriginalInvoice(members) {
+    const list = Array.isArray(members) ? members : [];
+    const contracts = list.filter(
+      (r) => hubBillingInvoiceKind(r) === "contract" && !hubRowIsBillingChildInvoice(r)
+    );
+    const withQuote = contracts.filter((r) => hubLedgerTargetIds(r).quoteId);
+    const pool = withQuote.length ? withQuote : contracts.length ? contracts : list.slice(0, 1);
+    return pool
+      .slice()
+      .sort((a, b) => String(a?.dateRaw || "").localeCompare(String(b?.dateRaw || "")))[0] || list[0];
+  }
+
+  function collapseHubRowsToOriginalInvoice(sortedRows) {
+    const all = Array.isArray(sortedRows) ? sortedRows : [];
+    const seen = new Set();
+    const out = [];
+    all.forEach((row) => {
+      const key = hubProjectGroupKey(row);
+      if (!key) {
+        row.hubInsideInvoiceCount = 0;
+        out.push(row);
+        return;
+      }
+      if (seen.has(key)) return;
+      seen.add(key);
+      const members = all.filter((r) => hubProjectGroupKey(r) === key);
+      if (members.length < 2) {
+        row.hubInsideInvoiceCount = 0;
+        out.push(row);
+        return;
+      }
+      const original = hubPickOriginalInvoice(members);
+      original.hubInsideInvoiceCount = members.length - 1;
+      out.push(original);
+    });
+    return out;
   }
 
   async function fetchHubPaymentsByQuery(params) {
@@ -18413,7 +18483,7 @@ window.renderSupervisor = renderSupervisor;
     );
     const extraRows = activeRows.filter((r) => {
       const kind = hubBillingInvoiceKind(r);
-      return kind === "change" || kind === "material";
+      return kind === "change" || kind === "material" || kind === "expenses";
     });
     let html = "";
     if (contractRows.length) {
@@ -18500,6 +18570,108 @@ window.renderSupervisor = renderSupervisor;
     });
   }
 
+  let hubSendBundle = { rowKey: "", include: {}, items: [] };
+
+  function hubSendBundleKey(row) {
+    return hubRowBillingInvoiceUuid(row) || String(row?.serverInvoiceId || row?.projectId || row?.id || "");
+  }
+
+  function hubSendBundleFor(row) {
+    const key = hubSendBundleKey(row);
+    if (!key) return { rowKey: "", include: {}, items: [] };
+    if (hubSendBundle.rowKey !== key) hubSendBundle = { rowKey: key, include: {}, items: [] };
+    return hubSendBundle;
+  }
+
+  function hubSendBundleExtras(row) {
+    const bundle = hubSendBundleFor(row);
+    const group = hubDrawerResolveBillingGroup(row);
+    const currentId = hubRowBillingInvoiceUuid(row);
+    const lines = [];
+    let extraDue = 0;
+    (group.members || []).forEach((member) => {
+      const id = hubRowBillingInvoiceUuid(member);
+      if (!id || id === currentId || !bundle.include[id]) return;
+      const due = hubRowInvoiceScopedBalance(member);
+      extraDue += due;
+      lines.push(
+        `${hubBillingDisplayLabel(member)} · ${member.invoiceNo || "Invoice"} · ${due.toFixed(2)}`
+      );
+    });
+    (bundle.items || []).forEach((item) => {
+      const amount = finiteNumber(item.amount, 0);
+      if (!(amount > 0)) return;
+      extraDue += amount;
+      lines.push(`${item.description} · ${amount.toFixed(2)}`);
+    });
+    return { lines, extraDue: Math.round(extraDue * 100) / 100 };
+  }
+
+  function renderHubSendBundle(row, settings, handlers) {
+    const wrap = $("hubDrawerSendBundle");
+    const includeEl = $("hubDrawerSendInclude");
+    const listEl = $("hubSendItemList");
+    if (!wrap || !includeEl) return;
+    const group = hubDrawerResolveBillingGroup(row);
+    const show = hubBillingGroupShouldShow(group);
+    wrap.hidden = !show;
+    if (!show) return;
+    const bundle = hubSendBundleFor(row);
+    const currentId = hubRowBillingInvoiceUuid(row);
+    const others = (group.members || []).filter((member) => {
+      const id = hubRowBillingInvoiceUuid(member);
+      return id && id !== currentId;
+    });
+    includeEl.innerHTML = others.length
+      ? others
+          .map((member) => {
+            const id = hubRowBillingInvoiceUuid(member);
+            const checked = bundle.include[id] ? " checked" : "";
+            return `<label class="hub-send-include"><input type="checkbox" data-hub-send-include="${escapeHtml(id)}"${checked} /> Include ${escapeHtml(hubBillingDisplayLabel(member))} (${escapeHtml(money(hubRowInvoiceScopedBalance(member), settings.currency))}) in this send</label>`;
+          })
+          .join("")
+      : `<p class="hub-billing-extra-note">No other invoices on this project yet.</p>`;
+    includeEl.querySelectorAll("[data-hub-send-include]").forEach((box) => {
+      box.onchange = () => {
+        const id = String(box.getAttribute("data-hub-send-include") || "").trim().toLowerCase();
+        if (!id) return;
+        if (box.checked) bundle.include[id] = true;
+        else delete bundle.include[id];
+      };
+    });
+    if (listEl) {
+      listEl.innerHTML = (bundle.items || [])
+        .map(
+          (item) =>
+            `<li>${escapeHtml(item.description)} · ${escapeHtml(money(item.amount, settings.currency))}</li>`
+        )
+        .join("");
+    }
+    const addBtn = $("btnHubSendAddItem");
+    if (addBtn) {
+      addBtn.onclick = () => {
+        const description = String($("hubSendItemDesc")?.value || "").trim();
+        const amount = finiteNumber($("hubSendItemAmount")?.value, NaN);
+        if (!description || !(amount > 0)) {
+          setHubFeedback("Enter an item description and an amount greater than zero.", "warn");
+          return;
+        }
+        bundle.items.push({ description, amount: Math.round(amount * 100) / 100 });
+        if ($("hubSendItemDesc")) $("hubSendItemDesc").value = "";
+        if ($("hubSendItemAmount")) $("hubSendItemAmount").value = "";
+        renderHubSendBundle(row, settings, handlers);
+      };
+    }
+    const materialBtn = $("btnHubCreateMaterialInside");
+    if (materialBtn) {
+      const canCreate = Boolean(getHubOverflowMenuState(row).canCreateMaterialCostInvoice);
+      materialBtn.style.display = canCreate ? "" : "none";
+      materialBtn.onclick = () => {
+        openHubMaterialCostInvoiceModal(row, settings);
+      };
+    }
+  }
+
   function renderHubProjectBillingSection(row, settings, handlers) {
     const wrap = $("hubDrawerProjectBillingWrap");
     const totalsEl = $("hubDrawerProjectBillingTotals");
@@ -18517,6 +18689,7 @@ window.renderSupervisor = renderSupervisor;
     if (totalsEl) totalsEl.innerHTML = "";
     groupsEl.innerHTML = renderHubProjectBillingGroupTables(group.members, row, settings);
     bindHubProjectBillingOpenHandlers(wrap, group.members, handlers);
+    renderHubSendBundle(row, settings, handlers);
   }
 
   function hubDrawerPaymentNextActionFromTotals(paid, total, row) {
@@ -18922,6 +19095,7 @@ window.renderSupervisor = renderSupervisor;
               ${rankBadge}
               ${hubInvLabelHtml}
               <strong>${escapeHtml(row.title)}</strong>
+              ${Number(row.hubInsideInvoiceCount) > 0 ? `<div class="sub">Open the project for ${escapeHtml(String(row.hubInsideInvoiceCount))} more invoice${Number(row.hubInsideInvoiceCount) === 1 ? "" : "s"}</div>` : ""}
               ${isServerRow ? `<span class="hub-server-badge" style="font-size:10px;margin-left:6px;opacity:0.85" title="Tenant invoice (server)">${escapeHtml(row.hubSourceLabel || "Server")}</span>` : ""}
             </td>
             <td>${escapeHtml(row.invoiceNo)}</td>
@@ -20842,7 +21016,9 @@ window.renderSupervisor = renderSupervisor;
       applyHubSortButtons();
       persistHubView();
 
-      const hubTableDisplayRows = sortHubRowsForCollectDisplay(filteredRows, sortKey, sortDir);
+      const hubTableDisplayRows = collapseHubRowsToOriginalInvoice(
+        sortHubRowsForCollectDisplay(filteredRows, sortKey, sortDir)
+      );
 
       const totalBalance = filteredRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
       const paidAmount = filteredRows
@@ -20858,11 +21034,13 @@ window.renderSupervisor = renderSupervisor;
 
       if ($("hubHeroTotal")) $("hubHeroTotal").textContent = money(totalBalance, settings.currency);
       if ($("hubHeroMeta")) {
-        $("hubHeroMeta").textContent = filteredRows.length
-          ? `${filteredRows.length} jobs · ${money(totalBalance, settings.currency)} in outstanding invoice balances`
+        $("hubHeroMeta").textContent = hubTableDisplayRows.length
+          ? `${hubTableDisplayRows.length} project${hubTableDisplayRows.length === 1 ? "" : "s"} · ${money(totalBalance, settings.currency)} in outstanding invoice balances`
           : "No invoices yet. Create an estimate to get started.";
       }
-      if ($("hubPortfolioBadge")) $("hubPortfolioBadge").textContent = `${filteredRows.length} jobs`;
+      if ($("hubPortfolioBadge")) {
+        $("hubPortfolioBadge").textContent = `${hubTableDisplayRows.length} project${hubTableDisplayRows.length === 1 ? "" : "s"}`;
+      }
       if ($("hubTableBadge")) {
         $("hubTableBadge").textContent =
           hubViewMode === "all" && statusFilter !== "all" ? statusFilter : hubInvoiceHubViewTitleLabel(hubViewMode);
