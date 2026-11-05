@@ -12,7 +12,11 @@ const {
   roleMayAccessFinancialSnapshot,
 } = require("./_lib/resolve-profile-role");
 const { makePublicToken } = require("./_lib/public-token");
-const { planProjectExpenseInvoice } = require("./_lib/project-expense-invoice");
+const {
+  planProjectExpenseInvoice,
+  nextExpenseInsertPayload,
+  missingInvoiceColumn,
+} = require("./_lib/project-expense-invoice");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -55,13 +59,44 @@ async function loadExpenses(tenantId, projectId) {
   return Array.isArray(rows) ? rows : [];
 }
 
+const INVOICE_LOOKUP_COLUMNS = [
+  "id",
+  "status",
+  "notes",
+  "amount",
+  "paid_amount",
+  "balance_due",
+  "project_id",
+  "quote_id",
+  "invoice_label",
+  "customer_name",
+  "customer_email",
+  "project_name",
+  "business_name",
+  "currency",
+  "created_at",
+];
+
 async function loadProjectInvoices(tenantId, projectId) {
   const tid = encodeURIComponent(tenantId);
   const pid = encodeURIComponent(projectId);
-  const rows = await supabaseRequest(
-    `invoices?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id,status,notes,amount,paid_amount,balance_due,project_id,quote_id,invoice_label,customer_name,customer_email,project_name,business_name,currency,created_at&order=created_at.desc&limit=100`
-  );
-  return Array.isArray(rows) ? rows : [];
+  const columns = INVOICE_LOOKUP_COLUMNS.slice();
+  let lastError = null;
+  for (let attempt = 0; attempt < columns.length; attempt += 1) {
+    try {
+      const rows = await supabaseRequest(
+        `invoices?tenant_id=eq.${tid}&project_id=eq.${pid}&select=${columns.join(",")}&order=created_at.desc&limit=100`
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch (err) {
+      lastError = err;
+      const missing = missingInvoiceColumn(err && err.message ? err.message : err);
+      const index = columns.indexOf(missing);
+      if (!missing || missing === "project_id" || index < 0) break;
+      columns.splice(index, 1);
+    }
+  }
+  throw lastError;
 }
 
 function contactFrom(project, invoices) {
@@ -180,20 +215,34 @@ exports.handler = async (event) => {
     const nowIso = now.toISOString();
 
     if (plan.action === "append") {
-      const updated = await supabaseRequest(
-        `invoices?id=eq.${encodeURIComponent(plan.invoiceId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: {
-            notes: plan.patch.notes,
-            amount: plan.patch.amount,
-            balance_due: plan.patch.balance_due,
-            invoice_label: plan.patch.invoice_label,
-            updated_at: nowIso,
-          },
+      let patchBody = {
+        notes: plan.patch.notes,
+        amount: plan.patch.amount,
+        balance_due: plan.patch.balance_due,
+        invoice_label: plan.patch.invoice_label,
+        updated_at: nowIso,
+      };
+      let updated = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          updated = await supabaseRequest(
+            `invoices?id=eq.${encodeURIComponent(plan.invoiceId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+            {
+              method: "PATCH",
+              headers: { Prefer: "return=representation" },
+              body: patchBody,
+            }
+          );
+          break;
+        } catch (patchErr) {
+          const msg = String(patchErr && patchErr.message ? patchErr.message : patchErr || "");
+          const next = nextExpenseInsertPayload(Object.assign({ project_id: projectId }, patchBody), msg);
+          if (next.action !== "retry" || !next.payload) throw patchErr;
+          patchBody = next.payload;
+          delete patchBody.project_id;
+          delete patchBody.quote_id;
         }
-      );
+      }
       const row = Array.isArray(updated) ? updated[0] : updated;
       return json(200, publicResult(plan, row && row.id ? String(row.id) : plan.invoiceId));
     }
@@ -222,23 +271,32 @@ exports.handler = async (event) => {
       updated_at: nowIso,
     };
 
+    let payload = insertPayload;
     let created;
-    try {
-      created = await supabaseRequest("invoices", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: insertPayload,
-      });
-    } catch (insertErr) {
-      const msg = String(insertErr && insertErr.message ? insertErr.message : insertErr || "");
-      if (/column .*project_id.* does not exist/i.test(msg)) {
-        return json(422, {
-          ok: false,
-          code: "project_link_required",
-          error: "This expense invoice cannot be saved until it can be linked to the project.",
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        created = await supabaseRequest("invoices", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: payload,
         });
+        break;
+      } catch (insertErr) {
+        const msg = String(insertErr && insertErr.message ? insertErr.message : insertErr || "");
+        const next = nextExpenseInsertPayload(payload, msg);
+        if (next.action === "project_link_required") {
+          return json(422, {
+            ok: false,
+            code: "project_link_required",
+            error: "This expense invoice cannot be saved until it can be linked to the project.",
+          });
+        }
+        if (next.action === "retry" && next.payload) {
+          payload = next.payload;
+          continue;
+        }
+        return json(500, { ok: false, code: "save_failed", error: "Could not save the expense invoice draft." });
       }
-      return json(500, { ok: false, code: "save_failed", error: "Could not save the expense invoice draft." });
     }
 
     const row = Array.isArray(created) ? created[0] : created;

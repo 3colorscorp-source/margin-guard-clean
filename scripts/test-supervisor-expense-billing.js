@@ -8,7 +8,13 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
-const { planProjectExpenseInvoice, TYPE_MARKER } = require("../netlify/functions/_lib/project-expense-invoice");
+const {
+  planProjectExpenseInvoice,
+  TYPE_MARKER,
+  storedInvoiceType,
+  missingInvoiceColumn,
+  nextExpenseInsertPayload,
+} = require("../netlify/functions/_lib/project-expense-invoice");
 
 const ROOT = path.resolve(__dirname, "..");
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -61,6 +67,42 @@ ok("the contract invoice is not the target", first.action !== "append");
 ok("each expense is one line at the stored amount", first.lines.length === 2 && first.insert.amount === 42);
 ok("the line keeps the date and concept", first.lines[0] === "2026-11-04 — Caulking one tube — $22.00");
 ok("the draft is marked as project expenses", first.insert.notes.indexOf(TYPE_MARKER) >= 0 && first.insert.status === "draft");
+ok("type service is not a stored draft type", storedInvoiceType("service") === "");
+ok("the draft now uses PROGRESS", storedInvoiceType(first.insert.type) === "PROGRESS" && first.insert.type === "PROGRESS");
+
+const productionMissingColumn =
+  "Supabase HTTP 400: Could not find the 'invoice_label' column of 'invoices' in the schema cache";
+const oldProjectColumnRegex = /column .*project_id.* does not exist/i;
+ok(
+  "the old save catch does not recognize a PostgREST missing column",
+  oldProjectColumnRegex.test(productionMissingColumn) === false && missingInvoiceColumn(productionMissingColumn) === "invoice_label"
+);
+const retried = nextExpenseInsertPayload(
+  {
+    project_id: PROJECT,
+    type: first.insert.type,
+    invoice_label: "Project expenses",
+    notes: first.insert.notes,
+    status: "draft",
+    amount: first.insert.amount,
+  },
+  productionMissingColumn
+);
+ok(
+  "a missing optional column retries without dropping the project link",
+  retried.action === "retry" &&
+    retried.payload.project_id === PROJECT &&
+    retried.payload.type === "PROGRESS" &&
+    !Object.prototype.hasOwnProperty.call(retried.payload, "invoice_label") &&
+    !Object.prototype.hasOwnProperty.call(retried.payload, "quote_id")
+);
+const projectColumnMissing =
+  "Supabase HTTP 400: Could not find the 'project_id' column of 'invoices' in the schema cache";
+const blocked = nextExpenseInsertPayload(
+  { project_id: PROJECT, type: "PROGRESS", notes: first.insert.notes },
+  projectColumnMissing
+);
+ok("a missing project column still does not build an unlinked invoice", blocked.action === "project_link_required" && !blocked.payload);
 
 const expenseDraft = {
   id: "inv-exp",

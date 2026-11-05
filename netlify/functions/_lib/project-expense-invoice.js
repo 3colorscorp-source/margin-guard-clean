@@ -8,6 +8,18 @@ const TYPE_MARKER = "[invoice_type:project_expenses]";
 const ID_MARKER_RE = /\[mg_expense_ids:([^\]]*)\]/i;
 const RELEASED_STATUSES = new Set(["void", "archived", "cancelled", "canceled"]);
 const LABEL = "Project expenses";
+// Draft writers persist only these. upsert-tenant-invoice-draft rewrites anything else to PROGRESS.
+const STORED_INVOICE_TYPES = new Set(["DEPOSIT", "PROGRESS", "FINAL"]);
+const INVOICE_TYPE = "PROGRESS";
+const OPTIONAL_INSERT_COLUMNS = new Set([
+  "invoice_label",
+  "business_name",
+  "currency",
+  "customer_email",
+  "customer_name",
+  "project_name",
+  "due_date",
+]);
 
 function money(value) {
   const n = Number(value);
@@ -237,7 +249,7 @@ function planProjectExpenseInvoice({ projectId, selectedIds, expenses, invoices 
       amount: built.amount,
       paid_amount: 0,
       balance_due: built.amount,
-      type: "service",
+      type: INVOICE_TYPE,
       status: "draft",
       project_id: pid,
     },
@@ -249,12 +261,50 @@ function planProjectExpenseInvoice({ projectId, selectedIds, expenses, invoices 
   };
 }
 
+function storedInvoiceType(raw) {
+  const type = String(raw || "").trim().toUpperCase();
+  return STORED_INVOICE_TYPES.has(type) ? type : "";
+}
+
+/**
+ * PostgREST reports a missing column as:
+ * Could not find the 'project_id' column of 'invoices' in the schema cache
+ * The previous handler only matched SQL text "column project_id does not exist",
+ * so every other rejection became "Could not save the expense invoice draft."
+ */
+function missingInvoiceColumn(message) {
+  const text = String(message || "");
+  let match = text.match(/Could not find the '([A-Za-z0-9_]+)' column/i);
+  if (match) return match[1];
+  match = text.match(/column (?:[\w."]+\.)?"?([A-Za-z0-9_]+)"? does not exist/i);
+  return match ? match[1] : "";
+}
+
+function nextExpenseInsertPayload(payload, message) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const column = missingInvoiceColumn(message);
+  if (!column) return { action: "fail" };
+  if (column === "project_id") return { action: "project_link_required" };
+  if (!OPTIONAL_INSERT_COLUMNS.has(column)) return { action: "fail" };
+  if (!Object.prototype.hasOwnProperty.call(source, column)) return { action: "fail" };
+  const next = Object.assign({}, source);
+  delete next[column];
+  delete next.quote_id;
+  if (!next.project_id) return { action: "project_link_required" };
+  return { action: "retry", payload: next };
+}
+
 module.exports = {
   TYPE_MARKER,
   LABEL,
+  INVOICE_TYPE,
+  STORED_INVOICE_TYPES,
   planProjectExpenseInvoice,
   billedExpenseIds,
   expenseIdsFromNotes,
   isProjectExpenseInvoice,
   buildNotes,
+  storedInvoiceType,
+  missingInvoiceColumn,
+  nextExpenseInsertPayload,
 };
