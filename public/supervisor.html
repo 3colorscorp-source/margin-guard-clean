@@ -1791,7 +1791,7 @@
       <div class="modal-header">
         <div>
           <div class="modal-title" id="supExpenseReportModalTitle">Report unexpected expense</div>
-          <div class="modal-subtitle">Record the expense and who worked that day.</div>
+          <div class="modal-subtitle">Record the date, description, and amount.</div>
         </div>
         <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Close">Close</button>
       </div>
@@ -1810,35 +1810,6 @@
             <label>Amount</label>
             <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
           </div>
-          <section class="sup-crew" id="supExtraCrew" aria-labelledby="supExtraCrewTitle">
-            <div class="sup-crew__head">
-              <div>
-                <h3 id="supExtraCrewTitle">Who worked</h3>
-                <p class="small">Pros and assistants who were on site this day.</p>
-              </div>
-              <strong class="sup-crew__summary" data-crew-summary>Nobody on site</strong>
-            </div>
-            <p class="sup-crew__plan small" data-crew-plan hidden></p>
-            <div class="sup-crew__grid">
-              <article class="sup-crew__role" data-crew-role="pro">
-                <header><span>Pro</span><strong data-crew-count>0</strong></header>
-                <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Remove Pro">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Add Pro">+</button>
-                </div>
-                <div class="sup-crew__names" data-crew-names></div>
-              </article>
-              <article class="sup-crew__role" data-crew-role="assistant">
-                <header><span>Assistant</span><strong data-crew-count>0</strong></header>
-                <div class="sup-crew__stepper">
-                  <button type="button" data-crew-delta="-1" aria-label="Remove assistant">−</button>
-                  <button type="button" data-crew-delta="1" aria-label="Add assistant">+</button>
-                </div>
-                <div class="sup-crew__names" data-crew-names></div>
-              </article>
-            </div>
-            <p class="sup-crew__error small" data-crew-error></p>
-          </section>
           <div class="field">
             <label>Note</label>
             <input id="supExtraNote" maxlength="120" placeholder="Optional" />

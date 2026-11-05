@@ -3936,13 +3936,10 @@ Thank you.`
         setVal("supExtraDate", planned || todayInputValue());
         const dayNum = Math.floor(finiteNumber(ctx?.day_number, 0));
         const phase = String(ctx?.phase || "").trim();
-        supervisorLabelFieldModalDay(extra, dayNum, planned, "Record the expense and who worked that day.");
+        supervisorLabelFieldModalDay(extra, dayNum, planned, "Record the date, description, and amount.");
         supervisorSeedFieldDayNote("supExtraNote", dayNum, phase);
         const focusEl = $("supExtraDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
-        const seed = supervisorCrewPeopleFromPlan(ctx?.workers);
-        supervisorCrewPaint($("supExtraCrew"), seed);
-        supervisorCrewSetPlanHint($("supExtraCrew"), seed);
       }
     }
     document.body.style.overflow = "hidden";
@@ -4081,7 +4078,6 @@ Thank you.`
     bindSupFieldDatePicker($("supEntryDate"));
     bindSupFieldDatePicker($("supExtraDate"));
     bindSupervisorCrewEditor($("supEntryCrew"));
-    bindSupervisorCrewEditor($("supExtraCrew"));
     const wire = (id, handler) => {
       const el = $(id);
       if (el) el.onclick = handler;
@@ -13759,13 +13755,11 @@ function renderSupervisor() {
         }
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
-        const extraCrew = supervisorCrewForSave($("supExtraCrew"));
         const extra = {
           date: normalizeDateInput(val("supExtraDate")),
           item: val("supExtraItem").trim(),
           amount: num("supExtraAmount", 0),
           note: val("supExtraNote").trim(),
-          crew: extraCrew || [],
           serverProjectId: rowPid
         };
         if (!extra.date) {
@@ -13780,9 +13774,7 @@ function renderSupervisor() {
           showSupervisorReportFeedback("extra", "Enter an amount greater than zero.", "warn", ["supExtraAmount"]);
           return;
         }
-        if (!extraCrew) return;
-        const crewLabel = supervisorPresentCrew({ crew: extra.crew }).summary;
-        const successDetail = [money(extra.amount), extra.item, crewLabel].filter(Boolean).join(" · ");
+        const successDetail = [money(extra.amount), extra.item].filter(Boolean).join(" · ");
         if (saveBtn) {
           saveBtn.disabled = true;
           saveBtn.textContent = "Saving…";
@@ -13799,7 +13791,6 @@ function renderSupervisor() {
                 expense_date: extra.date,
                 amount: extra.amount,
                 note: packSupervisorExpenseNote(extra.item, extra.note),
-                crew: extra.crew,
                 day_number: supervisorReportDayFields(extra.date).day_number,
                 phase: supervisorReportDayFields(extra.date).phase
               })
@@ -13814,7 +13805,6 @@ function renderSupervisor() {
             setVal("supExtraItem", "");
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
-            supervisorCrewPaint($("supExtraCrew"), []);
             await presentSupervisorReportSuccess("extra", "Expense saved", successDetail, async () => {
               delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
               const fresh = await fetchProjectExpenses(currentProject.id);
@@ -13839,7 +13829,6 @@ function renderSupervisor() {
           setVal("supExtraItem", "");
           setNum("supExtraAmount", 0);
           setVal("supExtraNote", "");
-          supervisorCrewPaint($("supExtraCrew"), []);
           saveSupervisorReport(currentProject.id, state);
           await presentSupervisorReportSuccess("extra", "Expense saved", successDetail);
           refresh();

@@ -137,12 +137,13 @@ exports.handler = async (event) => {
     }
 
     const amount = num(body.amount, 0);
+    const note = str(body.note, 8000);
     const crew = sanitizeSupervisorCrew(body.crew);
     if (amount <= 0) {
       return json(400, { error: "amount must be greater than zero" });
     }
-    if (!crew.length) {
-      return json(400, { error: "Add at least one Pro or Assistant who worked this day.", code: "crew_required" });
+    if (!note) {
+      return json(400, { error: "Enter the expense description.", code: "description_required" });
     }
 
     await loadTenantProjectForSupervisorAction(ctx, projectId);
@@ -171,12 +172,12 @@ exports.handler = async (event) => {
       project_id: projectId,
       expense_date: expenseDate,
       amount,
-      note: str(body.note, 8000),
-      crew,
+      note,
       created_by: supervisorUserId,
       created_at: now,
       updated_at: now,
     };
+    if (crew.length) baseRow.crew = crew;
     const dayNumberRaw = Number(body.day_number);
     const phase = str(body.phase, 500);
     if (Number.isFinite(dayNumberRaw) && dayNumberRaw >= 1) {

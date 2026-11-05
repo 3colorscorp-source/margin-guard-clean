@@ -97,9 +97,39 @@ const html = fs.readFileSync(path.join(ROOT, "public/supervisor.html"), "utf8");
 const app = fs.readFileSync(path.join(ROOT, "public/js/app.js"), "utf8");
 const reportHandler = fs.readFileSync(path.join(ROOT, "netlify/functions/save-project-report.js"), "utf8");
 const expenseHandler = fs.readFileSync(path.join(ROOT, "netlify/functions/save-project-expense.js"), "utf8");
-ok("labor and expense modals ask who worked", html.includes('id="supEntryCrew"') && html.includes('id="supExtraCrew"'));
-ok("the crew editor saves with the report", app.includes("supervisorCrewForSave") && app.includes("crew: entry.crew") && app.includes("crew: extra.crew"));
-ok("the server requires the day's crew", reportHandler.includes("crew_required") && expenseHandler.includes("crew_required"));
+const expenseModal = html.slice(
+  html.indexOf('id="supExpenseReportModal"'),
+  html.indexOf('id="supExpenseRemoveModal"')
+);
+const expenseSave = app.slice(
+  app.indexOf('if ($("btnAddSupExtra"))'),
+  app.indexOf("window.renderSupervisor = renderSupervisor")
+);
+ok("labor still asks who worked", html.includes('id="supEntryCrew"') && html.includes("Who worked"));
+ok(
+  "the expense dialog does not ask for crew",
+  !expenseModal.includes("Who worked") &&
+    !expenseModal.includes('id="supExtraCrew"') &&
+    !expenseModal.includes("Nobody on site") &&
+    !expenseModal.includes("Add at least one Pro")
+);
+ok(
+  "an expense save payload does not require workers",
+  !expenseSave.includes("supervisorCrewForSave") &&
+    !expenseSave.includes("crew:") &&
+    expenseSave.includes("expense_date: extra.date") &&
+    expenseSave.includes("amount: extra.amount") &&
+    expenseSave.includes("packSupervisorExpenseNote(extra.item, extra.note)")
+);
+ok(
+  "labor still cannot save without a pro or assistant",
+  app.includes('supervisorCrewForSave($("supEntryCrew"))') &&
+    app.includes("if (!entryCrew) return") &&
+    app.includes("Add at least one Pro or Assistant.")
+);
+ok("the crew editor saves with the labor report", app.includes("supervisorCrewForSave") && app.includes("crew: entry.crew"));
+ok("labor still requires the day's crew", reportHandler.includes("crew_required"));
+ok("an expense save does not require workers on the server", !expenseHandler.includes("crew_required") && expenseHandler.includes("description_required"));
 ok("the server keeps the crew when the column is missing", reportHandler.includes("appendCrewTrailer") && expenseHandler.includes("appendCrewTrailer"));
 ok("labor and expense saves show a success report", html.includes('id="supLaborSaveSuccess"') && html.includes('id="supExpenseSaveSuccess"'));
 ok("a missing hours or days warning stays inside the modal", app.includes("Enter the hours or the days worked.") && !app.includes('alert("Report hours or days worked.")'));
