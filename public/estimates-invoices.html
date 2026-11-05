@@ -322,6 +322,16 @@
     }
 
     /* Phase 1 — read-only Project Billing folder inside the invoice drawer */
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-materials-ready {
+      margin-top: 12px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-materials-ready-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-project-billing {
       margin-top: 12px;
       padding-top: 10px;
@@ -1856,6 +1866,16 @@
       </div>
       <div class="modal-body">
         <div class="supervisor-summary-grid" id="hubDrawerStats"></div>
+        <div id="hubDrawerMaterialsReady" class="hub-drawer-section hub-drawer-materials-ready" hidden>
+          <div class="sub hub-drawer-work-details-title">Materials reported</div>
+          <p class="hub-drawer-billing-note" id="hubDrawerMaterialsReadyNote"></p>
+          <div id="hubDrawerMaterialsReadyLines" class="hub-drawer-work-description"></div>
+          <div class="hub-drawer-materials-ready-row">
+            <strong id="hubDrawerMaterialsReadyAmount"></strong>
+            <button type="button" class="btn" id="btnHubAddMaterialsToBalance">Add to balance</button>
+          </div>
+          <p class="hub-drawer-billing-note" id="hubDrawerMaterialsReadyStatus" hidden></p>
+        </div>
         <div id="hubDrawerProgressBarWrap" class="hub-drawer-progress-wrap">
           <div class="hub-drawer-progress-meta" id="hubDrawerProgressMeta">—</div>
           <div class="hub-drawer-progress-track" aria-hidden="true">
