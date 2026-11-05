@@ -1124,7 +1124,12 @@
         <table class="table">
           <thead>
             <tr>
-              <th class="pcc-expense-no-print"></th>
+              <th class="pcc-expense-no-print" style="white-space:nowrap;">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                  <input type="checkbox" id="pccExpenseSelectAll" aria-label="Select all" />
+                  Select all
+                </label>
+              </th>
               <th>Date</th><th>Concept</th><th>Amount</th><th>Note</th><th>Day</th>
             </tr>
           </thead>
@@ -1819,7 +1824,30 @@
         ).filter(Boolean);
       }
 
+      function selectablePccExpenseInputs() {
+        return Array.prototype.slice.call(
+          document.querySelectorAll('#pccExpenseBody input[data-pcc-expense-id]')
+        );
+      }
+
+      function syncPccExpenseSelectAll() {
+        var all = document.getElementById('pccExpenseSelectAll');
+        if (!all) return;
+        var boxes = selectablePccExpenseInputs();
+        if (!boxes.length) {
+          all.checked = false;
+          all.indeterminate = false;
+          all.disabled = true;
+          return;
+        }
+        var marked = boxes.filter(function (input) { return input.checked; }).length;
+        all.disabled = false;
+        all.checked = marked === boxes.length;
+        all.indeterminate = marked > 0 && marked < boxes.length;
+      }
+
       function syncPccExpenseBillButton() {
+        syncPccExpenseSelectAll();
         var btn = document.getElementById('pccExpenseAddInvoice');
         if (!btn || btn.dataset.saving === '1') return;
         btn.disabled = selectedPccExpenseIds().length === 0;
@@ -2436,6 +2464,11 @@
       document.getElementById('pccExpenseClose').addEventListener('click', closePccExpenseModal);
       document.getElementById('pccExpensePrint').addEventListener('click', printPccExpenseReport);
       document.getElementById('pccExpenseBody').addEventListener('change', syncPccExpenseBillButton);
+      document.getElementById('pccExpenseSelectAll').addEventListener('change', function () {
+        var mark = document.getElementById('pccExpenseSelectAll').checked;
+        selectablePccExpenseInputs().forEach(function (input) { input.checked = mark; });
+        syncPccExpenseBillButton();
+      });
       document.getElementById('pccExpenseAddInvoice').addEventListener('click', async function () {
         var btn = document.getElementById('pccExpenseAddInvoice');
         var ids = selectedPccExpenseIds();

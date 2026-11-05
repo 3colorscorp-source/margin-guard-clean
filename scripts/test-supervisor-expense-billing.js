@@ -144,6 +144,73 @@ ok(
 const picker = html.slice(html.indexOf("type=\"checkbox\" data-pcc-expense-id"), html.indexOf("aria-label=\"Select expense\""));
 ok("rows are not selected until the owner checks them", picker.indexOf("checkbox") >= 0 && picker.indexOf("checked") < 0);
 ok("a billed expense can show On invoice", html.includes("On invoice"));
+const selectAllMarkup = html.slice(html.indexOf('id="pccExpenseSelectAll"') - 40, html.indexOf('id="pccExpenseSelectAll"') + 80);
+ok(
+  "the summary includes Select all",
+  html.includes('id="pccExpenseSelectAll"') && html.includes("Select all") && selectAllMarkup.indexOf("checked") < 0
+);
+const selectAllFn = html.slice(html.indexOf("function selectablePccExpenseInputs"), html.indexOf("function renderPccExpenseRows"));
+ok(
+  "Select all marks only expense checkboxes and shows a mixed state",
+  selectAllFn.includes("#pccExpenseBody input[data-pcc-expense-id]") &&
+    selectAllFn.includes("indeterminate") &&
+    selectAllFn.indexOf("On invoice") < 0
+);
+
+function fakeBox(id) {
+  return {
+    checked: false,
+    getAttribute(name) {
+      return name === "data-pcc-expense-id" ? id : null;
+    },
+  };
+}
+const openA = fakeBox("open-a");
+const openB = fakeBox("open-b");
+const boxes = [openA, openB];
+const selectAllBox = { checked: false, indeterminate: false, disabled: false };
+const fakeDocument = {
+  getElementById(id) {
+    if (id === "pccExpenseSelectAll") return selectAllBox;
+    if (id === "pccExpenseAddInvoice") return { disabled: true, dataset: {} };
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === "#pccExpenseBody input[data-pcc-expense-id]") return boxes;
+    if (selector === "#pccExpenseBody input[data-pcc-expense-id]:checked") {
+      return boxes.filter((box) => box.checked);
+    }
+    return [];
+  },
+};
+const behaviorSrc = html.slice(html.indexOf("function selectedPccExpenseIds"), html.indexOf("function renderPccExpenseRows"));
+const behavior = new Function(
+  "document",
+  behaviorSrc +
+    "\nreturn { selectablePccExpenseInputs: selectablePccExpenseInputs, syncPccExpenseSelectAll: syncPccExpenseSelectAll, selectedPccExpenseIds: selectedPccExpenseIds };"
+)(fakeDocument);
+behavior.syncPccExpenseSelectAll();
+ok("Select all starts clear when nothing is marked", selectAllBox.checked === false && selectAllBox.indeterminate === false);
+selectAllBox.checked = true;
+boxes.forEach((box) => {
+  box.checked = true;
+});
+behavior.syncPccExpenseSelectAll();
+ok(
+  "Select all marks the open rows and leaves an invoiced row out",
+  openA.checked && openB.checked && behavior.selectedPccExpenseIds().join(",") === "open-a,open-b" && boxes.length === 2
+);
+openB.checked = false;
+behavior.syncPccExpenseSelectAll();
+ok(
+  "unchecking one row leaves Select all mixed",
+  selectAllBox.checked === false && selectAllBox.indeterminate === true && behavior.selectedPccExpenseIds().join(",") === "open-a"
+);
+boxes.forEach((box) => {
+  box.checked = false;
+});
+behavior.syncPccExpenseSelectAll();
+ok("clearing Select all leaves nothing to bill", behavior.selectedPccExpenseIds().length === 0 && selectAllBox.checked === false);
 const insertBlock = handler.slice(handler.indexOf("const insertPayload"), handler.indexOf("let created"));
 ok("the save payload links the project and omits quote_id", insertBlock.includes("project_id: projectId") && !insertBlock.includes("quote_id"));
 ok("a missing project column does not create an unlinked invoice", handler.includes("project_link_required") && !handler.includes("delete fallbackPayload.project_id"));
