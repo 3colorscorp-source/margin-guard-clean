@@ -24,7 +24,18 @@ const { supabaseRequest } = require("./supabase-admin");
 
 const DEFAULT_HOURS_PER_DAY = 8;
 const INVOICE_SELECT =
-  "id,amount,paid_amount,balance_due,status,due_date,created_at,paid_at,project_id,quote_id,project_name";
+  "id,amount,paid_amount,balance_due,status,payment_status,invoice_label,notes,due_date,created_at,paid_at,project_id,quote_id,project_name";
+
+const CONTRACT_SLICE_LABELS = new Set([
+  "start payment",
+  "progress payment",
+  "final payment",
+  "remaining balance",
+]);
+const SOURCE_INVOICE_RE =
+  /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i;
+const PROJECT_EXPENSES_RE = /\[invoice_type:project_expenses\]/i;
+const MATERIAL_INVOICE_RE = /\[invoice_type:unexpected_material_cost\]/i;
 
 function str(v, max = 500) {
   return String(v == null ? "" : v)
@@ -677,24 +688,94 @@ async function sumLedgerPaidByInvoiceId(tenantId, invoiceIds) {
   return sums;
 }
 
+function invoiceField(inv, key) {
+  return String(inv?.[key] == null ? "" : inv[key]).trim();
+}
+
+function invoiceIsClosed(inv) {
+  const st = invoiceField(inv, "status").toLowerCase();
+  return (
+    st === "void" ||
+    st === "voided" ||
+    st === "cancelled" ||
+    st === "canceled" ||
+    st === "archived"
+  );
+}
+
+function invoiceIsProjectExpense(inv) {
+  if (invoiceField(inv, "invoice_label").toLowerCase() === "project expenses") return true;
+  return PROJECT_EXPENSES_RE.test(invoiceField(inv, "notes"));
+}
+
+function invoiceIsMaterialBill(inv) {
+  if (invoiceField(inv, "invoice_label").toLowerCase() === "material cost") return true;
+  return MATERIAL_INVOICE_RE.test(invoiceField(inv, "notes"));
+}
+
+/** Bills that are not the contract: job expenses and material invoices. */
+function invoiceIsOutsideContract(inv) {
+  return invoiceIsProjectExpense(inv) || invoiceIsMaterialBill(inv);
+}
+
+/**
+ * A later bill for part of the same contract (progress, final, remaining).
+ * Its amount is already inside the contract invoice, so it is not added again.
+ */
+function invoiceIsContractSlice(inv) {
+  if (!inv || invoiceIsOutsideContract(inv)) return false;
+  const notes = invoiceField(inv, "notes");
+  if (SOURCE_INVOICE_RE.test(notes) && !MATERIAL_INVOICE_RE.test(notes)) return true;
+  const label = invoiceField(inv, "invoice_label").toLowerCase();
+  const quoteId = invoiceField(inv, "quote_id");
+  return Boolean(label && CONTRACT_SLICE_LABELS.has(label) && !quoteId);
+}
+
+function invoiceRowId(inv) {
+  return inv?.id != null ? String(inv.id).trim() : "";
+}
+
+function pickOriginalContractInvoice(invoices) {
+  const originals = invoices.filter(
+    (inv) => !invoiceIsOutsideContract(inv) && !invoiceIsContractSlice(inv)
+  );
+  if (!originals.length) return null;
+  const linked = originals.filter((inv) => invoiceField(inv, "quote_id"));
+  const pool = linked.length ? linked : originals;
+  return pool
+    .slice()
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0];
+}
+
+function collectionStatusLabel(inv) {
+  if (!inv) return "No invoice on file";
+  const status = invoiceField(inv, "status").toLowerCase();
+  const payment = invoiceField(inv, "payment_status").toLowerCase();
+  if (status === "paid" || payment === "paid") return "Paid";
+  if (payment === "deposit_paid" || status === "deposit_paid") return "Deposit paid";
+  if (status === "partial" || payment === "partial") return "Partially paid";
+  if (status === "overdue" || payment === "overdue") return "Overdue";
+  if (status === "sent" || status === "issued" || payment === "sent") return "Sent";
+  if (status === "draft" || payment === "draft" || !status) return "Draft";
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function invoiceStatusSummary(invoices) {
   if (!Array.isArray(invoices) || !invoices.length) {
     return { label: "No invoice on file", last_payment_date: null };
   }
-  const sorted = [...invoices].sort((a, b) =>
-    String(b.created_at || "").localeCompare(String(a.created_at || ""))
-  );
-  const latest = sorted[0];
-  const st = String(latest.status || "")
-    .trim()
-    .toLowerCase();
-  let label = `Invoice ${st.replace(/_/g, " ")}`;
-  if (st === "paid") label = "Paid";
-  else if (st === "partial") label = "Partially paid";
-  else if (st === "sent" || st === "issued") label = "Sent · unpaid";
-  else if (st === "draft") label = "Draft";
-  else if (st === "overdue") label = "Overdue";
-  return { label, latest_invoice_id: latest.id || null };
+  const open = invoices.filter((inv) => inv && !invoiceIsClosed(inv));
+  const original = pickOriginalContractInvoice(open);
+  const slices = open.filter(invoiceIsContractSlice);
+  const latestSlice = slices
+    .slice()
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+    .pop();
+  const chosen = original || latestSlice || null;
+  return {
+    label: collectionStatusLabel(chosen),
+    latest_invoice_id: chosen?.id || null,
+  };
 }
 
 function applyDayProgressToOperationalMetrics(metrics, dayProgressRows) {
@@ -853,34 +934,65 @@ function buildCollectionSection({
   const ledgerMap =
     ledgerPaidByInvoiceId instanceof Map ? ledgerPaidByInvoiceId : new Map();
 
-  let totalInvoiced = 0;
-  let paidToDate = 0;
-  for (const inv of invoices || []) {
-    const amt = num(inv.amount, 0);
-    const iid = inv?.id != null ? String(inv.id).trim() : "";
-    const ledgerPaid = iid ? num(ledgerMap.get(iid), 0) : 0;
-    const paid = round2(Math.max(num(inv.paid_amount, 0), ledgerPaid));
-    totalInvoiced += amt;
-    paidToDate += paid;
+  const openInvoices = (Array.isArray(invoices) ? invoices : []).filter(
+    (inv) => inv && !invoiceIsClosed(inv)
+  );
+  const originalInvoice = pickOriginalContractInvoice(openInvoices);
+  const sliceInvoices = openInvoices.filter(invoiceIsContractSlice);
+  const outsideInvoices = openInvoices.filter(invoiceIsOutsideContract);
+  const contractInvoiceIds = new Set();
+  if (originalInvoice) {
+    const originalId = invoiceRowId(originalInvoice);
+    if (originalId) contractInvoiceIds.add(originalId);
   }
-  totalInvoiced = round2(totalInvoiced);
+  for (const inv of sliceInvoices) {
+    const id = invoiceRowId(inv);
+    if (id) contractInvoiceIds.add(id);
+  }
+
+  // One contract invoice is the billed contract. A progress or final invoice
+  // asks for part of that same amount, so it is not added on top.
+  let totalInvoiced = 0;
+  if (originalInvoice) {
+    totalInvoiced = round2(Math.max(0, num(originalInvoice.amount, 0)));
+  } else {
+    totalInvoiced = round2(
+      sliceInvoices.reduce((s, inv) => s + Math.max(0, num(inv.amount, 0)), 0)
+    );
+  }
+  const outsideContract = round2(
+    outsideInvoices.reduce((s, inv) => s + Math.max(0, num(inv.amount, 0)), 0)
+  );
+
+  let paidToDate = 0;
+  for (const inv of openInvoices) {
+    const iid = invoiceRowId(inv);
+    if (!contractInvoiceIds.has(iid)) continue;
+    const ledgerPaid = iid ? num(ledgerMap.get(iid), 0) : 0;
+    paidToDate += round2(Math.max(num(inv.paid_amount, 0), ledgerPaid));
+  }
   paidToDate = round2(paidToDate);
 
   const paymentRows = Array.isArray(payments) ? payments : [];
+  const contractPayments = paymentRows.filter((p) => {
+    const iid = p?.invoice_id != null ? String(p.invoice_id).trim() : "";
+    if (!iid) return true;
+    return contractInvoiceIds.has(iid);
+  });
   const ledgerPaymentTotal = round2(
-    paymentRows.reduce((s, p) => s + num(p.amount, 0), 0)
+    contractPayments.reduce((s, p) => s + num(p.amount, 0), 0)
   );
   if (ledgerPaymentTotal > paidToDate) paidToDate = ledgerPaymentTotal;
 
   const balanceDue = round2(Math.max(0, currentContractTotal - paidToDate));
 
-  const lastPay = paymentRows
+  const lastPay = contractPayments
     .map((p) => p.paid_at || p.created_at)
     .filter(Boolean)
     .sort()
     .pop();
 
-  const invStatus = invoiceStatusSummary(invoices);
+  const invStatus = invoiceStatusSummary(openInvoices);
 
   let invoice_data_note = null;
   if (!invoices || !invoices.length) {
@@ -897,6 +1009,7 @@ function buildCollectionSection({
     approved_change_orders: approvedChangeOrders,
     current_contract_total: currentContractTotal,
     total_invoiced: totalInvoiced,
+    outside_contract: outsideContract,
     paid_to_date: paidToDate,
     balance_due: balanceDue,
     invoice_status: invStatus.label,
