@@ -14249,10 +14249,16 @@ window.renderSupervisor = renderSupervisor;
     const projectName = nonEmptyString(row?.title, row?.project?.projectName) || "your project";
     const businessName = hubReminderBusinessName(row, settings);
     const stage = String($("hubRbPaymentStage")?.value || "Progress Payment").trim() || "Progress Payment";
+    const materials = finiteNumber(hubRemainingBalanceInvoiceState.materialsOnBalance, 0);
+    const materialSentence =
+      materials > 0.005
+        ? ` Reported materials of ${money(materials, settings && settings.currency)} are included in the amount due.`
+        : "";
     return (
       `Hi ${customerName}, here is a ${stage.toLowerCase()} invoice for ${projectName}. ` +
-      "Please review the amount due and let us know if you have any questions. " +
-      `Thank you for choosing ${businessName}.`
+      "Please review the amount due and let us know if you have any questions." +
+      materialSentence +
+      ` Thank you for choosing ${businessName}.`
     );
   }
 
@@ -14465,8 +14471,20 @@ window.renderSupervisor = renderSupervisor;
       contractTotal: totals.contractTotal,
       paidToDate: totals.paidToDate,
       remainingBalance: totals.remainingBalance,
+      materialsOnBalance: finiteNumber(totals.materialsOnBalance, 0),
       lastGeneratedMessage: ""
     };
+    const materialsOnBalance = finiteNumber(totals.materialsOnBalance, 0);
+    const materialsWrap = $("hubRbMaterialsWrap");
+    if (materialsWrap) materialsWrap.hidden = !(materialsOnBalance > 0.005);
+    if ($("hubRbMaterials")) {
+      $("hubRbMaterials").textContent = money(materialsOnBalance, cur.currency);
+    }
+    if ($("hubRbMaterialLines")) {
+      $("hubRbMaterialLines").textContent = Array.isArray(totals.materialLines)
+        ? totals.materialLines.join("\n")
+        : "";
+    }
     if ($("hubRbContractTotal")) {
       $("hubRbContractTotal").textContent = money(totals.contractTotal, cur.currency);
     }
@@ -17104,8 +17122,7 @@ window.renderSupervisor = renderSupervisor;
           0
         );
         const paidToDate = finiteNumber(pack.netSum, 0);
-        const remainingBalance = Math.max(0, Math.round((contractTotal - paidToDate) * 100) / 100);
-        return { contractTotal, paidToDate, remainingBalance };
+        return hubProjectPaymentTotalsFrom(row, contractTotal, paidToDate);
       }
     }
     const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
@@ -17116,8 +17133,41 @@ window.renderSupervisor = renderSupervisor;
         paidToDate = finiteNumber(pack.netSum, paidToDate);
       }
     }
-    const remainingBalance = Math.max(0, Math.round((contractTotal - paidToDate) * 100) / 100);
-    return { contractTotal, paidToDate, remainingBalance };
+    return hubProjectPaymentTotalsFrom(row, contractTotal, paidToDate);
+  }
+
+  function hubMaterialsPendingForNewInvoice(row) {
+    const group = hubDrawerResolveBillingGroup(row);
+    const lines = [];
+    let amount = 0;
+    (group.members || []).forEach((member) => {
+      if (!hubRowMaterialBillForBalance(member)) return;
+      const notes = hubRowNotesText(member);
+      if (!HUB_INCLUDED_IN_BALANCE_RE.test(notes)) return;
+      if (HUB_BILLED_ON_BALANCE_RE.test(notes)) return;
+      const due = hubRowInvoiceScopedBalance(member);
+      if (!(due > 0)) return;
+      amount += due;
+      const parsed = hubMaterialBillLines(member);
+      if (parsed.length) parsed.forEach((line) => lines.push(line));
+      else lines.push(hubBillingDisplayLabel(member));
+    });
+    return { amount: Math.round(amount * 100) / 100, lines };
+  }
+
+  function hubProjectPaymentTotalsFrom(row, contractTotal, paidToDate) {
+    const materials = hubMaterialsPendingForNewInvoice(row);
+    const remainingBalance = Math.max(
+      0,
+      Math.round((finiteNumber(contractTotal, 0) - finiteNumber(paidToDate, 0) + materials.amount) * 100) / 100
+    );
+    return {
+      contractTotal,
+      paidToDate,
+      remainingBalance,
+      materialsOnBalance: materials.amount,
+      materialLines: materials.lines,
+    };
   }
 
   async function fetchHubDrawerLedgerPayments(row) {
@@ -18824,6 +18874,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   const HUB_INCLUDED_IN_BALANCE_RE = /\[included_in_contract_balance\]/i;
+  const HUB_BILLED_ON_BALANCE_RE = /\[billed_on_balance_invoice:[0-9a-f-]{36}\]/i;
 
   function hubRowMaterialBillForBalance(row) {
     if (!row || hubRowIsArchivedOrVoidBilling(row)) return false;

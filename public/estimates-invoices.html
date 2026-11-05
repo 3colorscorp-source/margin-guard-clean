@@ -756,6 +756,25 @@
   #hubRemainingBalanceInvoiceModal .hub-rb-summary-grid .hub-rb-v {
     font-weight: 600;
   }
+  #hubRemainingBalanceInvoiceModal .hub-rb-materials {
+    margin: -4px 0 12px;
+    font-size: 0.875rem;
+  }
+  #hubRemainingBalanceInvoiceModal .hub-rb-materials .hub-rb-k {
+    opacity: 0.65;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  #hubRemainingBalanceInvoiceModal .hub-rb-materials .hub-rb-v {
+    font-weight: 600;
+  }
+  #hubRemainingBalanceInvoiceModal .hub-rb-material-lines {
+    white-space: pre-wrap;
+    margin-top: 6px;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
   #hubRemainingBalanceInvoiceModal .hub-rb-amount-options {
     display: flex;
     flex-direction: column;
@@ -2329,6 +2348,11 @@
           <div><div class="hub-rb-k">Contract total</div><div class="hub-rb-v" id="hubRbContractTotal">—</div></div>
           <div><div class="hub-rb-k">Paid to date (ledger)</div><div class="hub-rb-v" id="hubRbPaidToDate">—</div></div>
           <div><div class="hub-rb-k">Remaining project balance</div><div class="hub-rb-v" id="hubRbRemaining">—</div></div>
+        </div>
+        <div id="hubRbMaterialsWrap" class="hub-rb-materials" hidden>
+          <div class="hub-rb-k">Materials on this invoice</div>
+          <div class="hub-rb-v" id="hubRbMaterials">—</div>
+          <div id="hubRbMaterialLines" class="hub-rb-material-lines"></div>
         </div>
         <div class="hub-rb-message-wrap" style="margin-top:12px;">
           <label for="hubRbPaymentStage">Payment Stage / Invoice Type <span aria-hidden="true">*</span></label>

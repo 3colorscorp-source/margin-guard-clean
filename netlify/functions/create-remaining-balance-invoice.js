@@ -8,6 +8,11 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { makePublicToken } = require("./_lib/public-token");
+const {
+  materialsReadyForInvoice,
+  notesWithMaterials,
+  notesWithBilledOn,
+} = require("./_lib/material-balance");
 const { pickFirst } = require("./_lib/tenant-display");
 
 const UUID_RE =
@@ -161,7 +166,7 @@ async function loadInvoicesByField(tenantId, field, value) {
   if (!tid || !val || (field !== "project_id" && field !== "quote_id")) return [];
   try {
     const rows = await supabaseRequest(
-      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,project_id,quote_id&limit=100`,
+      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,amount,paid_amount,status,project_id,quote_id&limit=100`,
       { method: "GET" }
     );
     return Array.isArray(rows) ? rows : [];
@@ -556,7 +561,13 @@ exports.handler = async (event) => {
       invoiceId
     });
 
-    const remainingBalance = Math.max(0, finiteMoney(contractTotal - paidToDate, 0));
+    const contractRemaining = Math.max(0, finiteMoney(contractTotal - paidToDate, 0));
+    let materials = { amount: 0, lines: [], ids: [] };
+    if (UUID_RE.test(projectId)) {
+      const projectInvoices = await loadInvoicesByField(tenantId, "project_id", projectId);
+      materials = materialsReadyForInvoice(projectInvoices);
+    }
+    const remainingBalance = finiteMoney(contractRemaining + materials.amount, 0);
     if (!(remainingBalance > 0)) {
       return json(422, {
         ok: false,
@@ -624,7 +635,10 @@ exports.handler = async (event) => {
     }
 
     const clientNotes = body.notes != null ? String(body.notes).trim().slice(0, 7900) : "";
-    const notesFinal = appendSourceMarker(clientNotes, sourceInvoiceId);
+    const includeMaterials =
+      amountMode !== "manual" || Math.abs(selectedAmount - remainingBalance) <= 0.01;
+    const notesBody = includeMaterials ? notesWithMaterials(clientNotes, materials) : clientNotes;
+    const notesFinal = appendSourceMarker(notesBody, sourceInvoiceId);
     const dueDate = resolveProjectPaymentDueDate(body);
 
     const insertPayload = buildProjectPaymentInsert({
@@ -671,6 +685,29 @@ exports.handler = async (event) => {
     }
     if (String(invoice.tenant_id || "") !== tenantId) {
       return json(500, { ok: false, error: "Invoice was stored without valid tenant scope." });
+    }
+
+    if (includeMaterials && materials.ids.length) {
+      for (const materialId of materials.ids) {
+        if (!UUID_RE.test(materialId)) continue;
+        try {
+          const existingRows = await supabaseRequest(
+            `invoices?id=eq.${encodeURIComponent(materialId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=id,notes&limit=1`
+          );
+          const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+          if (!existing?.id) continue;
+          await supabaseRequest(
+            `invoices?id=eq.${encodeURIComponent(materialId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+            {
+              method: "PATCH",
+              headers: { Prefer: "return=minimal" },
+              body: { notes: notesWithBilledOn(existing.notes, invoice.id), updated_at: new Date().toISOString() },
+            }
+          );
+        } catch (_stampErr) {
+          /* The draft already includes the materials. A missed stamp must not hide that invoice. */
+        }
+      }
     }
 
     return json(200, {
