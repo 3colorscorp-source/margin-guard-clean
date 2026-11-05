@@ -348,11 +348,11 @@ function normalizeInvoiceLabel(raw, { selectedAmount, remainingBalance }) {
 const DUPLICATE_PROJECT_PAYMENT_MESSAGE =
   "A project payment invoice already exists for this project. Open or resend the existing invoice, or cancel it before creating another.";
 
-async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
+async function listLinkedOpenProjectPayments({ tenantId, sourceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
   const path =
     `invoices?tenant_id=eq.${tidEnc}` +
-    `&select=id,status,amount,notes,invoice_no,invoice_label,sent_at` +
+    `&select=id,status,amount,paid_amount,notes,invoice_no,invoice_label,sent_at` +
     `&limit=80` +
     `&order=created_at.desc`;
 
@@ -360,22 +360,57 @@ async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
   try {
     rows = await supabaseRequest(path, { method: "GET" });
   } catch (_err) {
-    return null;
+    return [];
   }
   const list = Array.isArray(rows) ? rows : [];
-
+  const out = [];
   for (const inv of list) {
     const st = normStatus(inv?.status);
     if (TERMINAL_STATUSES.has(st)) continue;
     if (!ACTIVE_DUPLICATE_STATUSES.has(st) && st !== "") continue;
     if (!notesContainSourceMarker(inv?.notes, sourceId)) continue;
     const label = String(inv?.invoice_label || "").trim().toLowerCase();
-    // Material Cost stays out of this flow; skip those drafts.
-    if (label === "material cost") continue;
+    if (label === "material cost" || label === "project expenses") continue;
     if (label && !ALLOWED_LABEL_SET.has(label) && label !== "remaining balance") continue;
-    return inv;
+    out.push(inv);
   }
-  return null;
+  return out;
+}
+
+/**
+ * A full remaining-balance invoice replaces an unpaid progress or start invoice.
+ * A second full invoice, or one that already has a payment, still blocks.
+ */
+function planFullBalanceAgainstExisting(openInvoices, creatingFullBalance) {
+  const replace = [];
+  let blocking = null;
+  for (const inv of Array.isArray(openInvoices) ? openInvoices : []) {
+    const label = String(inv?.invoice_label || "").trim().toLowerCase();
+    const paid = finiteMoney(inv?.paid_amount, 0);
+    const partial = label === "progress payment" || label === "start payment";
+    if (creatingFullBalance && partial && paid <= 0.009) {
+      replace.push(inv);
+      continue;
+    }
+    if (!blocking) blocking = inv;
+  }
+  if (blocking) return { action: "block", existing: blocking, replace: [] };
+  return { action: "create", replace };
+}
+
+async function archiveReplacedProjectPayment(tenantId, inv) {
+  const id = pickStr(inv?.id);
+  if (!UUID_RE.test(id)) return false;
+  const note = String(inv?.notes || "").trim();
+  const marker = "[replaced_by_balance_invoice]";
+  const notes = note.includes(marker) ? note : note ? `${note}\n${marker}` : marker;
+  const filter = `id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(String(tenantId))}`;
+  await supabaseRequest(`invoices?${filter}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: { status: "archived", notes, updated_at: new Date().toISOString() }
+  });
+  return true;
 }
 
 function displayStatusForDuplicate(inv) {
@@ -466,6 +501,7 @@ function ownerSafeInsertError(rawMessage) {
  *   notes?
  * }
  */
+exports.planFullBalanceAgainstExisting = planFullBalanceAgainstExisting;
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -612,11 +648,15 @@ exports.handler = async (event) => {
         "This amount is less than the actual remaining project balance. Consider using Progress Payment instead.";
     }
 
-    const duplicate = await findDuplicateProjectPaymentDraft({
+    const creatingFullBalance =
+      amountMode !== "manual" || Math.abs(selectedAmount - remainingBalance) <= 0.01;
+    const openPayments = await listLinkedOpenProjectPayments({
       tenantId,
       sourceId: sourceInvoiceId
     });
-    if (duplicate?.id) {
+    const paymentPlan = planFullBalanceAgainstExisting(openPayments, creatingFullBalance);
+    if (paymentPlan.action === "block") {
+      const duplicate = paymentPlan.existing;
       const detail = formatExistingInvoiceDetail(duplicate);
       return json(409, {
         ok: false,
@@ -633,10 +673,21 @@ exports.handler = async (event) => {
         }
       });
     }
+    for (const prior of paymentPlan.replace) {
+      try {
+        await archiveReplacedProjectPayment(tenantId, prior);
+      } catch (_archiveErr) {
+        return json(409, {
+          ok: false,
+          reason: "duplicate_remaining_balance_draft",
+          error: "Could not replace the earlier project payment invoice. No new invoice was created.",
+          message: "Could not replace the earlier project payment invoice. No new invoice was created."
+        });
+      }
+    }
 
     const clientNotes = body.notes != null ? String(body.notes).trim().slice(0, 7900) : "";
-    const includeMaterials =
-      amountMode !== "manual" || Math.abs(selectedAmount - remainingBalance) <= 0.01;
+    const includeMaterials = creatingFullBalance;
     const notesBody = includeMaterials ? notesWithMaterials(clientNotes, materials) : clientNotes;
     const notesFinal = appendSourceMarker(notesBody, sourceInvoiceId);
     const dueDate = resolveProjectPaymentDueDate(body);
@@ -722,8 +773,10 @@ exports.handler = async (event) => {
       paid_to_date: paidToDate,
       warning: labelWarning || undefined,
       invoice,
-      message:
-        "Project payment draft invoice created. No email was sent and no payment was recorded."
+      replaced_invoice_nos: paymentPlan.replace.map((inv) => pickStr(inv.invoice_no)).filter(Boolean),
+      message: paymentPlan.replace.length
+        ? "Project payment draft invoice created. The earlier progress invoice is no longer the bill. No email was sent and no payment was recorded."
+        : "Project payment draft invoice created. No email was sent and no payment was recorded."
     });
   } catch (err) {
     console.error("[create-remaining-balance-invoice]", err);
