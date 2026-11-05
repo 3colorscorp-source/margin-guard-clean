@@ -1424,6 +1424,17 @@
         return moneyUsd(0);
       }
 
+      function rolePayRows(actL) {
+        if (!actL || (actL.pro_cost == null && actL.assistant_cost == null)) return '';
+        function line(label, cost, hours) {
+          if (cost == null || cost === '') return '';
+          var detail = moneyUsd(cost);
+          if (hours != null && hours !== '') detail += ' · ' + Number(hours).toFixed(1) + ' h';
+          return finRow(label, detail, { wide: true, money: costMoneyClass(cost) });
+        }
+        return line('Pro pay', actL.pro_cost, actL.pro_hours) + line('Assistant pay', actL.assistant_cost, actL.assistant_hours);
+      }
+
       function parseExpenseConcept(note) {
         var raw = ownerFieldNote(note).text;
         if (!raw) return 'Expense';
@@ -1635,6 +1646,7 @@
           finLedgerGroup('Revenue', finRow('Project total', moneyUsd(opb.project_total), { money: pos })) +
           finLedgerGroup('Labor',
             finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null), { money: costMoneyClass(opb.direct_labor_cost) }) +
+            rolePayRows(actL) +
             finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null), { money: costMoneyClass(opb.employer_burden) }) +
             finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null), { money: costMoneyClass(opb.loaded_labor_cost) })
           ) +
@@ -1682,7 +1694,7 @@
           finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—', laborVarianceClass(varL.cost)) +
           '</div>' +
           (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', laborMethodLabel(labor.cost_method), { wide: true, money: neu }) + '</div>' : '') +
-          (labor.rate_basis ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Rates used', labor.rate_basis, { wide: true, money: neu }) + '</div>' : '') +
+          (labor.rate_basis ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Rates used', labor.rate_basis, { wide: true, money: neu }) + rolePayRows(actL) + '</div>' : (rolePayRows(actL) ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + rolePayRows(actL) + '</div>' : '')) +
           laborNote +
           '</section>';
 

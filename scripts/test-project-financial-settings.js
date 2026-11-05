@@ -68,6 +68,9 @@ assert.strictEqual(labor.labor_rates_missing, false);
 assert.strictEqual(labor.actual.labor_cost, 560);
 assert.strictEqual(labor.actual.pro_hours, 4);
 assert.strictEqual(labor.actual.assistant_hours, 12);
+assert.strictEqual(labor.actual.pro_cost, 200);
+assert.strictEqual(labor.actual.assistant_cost, 360);
+assert.strictEqual(labor.actual.pro_cost + labor.actual.assistant_cost, labor.actual.labor_cost);
 assert.strictEqual(labor.estimated.labor_cost, 3200);
 assert.ok(String(labor.rate_basis).includes("50"));
 

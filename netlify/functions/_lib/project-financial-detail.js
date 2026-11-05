@@ -164,6 +164,38 @@ function laborRatesFromSettings(mg) {
   };
 }
 
+function rolePayAmounts(proHours, assistantHours, proRate, assistantRate, laborCost) {
+  const proH = num(proHours, 0);
+  const asstH = num(assistantHours, 0);
+  if (laborCost == null || !(proRate > 0) || !(assistantRate > 0)) {
+    return { pro_cost: null, assistant_cost: null };
+  }
+  const expected = round2(proH * proRate + asstH * assistantRate);
+  if (expected !== round2(laborCost)) {
+    return { pro_cost: null, assistant_cost: null };
+  }
+  let proCost = round2(proH * proRate);
+  let assistantCost = round2(asstH * assistantRate);
+  const drift = round2(round2(laborCost) - round2(proCost + assistantCost));
+  if (drift !== 0) {
+    if (asstH >= proH) assistantCost = round2(assistantCost + drift);
+    else proCost = round2(proCost + drift);
+  }
+  return { pro_cost: proCost, assistant_cost: assistantCost };
+}
+
+function stampRolePay(actual, proRate, assistantRate) {
+  const pay = rolePayAmounts(
+    actual.pro_hours,
+    actual.assistant_hours,
+    proRate,
+    assistantRate,
+    actual.labor_cost
+  );
+  actual.pro_cost = pay.pro_cost;
+  actual.assistant_cost = pay.assistant_cost;
+}
+
 function laborCostFromSettingsRates(reports, rates) {
   const proRate = num(rates?.pro_rate, 0);
   const assistantRate = num(rates?.assistant_rate, 0);
@@ -461,6 +493,8 @@ function computeLaborCostSection({
       labor_cost: null,
       pro_hours: null,
       assistant_hours: null,
+      pro_cost: null,
+      assistant_cost: null,
     },
     variance: {
       hours: round2(reportedHours - estimatedHours),
@@ -524,6 +558,7 @@ function computeLaborCostSection({
     base.actual.labor_cost = actualCost;
     base.actual.pro_hours = proH;
     base.actual.assistant_hours = asstH;
+    stampRolePay(base.actual, rates.pro_rate, rates.assistant_rate);
     base.variance.hours = round2(actualHours - estimatedHours);
     base.variance.days = round2(actualDays - estimatedDays);
     base.variance.cost = round2(actualCost - estimatedLaborCost);
@@ -593,6 +628,7 @@ function computeLaborCostSection({
   base.actual.labor_cost = round2(actualCost);
   base.actual.pro_hours = round2(proH);
   base.actual.assistant_hours = round2(asstH);
+  stampRolePay(base.actual, rates.pro_rate, rates.assistant_rate);
   base.variance.cost = round2(actualCost - estimatedLaborCost);
   return base;
 }
