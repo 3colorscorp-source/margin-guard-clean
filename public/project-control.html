@@ -1498,7 +1498,7 @@
       function invoiceStatusMoneyClass(status) {
         var s = String(status || '').toLowerCase();
         if (!s || s === '—') return finMoneyClass('neutral');
-        if (s === 'paid') return finMoneyClass('positive');
+        if (s === 'paid' || s.indexOf('deposit') >= 0) return finMoneyClass('positive');
         if (s.indexOf('draft') >= 0 || s.indexOf('unpaid') >= 0 || s.indexOf('partial') >= 0 ||
             s.indexOf('sent') >= 0 || s.indexOf('issued') >= 0 || s.indexOf('overdue') >= 0 ||
             s.indexOf('no invoice') >= 0) {
@@ -1702,11 +1702,14 @@
           finRow('Contract total', moneyUsd(cc.original_contract), { money: pos }) +
           finRow('Change orders', moneyUsd(cc.approved_change_orders), { money: pos }) +
           finRow('Current contract', moneyUsd(cc.current_contract_total), { money: pos }) +
-          finRow('Total invoiced', moneyUsd(cc.total_invoiced), { money: pos }) +
+          finRow('Invoiced on contract', moneyUsd(cc.total_invoiced), { money: pos }) +
           finRow('Paid to date', moneyUsd(cc.paid_to_date), { money: pos }) +
           finRow('Balance due', moneyUsd(cc.balance_due), { money: balanceDueMoneyClass(cc.balance_due) }) +
           finRow('Invoice status', cc.invoice_status || '—', { money: invoiceStatusMoneyClass(cc.invoice_status) }) +
-          finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—', { money: neu });
+          finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—', { money: neu }) +
+          (Number(cc.outside_contract) > 0.005
+            ? finRow('Outside the contract', moneyUsd(cc.outside_contract), { money: neu })
+            : '');
 
         var expenseLast = exp.last
           ? (fmtDate(exp.last.date) + ' · ' + (exp.last.concept || '—') + ' · ' + moneyUsd(exp.last.amount))
