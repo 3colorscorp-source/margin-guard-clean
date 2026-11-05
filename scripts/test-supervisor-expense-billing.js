@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+/**
+ * Selected field expenses become one project draft. They do not join the contract quote invoice.
+ * Run: node scripts/test-supervisor-expense-billing.js
+ */
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const assert = require("assert");
+const { planProjectExpenseInvoice, TYPE_MARKER } = require("../netlify/functions/_lib/project-expense-invoice");
+
+const ROOT = path.resolve(__dirname, "..");
+const PROJECT = "11111111-1111-4111-8111-111111111111";
+const QUOTE = "22222222-2222-4222-8222-222222222222";
+
+let passed = 0;
+function ok(label, cond) {
+  assert.ok(cond, label);
+  passed += 1;
+  console.log("PASS " + label);
+}
+
+const expenses = [
+  { id: "e1", expense_date: "2026-11-04", amount: 22, note: "Caulking one tube" },
+  { id: "e2", expense_date: "2026-11-04", amount: 20, note: "511 Sealer" },
+  { id: "e3", expense_date: "2026-10-14", amount: 224, note: "Materials to cover all the work area" },
+];
+
+const contractOnly = [
+  {
+    id: "inv-contract",
+    project_id: PROJECT,
+    quote_id: QUOTE,
+    invoice_label: "Contract",
+    status: "draft",
+    amount: 9114.61,
+    notes: "Contract invoice linked to the accepted quote.",
+    created_at: "2026-10-01T00:00:00.000Z",
+  },
+];
+
+const none = planProjectExpenseInvoice({
+  projectId: PROJECT,
+  selectedIds: [],
+  expenses,
+  invoices: contractOnly,
+});
+ok("zero selection does not create an invoice", none.ok === true && none.action === "none" && none.created === false);
+
+const first = planProjectExpenseInvoice({
+  projectId: PROJECT,
+  selectedIds: ["e1", "e2"],
+  expenses,
+  invoices: contractOnly,
+});
+ok("selected expenses create a draft", first.ok === true && first.action === "create" && first.created === true);
+ok("the draft is linked to the project", first.insert.project_id === PROJECT);
+ok("the draft does not take the quote link", first.quoteIdSet === false && !Object.prototype.hasOwnProperty.call(first.insert, "quote_id"));
+ok("the contract invoice is not the target", first.action !== "append");
+ok("each expense is one line at the stored amount", first.lines.length === 2 && first.insert.amount === 42);
+ok("the line keeps the date and concept", first.lines[0] === "2026-11-04 — Caulking one tube — $22.00");
+ok("the draft is marked as project expenses", first.insert.notes.indexOf(TYPE_MARKER) >= 0 && first.insert.status === "draft");
+
+const expenseDraft = {
+  id: "inv-exp",
+  project_id: PROJECT,
+  status: "draft",
+  amount: 42,
+  paid_amount: 0,
+  created_at: "2026-11-04T00:00:00.000Z",
+  notes: first.insert.notes,
+  invoice_label: "Project expenses",
+};
+const second = planProjectExpenseInvoice({
+  projectId: PROJECT,
+  selectedIds: ["e1", "e2"],
+  expenses,
+  invoices: contractOnly.concat([expenseDraft]),
+});
+ok("a second add does not duplicate lines", second.ok === true && second.action === "none" && second.created === false);
+
+const added = planProjectExpenseInvoice({
+  projectId: PROJECT,
+  selectedIds: ["e3"],
+  expenses,
+  invoices: contractOnly.concat([expenseDraft]),
+});
+ok("a later expense joins the open draft", added.ok === true && added.action === "append" && added.invoiceId === "inv-exp" && added.created === false);
+ok("the open draft total includes the new line once", added.patch.amount === 266 && added.lines.length === 3);
+ok("the append still does not set a quote link", added.quoteIdSet === false && !Object.prototype.hasOwnProperty.call(added.patch, "quote_id"));
+
+const html = fs.readFileSync(path.join(ROOT, "public/project-control.html"), "utf8");
+const handler = fs.readFileSync(path.join(ROOT, "netlify/functions/add-project-expense-invoice.js"), "utf8");
+ok(
+  "the summary keeps print and adds one billing action",
+  html.includes('id="pccExpensePrint"') &&
+    html.includes("Print expense report") &&
+    html.includes('id="pccExpenseAddInvoice"') &&
+    html.includes("Add selected expenses to a project expense invoice")
+);
+const picker = html.slice(html.indexOf("type=\"checkbox\" data-pcc-expense-id"), html.indexOf("aria-label=\"Select expense\""));
+ok("rows are not selected until the owner checks them", picker.indexOf("checkbox") >= 0 && picker.indexOf("checked") < 0);
+ok("a billed expense can show On invoice", html.includes("On invoice"));
+const insertBlock = handler.slice(handler.indexOf("const insertPayload"), handler.indexOf("let created"));
+ok("the save payload links the project and omits quote_id", insertBlock.includes("project_id: projectId") && !insertBlock.includes("quote_id"));
+ok("a missing project column does not create an unlinked invoice", handler.includes("project_link_required") && !handler.includes("delete fallbackPayload.project_id"));
+
+console.log("\n" + passed + " passed");

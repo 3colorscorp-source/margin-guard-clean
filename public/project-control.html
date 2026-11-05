@@ -1123,12 +1123,17 @@
       <div class="pcc-table-wrap">
         <table class="table">
           <thead>
-            <tr><th>Date</th><th>Concept</th><th>Amount</th><th>Note</th><th>Day</th></tr>
+            <tr>
+              <th class="pcc-expense-no-print"></th>
+              <th>Date</th><th>Concept</th><th>Amount</th><th>Note</th><th>Day</th>
+            </tr>
           </thead>
           <tbody id="pccExpenseBody"></tbody>
         </table>
       </div>
-      <div class="pcc-expense-no-print" style="display:flex;gap:8px;margin-top:14px;">
+      <p id="pccExpenseBillFeedback" class="sub pcc-expense-no-print" style="margin:12px 0 0;" aria-live="polite"></p>
+      <div class="pcc-expense-no-print" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="pccExpenseAddInvoice" disabled>Add selected expenses to a project expense invoice</button>
         <button type="button" class="btn primary" id="pccExpensePrint">Print expense report</button>
       </div>
     </div>
@@ -1243,6 +1248,7 @@
       var pccFinProjectId = '';
       var pccFinProjectName = '';
       var pccFinExpenseRows = [];
+      var pccExpenseBilledIds = {};
 
       function moneyUsd(n) {
         var x = Number(n);
@@ -1806,25 +1812,79 @@
         document.body.classList.remove('pcc-fin-printing');
       }
 
-      function openPccExpenseModal() {
-        var modal = document.getElementById('pccExpenseModal');
-        if (!modal) return;
+      function selectedPccExpenseIds() {
+        return Array.prototype.map.call(
+          document.querySelectorAll('#pccExpenseBody input[data-pcc-expense-id]:checked'),
+          function (input) { return String(input.getAttribute('data-pcc-expense-id') || ''); }
+        ).filter(Boolean);
+      }
+
+      function syncPccExpenseBillButton() {
+        var btn = document.getElementById('pccExpenseAddInvoice');
+        if (!btn || btn.dataset.saving === '1') return;
+        btn.disabled = selectedPccExpenseIds().length === 0;
+      }
+
+      function renderPccExpenseRows() {
         var rows = pccFinExpenseRows || [];
-        document.getElementById('pccExpenseTitle').textContent = 'Project expense summary';
-        document.getElementById('pccExpenseProject').textContent = pccFinProjectName || 'Project';
         var total = rows.reduce(function (s, r) { return s + (Number(r.amount) || 0); }, 0);
         var avg = rows.length ? total / rows.length : 0;
         document.getElementById('pccExpenseStats').textContent =
           rows.length + ' entries · Total ' + moneyUsd(total) + ' · Avg ' + moneyUsd(avg);
         document.getElementById('pccExpenseBody').innerHTML = rows.length
           ? rows.map(function (r) {
-            return '<tr><td>' + esc(fmtDate(r.expense_date)) + '</td><td>' + esc(r.concept || parseExpenseConcept(r.note)) +
+            var id = r && r.id ? String(r.id) : '';
+            var billed = id && pccExpenseBilledIds[id];
+            var picker = billed
+              ? '<span class="sub">On invoice</span>'
+              : (id
+                ? '<input type="checkbox" data-pcc-expense-id="' + esc(id) + '" aria-label="Select expense" />'
+                : '—');
+            return '<tr><td class="pcc-expense-no-print">' + picker + '</td><td>' + esc(fmtDate(r.expense_date)) +
+              '</td><td>' + esc(r.concept || parseExpenseConcept(r.note)) +
               '</td><td>' + esc(moneyUsd(r.amount)) + '</td><td>' + ownerNoteCell(r.note) + '</td><td>' +
               esc(r.day_number != null ? String(r.day_number) : '—') + '</td></tr>';
           }).join('')
-          : '<tr><td colspan="5" class="sub">No field expenses recorded.</td></tr>';
+          : '<tr><td colspan="6" class="sub">No field expenses recorded.</td></tr>';
+        syncPccExpenseBillButton();
+      }
+
+      function setPccExpenseBillFeedback(message) {
+        var el = document.getElementById('pccExpenseBillFeedback');
+        if (el) el.textContent = message || '';
+      }
+
+      async function refreshPccExpenseBilling() {
+        if (!pccFinProjectId) return;
+        try {
+          var res = await fetch(
+            '/.netlify/functions/add-project-expense-invoice?project_id=' + encodeURIComponent(pccFinProjectId),
+            { credentials: 'include' }
+          );
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data || data.ok !== true) return;
+          pccExpenseBilledIds = {};
+          (data.billed_expense_ids || []).forEach(function (id) {
+            if (id) pccExpenseBilledIds[String(id)] = true;
+          });
+          if (document.getElementById('pccExpenseModal') && document.getElementById('pccExpenseModal').classList.contains('open')) {
+            renderPccExpenseRows();
+          }
+        } catch (_err) {
+          /* The summary still shows. Billing state refreshes on the next open. */
+        }
+      }
+
+      function openPccExpenseModal() {
+        var modal = document.getElementById('pccExpenseModal');
+        if (!modal) return;
+        document.getElementById('pccExpenseTitle').textContent = 'Project expense summary';
+        document.getElementById('pccExpenseProject').textContent = pccFinProjectName || 'Project';
+        setPccExpenseBillFeedback('');
+        renderPccExpenseRows();
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
+        void refreshPccExpenseBilling();
       }
 
       function closePccExpenseModal() {
@@ -2375,6 +2435,55 @@
       });
       document.getElementById('pccExpenseClose').addEventListener('click', closePccExpenseModal);
       document.getElementById('pccExpensePrint').addEventListener('click', printPccExpenseReport);
+      document.getElementById('pccExpenseBody').addEventListener('change', syncPccExpenseBillButton);
+      document.getElementById('pccExpenseAddInvoice').addEventListener('click', async function () {
+        var btn = document.getElementById('pccExpenseAddInvoice');
+        var ids = selectedPccExpenseIds();
+        if (!pccFinProjectId || !ids.length) {
+          setPccExpenseBillFeedback('Select at least one expense.');
+          syncPccExpenseBillButton();
+          return;
+        }
+        if (btn) {
+          btn.dataset.saving = '1';
+          btn.disabled = true;
+          btn.textContent = 'Adding…';
+        }
+        setPccExpenseBillFeedback('');
+        try {
+          var res = await fetch('/.netlify/functions/add-project-expense-invoice', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: pccFinProjectId, expense_ids: ids })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data || data.ok !== true) {
+            setPccExpenseBillFeedback((data && data.error) ? String(data.error) : 'Could not add the expenses.');
+            return;
+          }
+          pccExpenseBilledIds = {};
+          (data.billed_expense_ids || []).forEach(function (id) {
+            if (id) pccExpenseBilledIds[String(id)] = true;
+          });
+          renderPccExpenseRows();
+          if (data.action === 'none') {
+            setPccExpenseBillFeedback('Those expenses are already on an invoice.');
+          } else if (data.created) {
+            setPccExpenseBillFeedback('Draft project expense invoice created. It is not sent.');
+          } else {
+            setPccExpenseBillFeedback('Added to the open project expense draft. It is not sent.');
+          }
+        } catch (_err) {
+          setPccExpenseBillFeedback('Could not add the expenses.');
+        } finally {
+          if (btn) {
+            btn.dataset.saving = '';
+            btn.textContent = 'Add selected expenses to a project expense invoice';
+          }
+          syncPccExpenseBillButton();
+        }
+      });
       document.getElementById('pccExpenseModal').addEventListener('click', function (e) {
         if (e.target === document.getElementById('pccExpenseModal')) closePccExpenseModal();
       });
