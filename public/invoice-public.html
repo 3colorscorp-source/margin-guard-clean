@@ -843,6 +843,17 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  function materialsReportedRowHtml(data, currency) {
+    const n = Number(data && data.materials_on_balance);
+    if (!Number.isFinite(n) || n <= 0.005) return "";
+    return (
+      '<div class="sum-row">' +
+        "<span>Unexpected expenses</span>" +
+        "<strong>" + money(n, currency) + "</strong>" +
+      "</div>"
+    );
+  }
+
   function breakdownSummaryRowsHtml(parsed, currency) {
     const laborN = parseNotesMoneyNumber(parsed && parsed.laborAmount);
     const matN = parseNotesMoneyNumber(parsed && parsed.materialsAmount);
@@ -878,6 +889,9 @@
     let s = String(raw == null ? "" : raw);
     s = s.replace(/\[source_invoice:[^\]]*\]/gi, "");
     s = s.replace(/\[invoice_type:[^\]]*\]/gi, "");
+    s = s.replace(/\[included_in_contract_balance\]/gi, "");
+    s = s.replace(/\[billed_on_balance_invoice:[^\]]*\]/gi, "");
+    s = s.replace(/\[replaced_by_balance_invoice\]/gi, "");
     s = s.replace(/\[mg_[a-z0-9_]+:[^\]]*\]/gi, "");
     s = s.replace(/[ \t]+\r?\n/g, "\n");
     s = s.replace(/\n{3,}/g, "\n\n");
@@ -1298,6 +1312,7 @@
             "<span>Paid to date</span>" +
             "<strong>" + paidAmount + "</strong>" +
           "</div>" +
+          materialsReportedRowHtml(data, currency) +
           '<div class="sum-row">' +
             "<span>Remaining balance</span>" +
             "<strong>" + balanceDue + "</strong>" +
@@ -1327,6 +1342,7 @@
             "<span>" + escapeHtml(summaryPaidLabel) + "</span>" +
             "<strong>" + paidAmount + "</strong>" +
           "</div>" +
+          materialsReportedRowHtml(data, currency) +
           '<div class="sum-row total">' +
             "<span>" + escapeHtml(summaryBalanceLabel) + "</span>" +
             "<span>" + balanceDue + "</span>" +
@@ -1350,6 +1366,25 @@
       const emptyWorkDetails = parentProjectDisplay
         ? "Project balance for " + (projectNameRaw || "this project") + "."
         : "Work details were not provided for this invoice.";
+      const expenseLines = Array.isArray(data.materials_lines)
+        ? data.materials_lines.map((line) => String(line || "").trim()).filter(Boolean)
+        : [];
+      const expenseAmount = Number(data.materials_on_balance);
+      const hasExpenseReport = expenseLines.length > 0 || (Number.isFinite(expenseAmount) && expenseAmount > 0.005);
+      const expenseReportText = hasExpenseReport
+        ? expenseLines.join("\n") +
+          (Number.isFinite(expenseAmount) && expenseAmount > 0.005
+            ? (expenseLines.length ? "\n" : "") + "Total " + money(expenseAmount, currency)
+            : "")
+        : "";
+      const unexpectedExpensesHtml = hasExpenseReport
+        ? '<div class="notes">' +
+          '<div class="notes-title">Unexpected expenses</div>' +
+          '<div class="notes-text">' +
+          displayText(expenseReportText) +
+          "</div>" +
+          "</div>"
+        : "";
       const workDetailsHtml =
         '<div class="notes">' +
         '<div class="notes-title">WORK DETAILS</div>' +
@@ -1358,7 +1393,8 @@
           ? displayText(notesClient)
           : escapeHtml(emptyWorkDetails)) +
         "</div>" +
-        "</div>";
+        "</div>" +
+        unexpectedExpensesHtml;
       const typeDisplay = parentProjectDisplay ? "PROJECT BALANCE" : data.type;
 
       document.documentElement.style.setProperty("--accent", accent);
@@ -1466,7 +1502,7 @@
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
 
-      publicInvoicePdfPayload = mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, instrClean);
+      publicInvoicePdfPayload = mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, instrClean, expenseReportText);
       bindPublicInvoicePdfButtons();
     } catch (err) {
       showError(err && err.message ? err.message : "Unexpected error loading invoice.");
@@ -1475,7 +1511,7 @@
 
   let publicInvoicePdfPayload = null;
 
-  function mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, paymentInstructions) {
+  function mapPublicInvoicePdfPayload(data, notesClient, parsedWork, facts, paymentInstructions, expenseReportText) {
     return {
       businessName: String((data && data.business_name) || "").trim(),
       serviceLine: String((data && (data.service_line || data.serviceLine)) || "").trim(),
@@ -1489,7 +1525,9 @@
       invoiceNo: String((data && data.invoice_no) || "").trim(),
       issueDate: String((data && data.issue_date) || "").trim(),
       dueDate: String((data && data.due_date) || "").trim(),
-      workDetails: String(notesClient || "").trim(),
+      workDetails: [String(notesClient || "").trim(), expenseReportText ? "Unexpected expenses\n" + expenseReportText : ""]
+        .filter(Boolean)
+        .join("\n\n"),
       laborAmount: String((parsedWork && parsedWork.laborAmount) || "").trim(),
       materialsAmount: String((parsedWork && parsedWork.materialsAmount) || "").trim(),
       currency: String((data && data.currency) || "").trim(),

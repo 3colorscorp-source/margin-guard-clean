@@ -1,5 +1,6 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
+const { materialsOnBalance, balanceWithMaterials } = require("./_lib/material-balance");
 
 function json(statusCode, body) {
   return {
@@ -168,6 +169,7 @@ exports.handler = async (event) => {
     // Parent/root accepted project invoices with a billing group use unique folder paid.
     let paidToDate;
     let publicDisplayKind = "";
+    let billingMembers = [];
     if (isProjectPaymentInvoice) {
       paidToDate = await loadPaidToDate({
         tenantId,
@@ -182,8 +184,9 @@ exports.handler = async (event) => {
         projectId,
         quoteId
       });
-      if (Array.isArray(members) && members.length >= 2) {
-        paidToDate = await loadUniqueFolderPaidToDate(tenantId, members);
+      billingMembers = Array.isArray(members) ? members : [];
+      if (billingMembers.length >= 2) {
+        paidToDate = await loadUniqueFolderPaidToDate(tenantId, billingMembers);
         publicDisplayKind = "parent_project";
       } else {
         paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
@@ -191,7 +194,8 @@ exports.handler = async (event) => {
     } else {
       paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
     }
-    const remainingBalance = Math.max(contractTotal - paidToDate, 0);
+    const materials = isProjectPaymentInvoice ? { amount: 0, lines: [] } : materialsOnBalance(billingMembers);
+    const remainingBalance = balanceWithMaterials(contractTotal, paidToDate, materials.amount);
 
     if (tenantId) {
       try {
@@ -255,6 +259,10 @@ exports.handler = async (event) => {
     invoice.contract_total = contractTotal;
     invoice.paid_to_date = paidToDate;
     invoice.remaining_balance = remainingBalance;
+    if (materials.amount > 0) {
+      invoice.materials_on_balance = materials.amount;
+      invoice.materials_lines = Array.isArray(materials.lines) ? materials.lines : [];
+    }
     if (publicDisplayKind) invoice.public_display_kind = publicDisplayKind;
 
     const tenantPayment = await loadTenantPublicPaymentSettings(tenantId);
@@ -275,7 +283,7 @@ async function loadInvoicesByField(tenantId, field, value) {
   if (!tid || !val || (field !== "project_id" && field !== "quote_id")) return [];
   try {
     const rows = await supabaseRequest(
-      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,project_id,quote_id&limit=100`,
+      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,amount,paid_amount,status,project_id,quote_id&limit=100`,
       { method: "GET" }
     );
     return Array.isArray(rows) ? rows : [];
