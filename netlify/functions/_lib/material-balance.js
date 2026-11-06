@@ -92,6 +92,17 @@ function balanceWithMaterials(contractTotal, paidToDate, materialsAmount) {
   return money(Math.max(0, money(contractTotal) - money(paidToDate) + money(materialsAmount)));
 }
 
+function recordPaymentAmountWithExpenses(invoiceAmount, paidOnInvoice, expensesOnBalance, balanceInvoiceRemaining) {
+  const own = money(Math.max(0, money(invoiceAmount) - money(paidOnInvoice)));
+  const expenses = money(expensesOnBalance);
+  const bill = money(balanceInvoiceRemaining);
+  const withExpenses = money(Math.max(0, own + expenses));
+  if (!(expenses > 0) || !(bill > 0) || Math.abs(bill - withExpenses) > 0.02) {
+    return { useBalanceInvoice: false, remaining: own, unexpectedExpenses: 0 };
+  }
+  return { useBalanceInvoice: true, remaining: bill, unexpectedExpenses: expenses };
+}
+
 function clientMaterialsNote(materials) {
   if (!materials || !(Number(materials.amount) > 0)) return "";
   return ["Unexpected expenses:"]
@@ -128,6 +139,7 @@ module.exports = {
   materialsReadyForInvoice,
   materialsOnBalance,
   balanceWithMaterials,
+  recordPaymentAmountWithExpenses,
   clientMaterialsNote,
   notesWithMaterials,
   notesWithBilledOn,
