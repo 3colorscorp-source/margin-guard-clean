@@ -18346,16 +18346,21 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function hubBillingContractTotalForGroup(group) {
-    const root = group?.root;
-    const fromRoot = Math.max(finiteNumber(root?.projectContractTotal, 0), 0);
-    if (fromRoot > 0) return fromRoot;
+    const members = Array.isArray(group?.members) ? group.members : [];
     let best = 0;
-    (group?.members || []).forEach((r) => {
-      if (hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change") return;
+    members.forEach((r) => {
+      if (!r || hubRowIsBillingChildInvoice(r)) return;
+      if (hubRowIsMaterialCostInvoice(r) || hubRowIsProjectExpenseInvoice(r)) return;
+      if (hubBillingInvoiceKind(r) === "change") return;
       const n = Math.max(finiteNumber(r?.projectContractTotal, 0), 0);
       if (n > best) best = n;
     });
-    return best;
+    if (best > 0) return best;
+    const root = group?.root;
+    if (root && !hubRowIsBillingChildInvoice(root)) {
+      return Math.max(finiteNumber(root?.projectContractTotal, 0), 0);
+    }
+    return 0;
   }
 
   function hubDrawerResolveBillingGroup(row) {
@@ -19066,10 +19071,17 @@ window.renderSupervisor = renderSupervisor;
     hubDrawerRenderWorkDetails(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
+    const billingGroup = hubDrawerResolveBillingGroup(row);
+    const groupContract = hubBillingContractTotalForGroup(billingGroup);
+    const childUsesProjectContract =
+      !useFolderLedger &&
+      hubRowIsBillingChildInvoice(row) &&
+      groupContract > 0 &&
+      Array.isArray(billingGroup.members) &&
+      billingGroup.members.length >= 2;
     let contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
-    if (useFolderLedger) {
-      const fromGroup = hubBillingContractTotalForGroup(hubDrawerResolveBillingGroup(row));
-      if (fromGroup > 0) contractTotal = fromGroup;
+    if (useFolderLedger || childUsesProjectContract) {
+      if (groupContract > 0) contractTotal = groupContract;
     }
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row) || useFolderLedger;
@@ -19092,7 +19104,7 @@ window.renderSupervisor = renderSupervisor;
           <div class="big" id="hubDrawerLedgerPaidBig">${escapeHtml(paidLabel)}</div>
           <div class="small" id="hubDrawerLedgerPaidSub">${
             ledgerApiOk
-              ? useFolderLedger
+              ? useFolderLedger || childUsesProjectContract
                 ? "Payments recorded for this project"
                 : "Payments recorded on this invoice"
               : "Local invoice payments + deposits"
@@ -19140,7 +19152,7 @@ window.renderSupervisor = renderSupervisor;
     if (ledgerApiOk && drawerEl) {
       const rowKey = drawerEl.dataset.hubDrawerRowKey || "";
       void (async () => {
-        const pack = useFolderLedger
+        const pack = useFolderLedger || childUsesProjectContract
           ? await fetchHubDrawerFolderLedgerPack(row)
           : await fetchHubDrawerLedgerPayments(row);
         const d = $("hubDrawer");
@@ -19173,16 +19185,22 @@ window.renderSupervisor = renderSupervisor;
           return;
         }
         const paidForCards = pack.netSum;
+        const contractForCards =
+          Number.isFinite(pack.contractTotal) && pack.contractTotal > 0 ? pack.contractTotal : contractTotal;
         paidEl.textContent = money(paidForCards, settings.currency);
-        hubDrawerApplyRemaining(contractTotal, paidForCards, row, settings);
+        if (useFolderLedger || childUsesProjectContract) {
+          const contractBig = $("hubDrawerStats")?.querySelector(".hub-drawer-stat-contract .big");
+          if (contractBig) contractBig.textContent = money(contractForCards, settings.currency);
+        }
+        hubDrawerApplyRemaining(contractForCards, paidForCards, row, settings);
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) {
-          subPaid.textContent = useFolderLedger
+          subPaid.textContent = useFolderLedger || childUsesProjectContract
             ? "Payments recorded for this project"
             : "Payments recorded on this invoice";
         }
         const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
-        updateHubDrawerPaymentDerivedUi(paidForCards, contractTotal, settings, lastLine, row);
+        updateHubDrawerPaymentDerivedUi(paidForCards, contractForCards, settings, lastLine, row);
       })();
     }
 

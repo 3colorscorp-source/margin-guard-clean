@@ -13,6 +13,9 @@ const {
   invoiceCanJoinContractBalance,
   notesWithBalanceMarker,
   materialsReadyForInvoice,
+  materialsOnBalance,
+  balanceWithMaterials,
+  clientMaterialsNote,
   notesWithMaterials,
   notesWithBilledOn,
   notesAlreadyBilledOnBalanceInvoice,
@@ -75,5 +78,23 @@ const again = materialsReadyForInvoice([
   },
 ]);
 assert.strictEqual(again.amount, 0);
+
+const stillOnBalance = materialsOnBalance([
+  {
+    id: "exp-1",
+    invoice_label: "Project expenses",
+    amount: 557,
+    paid_amount: 0,
+    status: "draft",
+    notes: billed,
+  },
+]);
+assert.strictEqual(stillOnBalance.amount, 557);
+assert.deepStrictEqual(stillOnBalance.lines, ["2026-11-04 — Sealer — $20.00"]);
+assert.strictEqual(balanceWithMaterials(9114.61, 1000, stillOnBalance.amount), 8671.61);
+const publicNote = clientMaterialsNote(stillOnBalance);
+assert.ok(publicNote.indexOf("Unexpected expenses:") === 0);
+assert.ok(publicNote.indexOf("Unexpected expenses total: $557.00") > 0);
+assert.ok(publicNote.indexOf("[included_in_contract_balance]") < 0);
 
 console.log("PASS materials can join the balance without changing the contract");

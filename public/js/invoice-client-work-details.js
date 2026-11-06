@@ -13,6 +13,9 @@
     let s = String(raw == null ? "" : raw).replace(/\r\n/g, "\n");
     s = s.replace(/\[source_invoice:[^\]]*\]/gi, "");
     s = s.replace(/\[invoice_type:[^\]]*\]/gi, "");
+    s = s.replace(/\[included_in_contract_balance\]/gi, "");
+    s = s.replace(/\[billed_on_balance_invoice:[^\]]*\]/gi, "");
+    s = s.replace(/\[replaced_by_balance_invoice\]/gi, "");
     s = s.replace(/\[mg_[a-z0-9_]+:[^\]]*\]/gi, "");
     s = s.replace(/[ \t]+\n/g, "\n");
     s = s.replace(/\n{3,}/g, "\n\n");

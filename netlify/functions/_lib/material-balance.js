@@ -59,14 +59,14 @@ function expenseLinesFromNotes(notes) {
   return lines;
 }
 
-function materialsReadyForInvoice(rows) {
+function materialsFromBalanceRows(rows, skipBilledOn) {
   const lines = [];
   const ids = [];
   let amount = 0;
   (Array.isArray(rows) ? rows : []).forEach((row) => {
     if (!row || !invoiceCanJoinContractBalance(row)) return;
     if (!notesIncludeBalanceMarker(row.notes)) return;
-    if (notesAlreadyBilledOnBalanceInvoice(row.notes)) return;
+    if (skipBilledOn && notesAlreadyBilledOnBalanceInvoice(row.notes)) return;
     const status = String(row.status || "").trim().toLowerCase();
     if (CLOSED.has(status)) return;
     const due = money(Math.max(0, money(row.amount) - money(row.paid_amount)));
@@ -78,6 +78,26 @@ function materialsReadyForInvoice(rows) {
     else lines.push("Materials — $" + due.toFixed(2));
   });
   return { amount: money(amount), lines, ids };
+}
+
+function materialsReadyForInvoice(rows) {
+  return materialsFromBalanceRows(rows, true);
+}
+
+function materialsOnBalance(rows) {
+  return materialsFromBalanceRows(rows, false);
+}
+
+function balanceWithMaterials(contractTotal, paidToDate, materialsAmount) {
+  return money(Math.max(0, money(contractTotal) - money(paidToDate) + money(materialsAmount)));
+}
+
+function clientMaterialsNote(materials) {
+  if (!materials || !(Number(materials.amount) > 0)) return "";
+  return ["Unexpected expenses:"]
+    .concat(materials.lines || [])
+    .concat(["Unexpected expenses total: $" + money(materials.amount).toFixed(2)])
+    .join("\n");
 }
 
 function notesWithMaterials(clientNotes, materials) {
@@ -106,6 +126,9 @@ module.exports = {
   notesAlreadyBilledOnBalanceInvoice,
   expenseLinesFromNotes,
   materialsReadyForInvoice,
+  materialsOnBalance,
+  balanceWithMaterials,
+  clientMaterialsNote,
   notesWithMaterials,
   notesWithBilledOn,
 };
