@@ -21423,8 +21423,52 @@ window.renderSupervisor = renderSupervisor;
       remaining: 0,
       paymentCount: 0,
       idempotencyKey: "",
-      successHandled: false
+      successHandled: false,
+      unexpectedExpenses: 0,
+      balanceInvoiceId: "",
+      balanceInvoiceNo: ""
     };
+
+    function hubUnexpectedExpensePaymentTarget(row, paidOnThisInvoice) {
+      const invoiceAmount = finiteNumber(row?.amount, 0);
+      const paid = finiteNumber(paidOnThisInvoice, 0);
+      const ownRemaining = Math.max(0, Math.round((invoiceAmount - paid) * 100) / 100);
+      const plain = {
+        invoiceTotal: invoiceAmount,
+        remaining: ownRemaining,
+        invoiceId: "",
+        unexpectedExpenses: 0,
+        invoiceNo: ""
+      };
+      if (
+        !row ||
+        hubRowIsRemainingBalanceInvoice(row) ||
+        hubRowIsProjectExpenseInvoice(row) ||
+        hubRowIsMaterialCostInvoice(row)
+      ) {
+        return plain;
+      }
+      const expenses = finiteNumber(hubMaterialBalanceSplit(row).included, 0);
+      if (!(expenses > 0.005)) return plain;
+      const withExpenses = Math.max(0, Math.round((ownRemaining + expenses) * 100) / 100);
+      const group = hubDrawerResolveBillingGroup(row);
+      const bill = (group.members || []).find((member) => {
+        if (!member || member === row) return false;
+        if (!hubRowIsRemainingBalanceInvoice(member)) return false;
+        if (hubRowIsArchivedOrVoidBilling(member)) return false;
+        return Math.abs(hubRowInvoiceScopedBalance(member) - withExpenses) <= 0.02;
+      });
+      if (!bill) return plain;
+      const ids = hubLedgerTargetIds(bill);
+      if (!ids.invoiceId) return plain;
+      return {
+        invoiceTotal: finiteNumber(bill.amount, withExpenses),
+        remaining: hubRowInvoiceScopedBalance(bill),
+        invoiceId: ids.invoiceId,
+        unexpectedExpenses: expenses,
+        invoiceNo: String(bill.invoiceNo || bill.project?.invoice?.invoiceNo || "").trim()
+      };
+    }
 
     function newHubPaymentIdempotencyKey() {
       if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
@@ -21478,9 +21522,17 @@ window.renderSupervisor = renderSupervisor;
       const total = finiteNumber(hubRecordPayModalCtx.invoiceTotal, 0);
       const remaining = finiteNumber(hubRecordPayModalCtx.remaining, 0);
       const currency = settings?.currency;
-      hint.textContent = hubRecordPayUsesFullAmount()
+      const expenses = finiteNumber(hubRecordPayModalCtx.unexpectedExpenses, 0);
+      const invoiceNo = String(hubRecordPayModalCtx.balanceInvoiceNo || "").trim();
+      let text = hubRecordPayUsesFullAmount()
         ? `Records the remaining balance of ${money(remaining, currency)}.`
         : `Invoice ${money(total, currency)}. Remaining ${money(remaining, currency)}. Enter only what the customer paid.`;
+      if (expenses > 0.005) {
+        text += invoiceNo
+          ? ` Includes unexpected expenses of ${money(expenses, currency)} on ${invoiceNo}.`
+          : ` Includes unexpected expenses of ${money(expenses, currency)}.`;
+      }
+      hint.textContent = text;
     }
 
     function applyHubRecordPayAmountMode() {
@@ -21814,9 +21866,12 @@ window.renderSupervisor = renderSupervisor;
       const netSum = Number.isFinite(data?.netSum)
         ? data.netSum
         : payments.reduce((s, p) => s + finiteNumber(p?.amount, 0), 0);
-      const amountTotal = finiteNumber(selectedRow.amount, 0);
-      hubRecordPayModalCtx.invoiceTotal = amountTotal;
-      hubRecordPayModalCtx.remaining = Math.max(0, amountTotal - netSum);
+      const target = hubUnexpectedExpensePaymentTarget(selectedRow, netSum);
+      hubRecordPayModalCtx.invoiceTotal = target.invoiceTotal;
+      hubRecordPayModalCtx.remaining = target.remaining;
+      hubRecordPayModalCtx.unexpectedExpenses = target.unexpectedExpenses;
+      hubRecordPayModalCtx.balanceInvoiceId = target.invoiceId;
+      hubRecordPayModalCtx.balanceInvoiceNo = target.invoiceNo;
       hubRecordPayModalCtx.paymentCount = payments.length;
       hubRecordPayModalCtx.idempotencyKey = newHubPaymentIdempotencyKey();
       hubRecordPayModalCtx.successHandled = false;
@@ -21844,6 +21899,7 @@ window.renderSupervisor = renderSupervisor;
         return;
       }
       const ids = hubLedgerTargetIds(selectedRow);
+      const balanceInvoiceId = String(hubRecordPayModalCtx.balanceInvoiceId || "").trim();
       const payment_type = val("hubRecordPayType");
       const payment_method = val("hubRecordPayMethod");
       const amountRaw = Number(val("hubRecordPayAmount"));
@@ -21892,9 +21948,9 @@ window.renderSupervisor = renderSupervisor;
         hubRecordPayModalCtx.idempotencyKey = newHubPaymentIdempotencyKey();
       }
       const body = {
-        invoice_id: ids.invoiceId || null,
-        quote_id: ids.quoteId || null,
-        project_id: ids.projectId || null,
+        invoice_id: balanceInvoiceId || ids.invoiceId || null,
+        quote_id: balanceInvoiceId ? null : ids.quoteId || null,
+        project_id: balanceInvoiceId ? null : ids.projectId || null,
         payment_type,
         payment_method,
         amount,
