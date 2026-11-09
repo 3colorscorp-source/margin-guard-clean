@@ -64,7 +64,7 @@ assert.strictEqual(section.approved_change_orders, 0);
 assert.strictEqual(section.current_contract_total, 9114.61);
 assert.strictEqual(section.total_invoiced, 9114.61);
 assert.notStrictEqual(section.total_invoiced, 15471.61);
-assert.strictEqual(section.outside_contract, 557);
+assert.strictEqual(section.outside_contract, 0);
 assert.strictEqual(section.materials_on_balance, 0);
 assert.strictEqual(section.paid_to_date, 1000);
 assert.strictEqual(section.balance_due, 8114.61);
@@ -156,8 +156,8 @@ const paidContract = buildCollectionSection({
 });
 assert.strictEqual(paidContract.invoice_status, "Paid");
 assert.strictEqual(paidContract.paid_to_date, 9114.61);
-assert.strictEqual(paidContract.materials_on_balance, 557);
-assert.strictEqual(paidContract.balance_due, 557);
+assert.strictEqual(paidContract.materials_on_balance, 0);
+assert.strictEqual(paidContract.balance_due, 0);
 assert.deepStrictEqual(
   deriveCompletionStatusSuggestion({
     progressPct: 100,

@@ -589,10 +589,24 @@ function invoiceIsOutsideContract(inv) {
   return invoiceIsProjectExpense(inv) || invoiceIsMaterialBill(inv);
 }
 
-function materialStillDue(inv, ledgerMap) {
+function paymentTotalsByInvoice(payments) {
+  const map = new Map();
+  for (const row of Array.isArray(payments) ? payments : []) {
+    const iid = row?.invoice_id != null ? String(row.invoice_id).trim() : "";
+    if (!iid) continue;
+    map.set(iid, round2((map.get(iid) || 0) + num(row.amount, 0)));
+  }
+  return map;
+}
+
+function materialStillDue(inv, ledgerMap, paymentMap) {
   const iid = invoiceRowId(inv);
   const ledgerPaid = iid && ledgerMap ? num(ledgerMap.get(iid), 0) : 0;
-  const paid = round2(Math.max(num(inv?.paid_amount, 0), ledgerPaid));
+  const recordedPaid = iid && paymentMap ? num(paymentMap.get(iid), 0) : 0;
+  const paid = round2(Math.max(num(inv?.paid_amount, 0), ledgerPaid, recordedPaid));
+  const status = invoiceField(inv, "status").toLowerCase();
+  const paymentStatus = invoiceField(inv, "payment_status").toLowerCase();
+  if (status === "paid" || paymentStatus === "paid") return 0;
   return round2(Math.max(0, num(inv?.amount, 0) - paid));
 }
 
@@ -884,11 +898,14 @@ function buildCollectionSection({
       sliceInvoices.reduce((s, inv) => s + Math.max(0, num(inv.amount, 0)), 0)
     );
   }
+  const paymentMap = paymentTotalsByInvoice(payments);
   const stillOutside = outsideInvoices.filter((inv) => !notesIncludeBalanceMarker(inv && inv.notes));
   const addedMaterials = outsideInvoices.filter((inv) => notesIncludeBalanceMarker(inv && inv.notes));
-  const outsideContract = round2(stillOutside.reduce((s, inv) => s + materialStillDue(inv, ledgerMap), 0));
-  const materialsOnBalance = round2(
-    addedMaterials.reduce((s, inv) => s + materialStillDue(inv, ledgerMap), 0)
+  const outsideContract = round2(
+    stillOutside.reduce((s, inv) => s + materialStillDue(inv, ledgerMap, paymentMap), 0)
+  );
+  let materialsOnBalance = round2(
+    addedMaterials.reduce((s, inv) => s + materialStillDue(inv, ledgerMap, paymentMap), 0)
   );
 
   let paidToDate = 0;
@@ -911,7 +928,12 @@ function buildCollectionSection({
   );
   if (ledgerPaymentTotal > paidToDate) paidToDate = ledgerPaymentTotal;
 
-  const balanceDue = round2(Math.max(0, currentContractTotal - paidToDate + materialsOnBalance));
+  const contractBalance = round2(Math.max(0, currentContractTotal - paidToDate));
+  // A payment that already collected the contract includes materials placed on
+  // that balance. They stay a job cost, and they are not billed a second time.
+  if (currentContractTotal > 0 && contractBalance <= 0.01) materialsOnBalance = 0;
+
+  const balanceDue = round2(contractBalance + materialsOnBalance);
 
   const lastPay = contractPayments
     .map((p) => p.paid_at || p.created_at)
