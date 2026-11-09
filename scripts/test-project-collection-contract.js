@@ -7,7 +7,10 @@
 "use strict";
 
 const assert = require("assert");
-const { buildCollectionSection } = require("../netlify/functions/_lib/project-financial-detail");
+const {
+  buildCollectionSection,
+  deriveCompletionStatusSuggestion,
+} = require("../netlify/functions/_lib/project-financial-detail");
 
 const project = {
   sale_price: 9114.61,
@@ -134,5 +137,50 @@ assert.strictEqual(added.outside_contract, 0);
 assert.strictEqual(added.materials_on_balance, 557);
 assert.strictEqual(added.paid_to_date, 1000);
 assert.strictEqual(added.balance_due, 8671.61);
+
+const paidContract = buildCollectionSection({
+  project,
+  invoices: [
+    Object.assign({}, erinInvoices[0], {
+      paid_amount: 9114.61,
+      status: "paid",
+      payment_status: "paid",
+    }),
+    Object.assign({}, erinInvoices[2], {
+      notes: erinInvoices[2].notes + "\n[included_in_contract_balance]",
+    }),
+  ],
+  payments: [{ id: "pay-contract", invoice_id: "contract", amount: 9114.61, paid_at: "2026-10-31" }],
+  changeOrders: [],
+  ledgerPaidByInvoiceId: new Map(),
+});
+assert.strictEqual(paidContract.invoice_status, "Paid");
+assert.strictEqual(paidContract.paid_to_date, 9114.61);
+assert.strictEqual(paidContract.materials_on_balance, 557);
+assert.strictEqual(paidContract.balance_due, 557);
+assert.deepStrictEqual(
+  deriveCompletionStatusSuggestion({
+    progressPct: 100,
+    completedDays: 8,
+    estimatedDays: 8,
+    balanceDue: paidContract.balance_due,
+    contractBalance: round2(paidContract.current_contract_total - paidContract.paid_to_date),
+  }),
+  { label: "Ready to close", tone: "green" }
+);
+assert.deepStrictEqual(
+  deriveCompletionStatusSuggestion({
+    progressPct: 100,
+    completedDays: 8,
+    estimatedDays: 8,
+    balanceDue: 8114.61,
+    contractBalance: 8114.61,
+  }),
+  { label: "Work complete — balance still due", tone: "yellow" }
+);
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
 
 console.log("PASS contract collection stays on the real contract");
