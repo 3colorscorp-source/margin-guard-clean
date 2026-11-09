@@ -907,19 +907,28 @@ function computeFinancialOperationalState({
   return op;
 }
 
-function deriveCompletionStatusSuggestion({ progressPct, completedDays, estimatedDays, balanceDue }) {
+function deriveCompletionStatusSuggestion({
+  progressPct,
+  completedDays,
+  estimatedDays,
+  balanceDue,
+  contractBalance,
+}) {
   const pct = num(progressPct, 0);
   const est = num(estimatedDays, 0);
   const completed = num(completedDays, 0);
   const bal = num(balanceDue, 0);
+  // Materials added on top of a paid contract stay visible as their own line.
+  // They do not keep the job in "collection due" once the contract itself is paid.
+  const contractStillDue = num(contractBalance, bal);
   const workComplete =
     (est > 0 && completed >= est) || pct >= 100;
 
-  if (workComplete && bal <= 0.01) {
+  if (workComplete && contractStillDue <= 0.01) {
     return { label: "Ready to close", tone: "green" };
   }
   if (workComplete && bal > 0.01) {
-    return { label: "Work complete — balance still due", tone: "amber" };
+    return { label: "Work complete — balance still due", tone: "yellow" };
   }
   return null;
 }
@@ -1535,11 +1544,15 @@ function buildProjectFinancialDetail({
   });
 
   const progressPct = operational.progress_pct;
+  const contractBalance = round2(
+    Math.max(0, num(collection.current_contract_total, 0) - num(collection.paid_to_date, 0))
+  );
   const completionSuggestion = deriveCompletionStatusSuggestion({
     progressPct,
     completedDays: operational.completed_days,
     estimatedDays: operational.estimated_days,
     balanceDue: collection.balance_due,
+    contractBalance,
   });
 
   let statusLabel = str(project.status, 64);
@@ -1611,6 +1624,7 @@ module.exports = {
   buildOwnerProfitBreakdown,
   parseBusinessSettingsForOwnerProfit,
   computeFinancialOperationalState,
+  deriveCompletionStatusSuggestion,
   loadInvoicesForProject,
   loadPaymentsForProject,
   sumLedgerPaidByInvoiceId,

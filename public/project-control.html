@@ -1417,6 +1417,51 @@
         return finMini(label, ready ? value : 'Missing', ready ? finMoneyClass('neutral') : finMoneyClass('warning'));
       }
 
+      function joinSettingNames(items) {
+        var names = items.slice();
+        if (!names.length) return '';
+        names[0] = names[0].charAt(0).toUpperCase() + names[0].slice(1);
+        if (names.length === 1) return names[0];
+        if (names.length === 2) return names[0] + ' and ' + names[1];
+        return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+      }
+
+      function businessSettingsRateNote(bs) {
+        if (!bs) return '';
+        var blocksProfit = [];
+        if (bs.pro_rate == null) blocksProfit.push('the Pro rate');
+        if (bs.assistant_rate == null) blocksProfit.push('the Assistant rate');
+        if (!(bs.burden_ok && bs.burden_pct_total != null)) blocksProfit.push('employer burden');
+        if (!(bs.overhead_ok && bs.overhead_per_hour != null)) blocksProfit.push('overhead');
+        if (!(bs.reserve_ok && bs.reserve_pct != null)) blocksProfit.push('savings reserve');
+        var leftOut = [];
+        if (!(bs.commission_ok && bs.sales_commission_pct != null)) leftOut.push('seller commission');
+        if (!(bs.supervisor_bonus_ok && bs.supervisor_bonus_pct != null)) leftOut.push('supervisor bonus');
+        var sentences = [];
+        if (blocksProfit.length) {
+          sentences.push(
+            joinSettingNames(blocksProfit) +
+            (blocksProfit.length === 1 ? ' is' : ' are') +
+            ' not set in Business Settings, so owner profit stays incomplete until ' +
+            (blocksProfit.length === 1 ? 'it is' : 'they are') +
+            ' set.'
+          );
+        }
+        if (leftOut.length) {
+          sentences.push(
+            joinSettingNames(leftOut) +
+            (leftOut.length === 1 ? ' is' : ' are') +
+            ' not set, so ' +
+            (leftOut.length === 1 ? 'that amount stays' : 'those amounts stay') +
+            ' out of the profit until ' +
+            (leftOut.length === 1 ? 'it is' : 'they are') +
+            ' set.'
+          );
+        }
+        if (!sentences.length) return '';
+        return '<p class="pcc-fin-note" role="status">' + esc(sentences.join(' ')) + '</p>';
+      }
+
       function fmtActualLaborCost(actL, labor) {
         if (actL.labor_cost != null && actL.labor_cost !== '') return moneyUsd(actL.labor_cost);
         if (labor.labor_rates_missing || labor.cost_method === 'no_rate') return 'Not calculated';
@@ -1770,7 +1815,7 @@
             settingMini('Savings reserve', bs.reserve_ok && bs.reserve_pct != null, bs.reserve_pct != null ? String(bs.reserve_pct) + '%' : '') +
             settingMini('Target margin', bs.target_margin_ok && bs.target_margin_pct != null, bs.target_margin_pct != null ? String(bs.target_margin_pct) + '%' : '') +
             '</div>' +
-            '<p class="pcc-fin-note">Labor, burden, overhead, commission, bonus, and reserve use these Business Settings. A missing rate stays out of the profit until it is set.</p>' +
+            businessSettingsRateNote(bs) +
             '</section>';
         }
 
