@@ -1069,19 +1069,8 @@
           <div class="pcc-money__grid" id="pccMoneyGrid"></div>
         </section>
         <div class="pcc-baseline-actions">
-          <button type="button" class="btn primary" id="pccBtnSetBaseline">Set migrated baseline</button>
+          <button type="button" class="btn ghost" id="pccBtnSetBaseline">Set migrated baseline</button>
           <span class="hint" id="pccBaselineStatus" aria-live="polite"></span>
-        </div>
-        <div class="pcc-kv" id="pccDetailKv"></div>
-        <div class="pcc-deviation" id="pccDetailDeviation"></div>
-        <h4 style="margin:16px 0 8px;">Work report history</h4>
-        <div class="pcc-table-wrap">
-          <table class="table">
-            <thead>
-              <tr><th>Date</th><th>Days</th><th>Hours</th><th>Note</th></tr>
-            </thead>
-            <tbody id="pccDetailReports"></tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -1238,6 +1227,9 @@
         var est = Number(m.estimatedDays);
         var spent = Number(m.daysSpent);
         var left = Number(m.daysRemaining);
+        if (est > 0 && spent > est + 0.05) {
+          return pctStr + ' · ' + fmtDayNum(spent) + '/' + fmtDayNum(est) + ' days · ' + fmtDayNum(spent - est) + ' over';
+        }
         if (est > 0) {
           return pctStr + ' · ' + fmtDayNum(spent) + '/' + fmtDayNum(est) + ' days · ' + fmtDayNum(left) + ' left';
         }
@@ -1316,6 +1308,10 @@
           expenseCount: exp.count,
           laborActual: act.labor_cost,
           laborBudget: est.labor_cost,
+          laborDays: act.days,
+          laborHours: act.hours,
+          laborEstDays: est.days,
+          laborEstHours: est.hours,
           invoiceStatus: cc.invoice_status || ''
         };
       }
@@ -1354,7 +1350,16 @@
           return;
         }
         var laborValue = fin.laborActual != null && fin.laborActual !== '' ? moneyUsd(fin.laborActual) : 'Not calculated';
-        var laborSub = fin.laborBudget != null && isFinite(Number(fin.laborBudget)) ? 'Budget ' + moneyUsd(fin.laborBudget) : '';
+        var laborBits = [];
+        if (fin.laborBudget != null && isFinite(Number(fin.laborBudget))) laborBits.push('Budget ' + moneyUsd(fin.laborBudget));
+        if (fin.laborDays != null && isFinite(Number(fin.laborDays)) && fin.laborEstDays != null && isFinite(Number(fin.laborEstDays))) {
+          laborBits.push(Number(fin.laborDays).toFixed(1) + ' of ' + Number(fin.laborEstDays).toFixed(1) + ' days');
+        }
+        if (fin.laborHours != null && isFinite(Number(fin.laborHours)) && fin.laborEstHours != null && isFinite(Number(fin.laborEstHours))) {
+          var hourGap = Number(fin.laborHours) - Number(fin.laborEstHours);
+          if (Math.abs(hourGap) >= 0.05) laborBits.push(Math.abs(hourGap).toFixed(1) + ' h ' + (hourGap > 0 ? 'over' : 'under'));
+        }
+        var laborSub = laborBits.join(' · ');
         var profitText = fin.incomplete ? 'Incomplete' : moneyUsd(fin.profit);
         var marginText = fin.incomplete ? 'Incomplete' : (fin.margin != null && isFinite(Number(fin.margin)) ? String(fin.margin) + '%' : '—');
         var expenseCount = fin.expenseCount != null ? String(fin.expenseCount) : '0';
@@ -2010,16 +2015,21 @@
 
       function applyPccServerOperationalDisplay(metrics, detail) {
         if (!metrics || !detail) return false;
+        var labor = detail.labor || {};
+        var est = labor.estimated || {};
+        var act = labor.actual || {};
         var op = detail.operational || {};
         var hdr = detail.header || {};
-        if (hdr.progress_pct != null) metrics.progressPct = hdr.progress_pct;
-        else if (op.progress_pct != null) metrics.progressPct = op.progress_pct;
-        if (op.completed_days != null) metrics.daysSpent = Number(op.completed_days);
+        if (est.days != null && Number(est.days) > 0) metrics.estimatedDays = Number(est.days);
+        else if (op.estimated_days != null && Number(op.estimated_days) > 0) metrics.estimatedDays = Number(op.estimated_days);
+        if (act.days != null && isFinite(Number(act.days))) metrics.daysSpent = Number(act.days);
         else if (op.days_spent != null) metrics.daysSpent = Number(op.days_spent);
-        if (op.days_remaining != null) metrics.daysRemaining = Number(op.days_remaining);
-        if (op.estimated_days != null && Number(op.estimated_days) > 0) {
-          metrics.estimatedDays = Number(op.estimated_days);
-        }
+        if (act.hours != null && isFinite(Number(act.hours))) metrics.reportedHours = Number(act.hours);
+        var estDays = Number(metrics.estimatedDays) || 0;
+        var spent = Number(metrics.daysSpent) || 0;
+        metrics.daysRemaining = estDays > 0 ? Math.max(0, estDays - spent) : 0;
+        if (estDays > 0) metrics.progressPct = (spent / estDays) * 100;
+        else if (hdr.progress_pct != null) metrics.progressPct = hdr.progress_pct;
         if (hdr.status_label) metrics.statusLabel = hdr.status_label;
         if (hdr.tone) metrics.tone = hdr.tone;
         metrics.serverOpAligned = true;
@@ -2157,7 +2167,7 @@
             '<td class="pcc-finance-cell">' + financeListCell(row.finance) + '</td>' +
             '<td class="pcc-row-actions">' +
             '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">Financials</button>' +
-            '<button type="button" class="btn pcc-view-reports" data-pcc-action="reports" data-id="' + esc(p.id) + '">Reports &amp; baseline</button>' +
+            '<button type="button" class="btn pcc-view-reports" data-pcc-action="reports" data-id="' + esc(p.id) + '">Baseline</button>' +
             '<button type="button" class="btn ghost pcc-remove" data-id="' + esc(p.id) + '" data-name="' + esc(p.projectName || 'Project') + '">Archive</button>' +
             '</td>' +
             '</tr>'
@@ -2311,15 +2321,12 @@
         selectedProjectNotes = baseLoad.projectNotes || String(p.notes || '').trim();
         selectedProjectName = baseLoad.projectName || String(p.projectName || '').trim();
         renderTable();
-        var m = row.metrics;
         document.getElementById('pccDetailTitle').textContent = p.projectName || 'Project';
         document.getElementById('pccDetailClient').textContent = p.clientName ? ('Client: ' + p.clientName) : '';
         var statusEl = document.getElementById('pccBaselineStatus');
         if (statusEl) {
           if (selectedBaseline) {
-            statusEl.textContent = 'Baseline set · ' + (selectedBaseline.external_source || 'External') +
-              ' · ' + Number(selectedBaseline.days_completed_to_date || 0).toFixed(0) + ' of ' +
-              Number(selectedBaseline.estimated_total_days || 0).toFixed(0) + ' days';
+            statusEl.textContent = 'Migrated baseline on file. Days, hours, and labor are in Financials.';
           } else if (baseLoad.scopeInNotes) {
             statusEl.textContent = 'No baseline yet — contract/scope is in project notes. Use Set migrated baseline.';
           } else {
@@ -2331,50 +2338,7 @@
       }
 
       function paintOperationalDetail(row) {
-        var m = row.metrics;
-        var fin = row.finance;
         renderProjectFinanceBoard(row);
-        var kv = document.getElementById('pccDetailKv');
-        var expenseValue = String(m.unexpectedExpensesCount) + ' field entries';
-        if (fin && !fin.unavailable && fin.expenses != null) {
-          var count = fin.expenseCount != null ? fin.expenseCount : m.unexpectedExpensesCount;
-          expenseValue = moneyUsd(fin.expenses) + ' · ' + String(count) + ' entries';
-        }
-        var kvPairs = [
-          ['Due date', fmtDate(m.dueDate)],
-          ['Projected finish', m.projectedEndDate ? fmtDate(m.projectedEndDate) : '—'],
-          ['Budgeted days', m.estimatedDays > 0 ? m.estimatedDays.toFixed(2) : '—'],
-          ['Days spent', m.daysSpent.toFixed(2)],
-          ['Days remaining', m.daysRemaining.toFixed(2)],
-          ['Hours reported', m.reportedHours.toFixed(2)],
-          ['Unexpected expenses', expenseValue],
-          ['Invoice / payments', 'See Invoices Hub (not part of field baseline)'],
-          ['Progress', pct(m.progressPct)],
-          ['Plan deviation', m.planDeviationLabel],
-          ['Status', m.statusLabel]
-        ];
-        if (selectedBaseline) {
-          kvPairs.splice(1, 0,
-            ['Migration source', selectedBaseline.external_source || '—'],
-            ['Baseline start', fmtDate(selectedBaseline.actual_start_date)],
-            ['Baseline target', fmtDate(selectedBaseline.target_finish_date)],
-            ['Baseline days done', Number(selectedBaseline.days_completed_to_date || 0).toFixed(2)],
-            ['Current phase', selectedBaseline.current_phase || '—']
-          );
-        }
-        kv.innerHTML = kvPairs.map(function (pair) {
-          return '<div><div class="k">' + esc(pair[0]) + '</div><div class="v">' + esc(pair[1]) + '</div></div>';
-        }).join('');
-        document.getElementById('pccDetailDeviation').textContent = m.planDeviationDetail;
-        var reps = (row.reports || []).slice().sort(function (a, b) {
-          return String(b.entry_date || '').localeCompare(String(a.entry_date || ''));
-        });
-        document.getElementById('pccDetailReports').innerHTML = reps.length
-          ? reps.map(function (r) {
-            return '<tr><td>' + esc(fmtDate(r.entry_date)) + '</td><td>' + esc(Number(r.days || 0).toFixed(2)) + '</td><td>' +
-              esc(Number(r.hours || 0).toFixed(2)) + '</td><td>' + ownerNoteCell(r.note) + '</td></tr>';
-          }).join('')
-          : '<tr><td colspan="4" class="sub">No work reports yet.</td></tr>';
         document.getElementById('pccDetail').classList.add('open');
       }
 

@@ -1495,14 +1495,23 @@ function buildProjectFinancialDetail({
     acceptedQuote,
   });
 
-  const progressPct = operational.progress_pct;
+  const laborReportedDays = num(labor.actual?.days, 0);
+  const laborEstimatedDays = num(labor.estimated?.days, 0);
+  const scheduleDays =
+    laborReportedDays > 0 ? laborReportedDays : num(operational.completed_days, 0);
+  const scheduleEstimate =
+    laborEstimatedDays > 0 ? laborEstimatedDays : num(operational.estimated_days, 0);
+  const progressPct =
+    scheduleEstimate > 0
+      ? Math.round((scheduleDays / scheduleEstimate) * 100)
+      : operational.progress_pct;
   const contractBalance = round2(
     Math.max(0, num(collection.current_contract_total, 0) - num(collection.paid_to_date, 0))
   );
   const completionSuggestion = deriveCompletionStatusSuggestion({
     progressPct,
-    completedDays: operational.completed_days,
-    estimatedDays: operational.estimated_days,
+    completedDays: scheduleDays,
+    estimatedDays: scheduleEstimate,
     balanceDue: collection.balance_due,
     contractBalance,
   });
