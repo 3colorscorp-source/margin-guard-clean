@@ -907,6 +907,43 @@ function computeFinancialOperationalState({
   return op;
 }
 
+function acceptedProposalProfit({
+  bs,
+  proposalTotal,
+  estimatedLabor,
+  estimatedHours,
+  estimatedDays,
+  materialCost,
+}) {
+  const total = num(proposalTotal, 0);
+  const labor = num(estimatedLabor, 0);
+  const hours = num(estimatedHours, 0);
+  if (!(total > 0) || !(labor > 0) || !bs?.burden_ok || !bs?.overhead_ok || !bs?.reserve_ok) {
+    return null;
+  }
+  const taxPct =
+    (num(bs.fica_pct, 0) + num(bs.futa_pct, 0) + num(bs.casui_pct, 0) + num(bs.wc_pct, 0)) / 100;
+  const loaded = round2(labor + round2(labor * taxPct));
+  const operating = round2(num(bs.overhead_per_hour, 0) * hours);
+  const commission = bs.commission_ok
+    ? round2(labor * (num(bs.sales_commission_pct, 0) / 100))
+    : 0;
+  let bonus = 0;
+  if (bs.supervisor_bonus_ok) {
+    bonus = num(
+      computeSupervisorExecutionBonus({
+        laborBudget: labor,
+        effectiveDays: num(estimatedDays, 0),
+        daysSpent: num(estimatedDays, 0),
+        supervisorBonusPctPoints: bs.supervisor_bonus_pct,
+      }).bonusActual,
+      0
+    );
+  }
+  const reserve = round2(total * (num(bs.reserve_pct, 0) / 100));
+  return round2(total - loaded - operating - commission - bonus - reserve - num(materialCost, 0));
+}
+
 function deriveCompletionStatusSuggestion({
   progressPct,
   completedDays,
@@ -1157,6 +1194,7 @@ function buildOwnerProfitBreakdown({
   expenses,
   operational,
   mgSettings,
+  acceptedQuote,
 }) {
   const bs = parseBusinessSettingsForOwnerProfit(mgSettings);
   const snap = computeProjectSnapshot({
@@ -1394,7 +1432,26 @@ function buildOwnerProfitBreakdown({
     ],
   };
 
-  const projectedProfit = round2(num(project?.estimated_profit, snap.projected_profit));
+  const storedProjected = num(project?.estimated_profit, NaN);
+  const quoteTotal = num(acceptedQuote?.total, NaN);
+  const proposalTotal =
+    Number.isFinite(quoteTotal) && quoteTotal > 0
+      ? round2(quoteTotal)
+      : round2(Math.max(num(project?.sale_price, 0), 0)) || contractTotal;
+  const fromProposal = acceptedProposalProfit({
+    bs,
+    proposalTotal,
+    estimatedLabor: num(laborSection?.estimated?.labor_cost, 0),
+    estimatedHours: num(laborSection?.estimated?.hours, 0),
+    estimatedDays: num(laborSection?.estimated?.days, 0),
+    materialCost,
+  });
+  const projectedProfit =
+    Number.isFinite(storedProjected) && Math.abs(storedProjected) > 0.009
+      ? round2(storedProjected)
+      : fromProposal != null
+        ? fromProposal
+        : round2(num(snap.projected_profit, 0));
 
   return {
     owner_profit_breakdown: breakdown,
@@ -1502,6 +1559,7 @@ function buildProjectFinancialDetail({
   migrationBaseline,
   ledgerPaidByInvoiceId,
   operationalPlanRaw,
+  acceptedQuote,
 }) {
   const mg = extractMgSettings(tenantSnapshotPayload);
   const labor = computeLaborCostSection({
@@ -1541,6 +1599,7 @@ function buildProjectFinancialDetail({
     expenses: expenseRows,
     operational: opRaw,
     mgSettings: mg,
+    acceptedQuote,
   });
 
   const progressPct = operational.progress_pct;
@@ -1625,6 +1684,7 @@ module.exports = {
   parseBusinessSettingsForOwnerProfit,
   computeFinancialOperationalState,
   deriveCompletionStatusSuggestion,
+  acceptedProposalProfit,
   loadInvoicesForProject,
   loadPaymentsForProject,
   sumLedgerPaidByInvoiceId,

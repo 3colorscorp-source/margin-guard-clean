@@ -46,6 +46,27 @@ async function loadLatestTenantSnapshotPayload(tenantId) {
   }
 }
 
+async function loadAcceptedQuote(tenantId, project) {
+  const quoteId = String(project?.quote_id || "").trim();
+  if (!quoteId) return null;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=id,status,accepted_at,total&limit=1`
+    );
+    const quote = Array.isArray(rows) ? rows[0] : null;
+    if (!quote) return null;
+    const status = String(quote.status || "").toLowerCase();
+    const accepted =
+      Boolean(quote.accepted_at) ||
+      status === "accepted" ||
+      status === "approved" ||
+      status === "signed";
+    return accepted ? quote : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 async function loadOperationalSnapshotPlan(tenantId, projectId) {
   const tid = encodeURIComponent(tenantId);
   const pid = encodeURIComponent(projectId);
@@ -130,6 +151,7 @@ exports.handler = async (event) => {
       migrationBaseline,
       invoices,
       operationalPlanRaw,
+      acceptedQuote,
     ] = await Promise.all([
       supabaseRequest(
         `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=*&order=entry_date.desc`
@@ -145,6 +167,7 @@ exports.handler = async (event) => {
       loadMigrationBaseline(tenant.id, projectId),
       loadInvoicesForProject(tenant.id, project),
       loadOperationalSnapshotPlan(tenant.id, projectId),
+      loadAcceptedQuote(tenant.id, project),
     ]);
 
     const reports = Array.isArray(reportRows) ? reportRows : [];
@@ -172,6 +195,7 @@ exports.handler = async (event) => {
       migrationBaseline,
       ledgerPaidByInvoiceId,
       operationalPlanRaw,
+      acceptedQuote,
     });
 
     return json(200, { ok: true, detail });
