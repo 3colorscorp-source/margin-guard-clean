@@ -1464,7 +1464,7 @@
 
       function fmtActualLaborCost(actL, labor) {
         if (actL.labor_cost != null && actL.labor_cost !== '') return moneyUsd(actL.labor_cost);
-        if (labor.labor_rates_missing || labor.cost_method === 'no_rate') return 'Not calculated';
+        if (labor.labor_not_reported || labor.labor_rates_missing || labor.cost_method === 'no_rate') return 'Not calculated';
         if (Number(actL.hours) > 0) return 'Not calculated';
         return moneyUsd(0);
       }
