@@ -11,11 +11,8 @@ const {
   parseOperationalPlanJsonb,
   normalizeOperationalPlan,
   planHasDays,
-  laborMetricsForCompletedOperationalDays,
-  laborCostFromOperationalPlan,
   computeOperationalPlanMetrics,
   computeOperationalPlanExecutionState,
-  scheduledDayNumbersSet,
 } = require("./operational-plan");
 const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
 const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
@@ -64,76 +61,6 @@ function sumReportHours(reports) {
 function sumReportDays(reports) {
   if (!Array.isArray(reports)) return 0;
   return round2(reports.reduce((s, r) => s + num(r?.days, 0), 0));
-}
-
-function completedDayNumbersSet(dayProgressRows) {
-  const set = new Set();
-  for (const row of Array.isArray(dayProgressRows) ? dayProgressRows : []) {
-    if (!row || typeof row !== "object") continue;
-    const status = str(row.status, 32).toLowerCase();
-    if (status !== "completed") continue;
-    const dn = Math.max(1, Math.floor(num(row.day_number, 0)));
-    if (dn > 0) set.add(dn);
-  }
-  return set;
-}
-
-function supplementalReportTotals(reports, completedDaySet, options) {
-  const skipUndifferentiated = Boolean(options?.skipUndifferentiatedReports);
-  let hours = 0;
-  let days = 0;
-  for (const r of Array.isArray(reports) ? reports : []) {
-    if (!r || typeof r !== "object") continue;
-    const dayRaw = r.day_number;
-    const dayNum =
-      dayRaw != null && dayRaw !== ""
-        ? Math.max(1, Math.floor(num(dayRaw, 0)))
-        : null;
-    if (dayNum == null) {
-      if (skipUndifferentiated) continue;
-    } else if (completedDaySet.has(dayNum)) {
-      continue;
-    }
-    hours += num(r.hours, 0);
-    days += num(r.days, 0);
-  }
-  return { hours: round2(hours), days: round2(days) };
-}
-
-function computeSupplementalLaborCost(
-  supplementalHours,
-  rolePlan,
-  rates,
-  blendedRate,
-  hasRoleBreakdown
-) {
-  if (supplementalHours <= 0) {
-    return { cost: 0, pro_hours: 0, assistant_hours: 0 };
-  }
-  if (hasRoleBreakdown && !rates.role_rates_missing) {
-    const planTotal = rolePlan.pro_hours + rolePlan.assistant_hours;
-    let proH = 0;
-    let asstH = 0;
-    if (planTotal > 0) {
-      proH = supplementalHours * (rolePlan.pro_hours / planTotal);
-      asstH = supplementalHours * (rolePlan.assistant_hours / planTotal);
-    } else {
-      proH = supplementalHours;
-    }
-    return {
-      cost: round2(proH * rates.pro_rate + asstH * rates.assistant_rate),
-      pro_hours: round2(proH),
-      assistant_hours: round2(asstH),
-    };
-  }
-  if (blendedRate > 0) {
-    return {
-      cost: round2(supplementalHours * blendedRate),
-      pro_hours: round2(supplementalHours),
-      assistant_hours: 0,
-    };
-  }
-  return { cost: 0, pro_hours: 0, assistant_hours: 0 };
 }
 
 function resolveNormalizedOperationalPlan(operationalPlanRaw, hoursPerDay) {
@@ -208,6 +135,27 @@ function stampRolePay(actual, proRate, assistantRate) {
   actual.assistant_cost = pay.assistant_cost;
 }
 
+function laborCostFromPlanAtSettings(opPlan, rates) {
+  const proRate = num(rates?.pro_rate, 0);
+  const assistantRate = num(rates?.assistant_rate, 0);
+  let proHours = 0;
+  let assistantHours = 0;
+  for (const day of Array.isArray(opPlan) ? opPlan : []) {
+    for (const worker of day?.workers || []) {
+      const hours = num(worker?.estimated_hours, 0);
+      if (hours <= 0) continue;
+      const type = String(worker?.worker_type || worker?.type || "").toLowerCase();
+      if (type === "helper" || type === "assistant") assistantHours += hours;
+      else proHours += hours;
+    }
+  }
+  return {
+    pro_hours: round2(proHours),
+    assistant_hours: round2(assistantHours),
+    cost: round2(proHours * proRate + assistantHours * assistantRate),
+  };
+}
+
 function laborCostFromSettingsRates(reports, rates) {
   const proRate = num(rates?.pro_rate, 0);
   const assistantRate = num(rates?.assistant_rate, 0);
@@ -215,6 +163,7 @@ function laborCostFromSettingsRates(reports, rates) {
   const list = Array.isArray(reports) ? reports : [];
   let proHours = 0;
   let assistantHours = 0;
+  let unassignedHours = 0;
   for (const report of list) {
     const hours = num(report?.hours, 0);
     if (hours <= 0) continue;
@@ -226,13 +175,14 @@ function laborCostFromSettingsRates(reports, rates) {
       proHours += hours * (pros / heads);
       assistantHours += hours * (assistants / heads);
     } else {
-      proHours += hours;
+      unassignedHours += hours;
     }
   }
-  if (proHours + assistantHours <= 0) return null;
+  if (proHours + assistantHours + unassignedHours <= 0) return null;
   return {
     pro_hours: round2(proHours),
     assistant_hours: round2(assistantHours),
+    unassigned_hours: round2(unassignedHours),
     cost: round2(proHours * proRate + assistantHours * assistantRate),
   };
 }
@@ -403,7 +353,11 @@ function resolveLaborEstimatesFromOperationalPlan(
   rolePlan
 ) {
   const planMetrics = computeOperationalPlanMetrics(opPlan, null, null, hpd);
-  let estimatedLaborCost = laborCostFromOperationalPlan(opPlan, mgSettings || {});
+  const rates = laborRatesFromSettings(mgSettings);
+  let estimatedLaborCost = 0;
+  if (!rates.role_rates_missing) {
+    estimatedLaborCost = laborCostFromPlanAtSettings(opPlan, rates).cost;
+  }
   if (!(estimatedLaborCost > 0)) {
     estimatedLaborCost = round2(
       Math.max(num(project?.estimated_labor_cost, 0), num(project?.labor_budget, 0)) ||
@@ -415,14 +369,6 @@ function resolveLaborEstimatesFromOperationalPlan(
     estimatedHours: planMetrics.estimated_hours,
     estimatedLaborCost,
   };
-}
-
-function completedScheduledDaySet(completedDaySet, scheduledSet) {
-  const out = new Set();
-  for (const dn of completedDaySet) {
-    if (scheduledSet.has(dn)) out.add(dn);
-  }
-  return out;
 }
 
 function blendedHourlyRate(project, hoursPerDay) {
@@ -448,17 +394,14 @@ function computeLaborCostSection({
   mgSettings,
   hoursPerDay = DEFAULT_HOURS_PER_DAY,
   operationalPlanRaw,
-  dayProgressRows,
 }) {
   const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
   const rates = laborRatesFromSettings(mgSettings);
   const rolePlan = planRoleBudgetHours(project?.quoted_labor_plan, hpd, mgSettings || {});
   const reportedHours = sumReportHours(reports);
   const reportedDays = sumReportDays(reports);
-  const completedDaySet = completedDayNumbersSet(dayProgressRows);
   const opPlan = resolveNormalizedOperationalPlan(operationalPlanRaw, hpd);
   const hasOpPlan = opPlan.length > 0;
-  const useCompletedPlanDays = hasOpPlan && completedDaySet.size > 0;
 
   let estimatedDays = round2(
     rolePlan.plan.length
@@ -515,6 +458,7 @@ function computeLaborCostSection({
     },
     cost_method: null,
     labor_rates_missing: false,
+    labor_not_reported: false,
     labor_rates_message: null,
     rate_basis: rates.role_rates_missing
       ? null
@@ -528,120 +472,46 @@ function computeLaborCostSection({
   const blended = blendedHourlyRate(project, hpd);
   base.blended_rate = blended > 0 ? blended : null;
 
-  if (useCompletedPlanDays) {
-    if (rates.role_rates_missing) {
-      base.labor_rates_missing = true;
-      base.labor_rates_message = rates.missing_message;
-      base.cost_method = "completed_plan_days";
-      return base;
-    }
-
-    const scheduledSet = scheduledDayNumbersSet(opPlan);
-    const completedScheduled = completedScheduledDaySet(completedDaySet, scheduledSet);
-    const laborCompletedSet =
-      completedScheduled.size > 0 ? completedScheduled : completedDaySet;
-
-    const planMetrics = laborMetricsForCompletedOperationalDays(
-      opPlan,
-      laborCompletedSet,
-      mgSettings || {},
-      hpd
-    );
-    const supplemental = supplementalReportTotals(reports, laborCompletedSet, {
-      skipUndifferentiatedReports: true,
-    });
-    const supLabor = computeSupplementalLaborCost(
-      supplemental.hours,
-      rolePlan,
-      rates,
-      blended,
-      rolePlan.has_role_breakdown
-    );
-
-    const actualHours = round2(planMetrics.hours + supplemental.hours);
-    const actualDays = round2(laborCompletedSet.size + supplemental.days);
-    const actualCost = round2(planMetrics.labor_cost + supLabor.cost);
-    const proH = round2(planMetrics.pro_hours + supLabor.pro_hours);
-    const asstH = round2(planMetrics.assistant_hours + supLabor.assistant_hours);
-
-    base.cost_method = "completed_plan_days";
-    base.actual.hours = actualHours;
-    base.actual.days = actualDays;
-    base.actual.labor_cost = actualCost;
-    base.actual.pro_hours = proH;
-    base.actual.assistant_hours = asstH;
-    stampRolePay(base.actual, rates.pro_rate, rates.assistant_rate);
-    base.variance.hours = round2(actualHours - estimatedHours);
-    base.variance.days = round2(actualDays - estimatedDays);
-    base.variance.cost = round2(actualCost - estimatedLaborCost);
+  if (rates.role_rates_missing) {
+    base.labor_rates_missing = true;
+    base.labor_rates_message = rates.missing_message;
+    base.cost_method = "legacy_fallback";
     return base;
   }
 
-  let actualCost = 0;
-  let proH = 0;
-  let asstH = 0;
-  let method = "legacy_fallback";
-
-  if (rolePlan.has_role_breakdown) {
-    if (rates.role_rates_missing) {
-      base.labor_rates_missing = true;
-      base.labor_rates_message = rates.missing_message;
-      base.cost_method = "legacy_fallback";
+  if (!(reportedHours > 0)) {
+    base.cost_method = "business_settings_rates";
+    if (estimatedLaborCost > 0 || reportedDays > 0) {
+      base.labor_not_reported = true;
+      base.labor_rates_message =
+        reportedDays > 0
+          ? "Supervisor reported days without hours, so labor cost is not calculated."
+          : "Supervisor has not reported labor yet.";
       return base;
     }
-    const planTotal = rolePlan.pro_hours + rolePlan.assistant_hours;
-    if (reportedHours > 0 && planTotal > 0) {
-      method = "field_reports";
-      proH = reportedHours * (rolePlan.pro_hours / planTotal);
-      asstH = reportedHours * (rolePlan.assistant_hours / planTotal);
-    } else if (reportedHours > 0) {
-      method = "field_reports";
-      proH = reportedHours;
-    } else {
-      method = "quoted_labor_plan_fallback";
-      proH = rolePlan.pro_hours;
-      asstH = rolePlan.assistant_hours;
-    }
-    actualCost = proH * rates.pro_rate + asstH * rates.assistant_rate;
-  } else if (reportedHours > 0) {
-    if (blended > 0) {
-      method = "field_reports";
-      proH = reportedHours;
-      actualCost = reportedHours * blended;
-    } else {
-      const fromSettings = laborCostFromSettingsRates(reports, rates);
-      if (!fromSettings) {
-        base.cost_method = "legacy_fallback";
-        base.labor_rates_missing = true;
-        base.labor_rates_message = rates.missing_message;
-        return base;
-      }
-      method = "business_settings_rates";
-      proH = fromSettings.pro_hours;
-      asstH = fromSettings.assistant_hours;
-      actualCost = fromSettings.cost;
-    }
-  } else if (blended <= 0) {
-    if (rates.role_rates_missing) {
-      base.cost_method = "legacy_fallback";
-      base.labor_rates_missing = true;
-      base.labor_rates_message = rates.missing_message;
-      return base;
-    }
-    method = "business_settings_rates";
-    actualCost = 0;
-  } else {
-    method = "legacy_fallback";
-    proH = reportedHours;
-    actualCost = reportedHours * blended;
+    base.actual.labor_cost = 0;
+    base.actual.pro_hours = 0;
+    base.actual.assistant_hours = 0;
+    stampRolePay(base.actual, rates.pro_rate, rates.assistant_rate);
+    base.variance.cost = 0;
+    return base;
   }
 
-  base.cost_method = method;
-  base.actual.labor_cost = round2(actualCost);
-  base.actual.pro_hours = round2(proH);
-  base.actual.assistant_hours = round2(asstH);
+  const fromSettings = laborCostFromSettingsRates(reports, rates);
+  if (!fromSettings || num(fromSettings.unassigned_hours, 0) > 0) {
+    base.labor_rates_missing = true;
+    base.labor_rates_message =
+      "A supervisor report has hours but does not say who worked (Pro or Assistant).";
+    base.cost_method = "business_settings_rates";
+    return base;
+  }
+
+  base.cost_method = "business_settings_rates";
+  base.actual.labor_cost = fromSettings.cost;
+  base.actual.pro_hours = fromSettings.pro_hours;
+  base.actual.assistant_hours = fromSettings.assistant_hours;
   stampRolePay(base.actual, rates.pro_rate, rates.assistant_rate);
-  base.variance.cost = round2(actualCost - estimatedLaborCost);
+  base.variance.cost = round2(fromSettings.cost - estimatedLaborCost);
   return base;
 }
 
@@ -1211,6 +1081,7 @@ function buildOwnerProfitBreakdown({
 
   const laborDirectMissing =
     Boolean(laborSection.labor_rates_missing) ||
+    Boolean(laborSection.labor_not_reported) ||
     laborSection.cost_method === "no_rate" ||
     laborSection.actual.labor_cost == null;
 
@@ -1239,12 +1110,11 @@ function buildOwnerProfitBreakdown({
 
   let sellerCommission = null;
   let sellerCommissionNote = null;
+  const planLabor = num(laborSection.estimated?.labor_cost, 0);
   const commissionLaborBase = round2(
-    Math.max(
-      num(project?.estimated_labor_cost, 0),
-      num(project?.labor_budget, 0),
-      num(laborSection.estimated.labor_cost, 0)
-    )
+    planLabor > 0
+      ? planLabor
+      : Math.max(num(project?.estimated_labor_cost, 0), num(project?.labor_budget, 0))
   );
   if (!bs.commission_ok) {
     sellerCommissionNote = "Seller commission not configured.";
@@ -1261,9 +1131,7 @@ function buildOwnerProfitBreakdown({
   const supervisorLaborBase = round2(
     Math.max(
       num(laborSection.estimated?.labor_cost, 0),
-      num(laborSection.actual?.labor_cost, 0),
-      num(project?.labor_budget, 0),
-      num(project?.estimated_labor_cost, 0)
+      num(laborSection.actual?.labor_cost, 0)
     )
   );
   if (!bs.supervisor_bonus_ok) {
@@ -1271,10 +1139,14 @@ function buildOwnerProfitBreakdown({
   } else if (supervisorLaborBase <= 0) {
     supervisorBonusNote = "Labor cost is not available yet.";
   } else {
+    const reportedLaborDays = num(laborSection.actual?.days, 0);
     const bonusCalc = computeSupervisorExecutionBonus({
       laborBudget: supervisorLaborBase,
       effectiveDays: effectiveDaysForSupervisorBonus(project, operational),
-      daysSpent: num(operational?.actual_days, num(laborSection.actual.days, 0)),
+      daysSpent:
+        reportedLaborDays > 0
+          ? reportedLaborDays
+          : num(operational?.actual_days, 0),
       supervisorBonusPctPoints: bs.supervisor_bonus_pct,
     });
     supervisorBonus = bonusCalc.bonusActual;
@@ -1568,7 +1440,6 @@ function buildProjectFinancialDetail({
     mgSettings: mg,
     hoursPerDay,
     operationalPlanRaw,
-    dayProgressRows,
   });
   const collection = buildCollectionSection({
     project,
