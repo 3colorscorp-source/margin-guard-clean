@@ -18,7 +18,7 @@ async function projectForTenant(tenantId, projectId) {
   return one(
     "tenant_projects?id=eq." + encodeURIComponent(projectId) +
     "&tenant_id=eq." + encodeURIComponent(tenantId) +
-    "&select=id,project_name,status,quote_id&limit=1"
+    "&select=id,tenant_id,project_name,client_name,status,quote_id&limit=1"
   );
 }
 

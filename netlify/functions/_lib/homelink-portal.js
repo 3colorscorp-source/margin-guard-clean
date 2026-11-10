@@ -129,6 +129,17 @@ function cleanList(values, allowed) {
   return out;
 }
 
+function clientRefFromName(name) {
+  const slug = trim(name)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return CLIENT_REF_RE.test(slug) ? slug : "";
+}
+
 function validateIssue(body, now) {
   const src = body && typeof body === "object" ? body : {};
   if (Object.prototype.hasOwnProperty.call(src, "tenant_id")) {
@@ -341,6 +352,7 @@ module.exports = {
   bearerToken,
   cityFromAddress,
   containsForbidden,
+  clientRefFromName,
   validateIssue,
   subjectMatches,
   inviteUrl,

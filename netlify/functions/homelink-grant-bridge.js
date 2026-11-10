@@ -56,12 +56,18 @@ function requestFields(event) {
   return {
     action: pick("action") === "revoke" ? "revoke" : "issue",
     project_id: trim(pick("project_id")),
-    client_ref: trim(pick("client_ref")),
     expires_at: trim(pick("expires_at")),
     scopes: list("scopes"),
     commercial: list("commercial"),
-    grant_id: trim(pick("grant_id"))
+    grant_id: trim(pick("grant_id")),
+    tenantSupplied: Object.prototype.hasOwnProperty.call(body, "tenant_id") || Object.prototype.hasOwnProperty.call(query, "tenant_id")
   };
+}
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch];
+  });
 }
 
 function foreignOrigin(event) {
@@ -77,19 +83,26 @@ function foreignOrigin(event) {
   }
 }
 
-function page(fields) {
-  const payload = JSON.stringify(fields).replace(/</g, "\\u003c");
+function page(fields, summary) {
+  const posted = {
+    action: fields.action,
+    project_id: fields.project_id,
+    expires_at: fields.expires_at,
+    scopes: fields.scopes,
+    commercial: fields.commercial,
+    grant_id: fields.grant_id
+  };
+  const payload = JSON.stringify(posted).replace(/</g, "\\u003c");
   return html(200, [
     "<h1>Confirm HomeLink access</h1>",
     "<p>Margin Guard will check the contractor session on this site. The session cookie stays here.</p>",
-    "<p id=\"summary\"></p>",
+    "<p id=\"summary\">" + escapeHtml(summary) + "</p>",
     "<button id=\"confirm\" type=\"button\">Confirm and issue</button>",
     "<p id=\"status\"></p>",
     "<p><a id=\"invite\" href=\"\"></a></p>",
     "<script type=\"application/json\" id=\"request\">" + payload + "</script>",
     "<script>",
     "var request = JSON.parse(document.getElementById(\"request\").textContent);",
-    "document.getElementById(\"summary\").textContent = request.action === \"revoke\" ? \"Revoke grant \" + request.grant_id : \"Project \" + request.project_id + \" for \" + request.client_ref;",
     "document.getElementById(\"confirm\").textContent = request.action === \"revoke\" ? \"Confirm and revoke\" : \"Confirm and issue\";",
     "document.getElementById(\"confirm\").addEventListener(\"click\", function () {",
     "  fetch(location.pathname, { method: \"POST\", credentials: \"same-origin\", headers: { \"Content-Type\": \"application/json\" }, body: JSON.stringify(request) })",
@@ -102,6 +115,33 @@ function page(fields) {
     "});",
     "</script>"
   ].join(""));
+}
+
+async function prepareIssue(actor, fields, findProject, now) {
+  if (fields.tenantSupplied) return { ok: false, status: 400, code: "tenant_forbidden" };
+  const projectId = trim(fields.project_id).toLowerCase();
+  if (!/^[0-9a-f-]{36}$/.test(projectId)) return { ok: false, status: 400, code: "invalid_grant" };
+  const project = await findProject(actor.tenant.id, projectId);
+  if (!project || String(project.id || "").toLowerCase() !== projectId) {
+    return { ok: false, status: 404, code: "project_not_found" };
+  }
+  if (project.tenant_id && String(project.tenant_id).toLowerCase() !== String(actor.tenant.id).toLowerCase()) {
+    return { ok: false, status: 403, code: "project_mismatch" };
+  }
+  const validated = portal.validateIssue({
+    project_id: projectId,
+    client_ref: portal.clientRefFromName(project.client_name),
+    expires_at: fields.expires_at,
+    scopes: fields.scopes,
+    commercial: fields.commercial
+  }, now);
+  if (!validated.ok) return validated;
+  return {
+    ok: true,
+    project: project,
+    validated: validated,
+    summary: "Project " + trim(project.project_name) + " for " + trim(project.client_name)
+  };
 }
 
 async function postAccept(origin, proof) {
@@ -131,13 +171,18 @@ exports.handler = async function (event, deps) {
   const now = options.now || Date.now();
   try {
     if (event.httpMethod === "GET") {
+      let actor;
       try {
-        await ownerGate(event);
+        actor = await ownerGate(event);
       } catch (err) {
         const code = err && err.code ? err.code : "no_session";
         return html(err && err.statusCode ? err.statusCode : 401, "<p>" + code + "</p>");
       }
-      return page(requestFields(event));
+      const fields = requestFields(event);
+      if (fields.action === "revoke") return page(fields, "Revoke grant " + fields.grant_id);
+      const prepared = await prepareIssue(actor, fields, findProject, now);
+      if (!prepared.ok) return html(prepared.status, "<p>" + prepared.code + "</p>");
+      return page(fields, prepared.summary);
     }
     if (event.httpMethod !== "POST") return json(405, { ok: false, code: "method_not_allowed" });
     if (foreignOrigin(event)) return json(403, { ok: false, code: "cookie_not_shared" });
@@ -148,6 +193,7 @@ exports.handler = async function (event, deps) {
       return json(err && err.statusCode ? err.statusCode : 401, { ok: false, code: err && err.code ? err.code : "no_session" });
     }
     const fields = requestFields(event);
+    if (fields.tenantSupplied) return json(400, { ok: false, code: "tenant_forbidden" });
     if (fields.action === "revoke") {
       const sealed = handoff.seal(secret, {
         action: "revoke",
@@ -164,12 +210,10 @@ exports.handler = async function (event, deps) {
         grant_id: accepted.body && accepted.body.grant_id
       });
     }
-    const validated = portal.validateIssue(fields, now);
-    if (!validated.ok) return json(validated.status, { ok: false, code: validated.code });
-    const project = await findProject(actor.tenant.id, validated.grant.projectId);
-    if (!project || String(project.id).toLowerCase() !== validated.grant.projectId) {
-      return json(404, { ok: false, code: "project_not_found" });
-    }
+    const prepared = await prepareIssue(actor, fields, findProject, now);
+    if (!prepared.ok) return json(prepared.status, { ok: false, code: prepared.code });
+    const validated = prepared.validated;
+    const project = prepared.project;
     const sealed = handoff.seal(secret, {
       action: "issue",
       tenantId: actor.tenant.id,
