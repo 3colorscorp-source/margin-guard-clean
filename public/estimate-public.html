@@ -1487,6 +1487,10 @@
           </ol>
         </nav>
 
+        <div class="inline-actions estimate-public-actions" id="publicEstimatePdfActions" style="margin-top:0;margin-bottom:8px;">
+          <button class="btn ghost" type="button" id="btnPublicEstimatePdf">Download PDF</button>
+        </div>
+
         <div id="publicFlowStep1" class="flow-step-panel">
         <div class="grid premium-estimate-grid">
           <div class="card estimate-subcard premium-estimate-card">
@@ -1554,7 +1558,6 @@
         </div>
 
         <div class="inline-actions estimate-public-actions" id="publicEstimateActions">
-          <button class="btn ghost" type="button" id="btnPublicEstimatePdf">Download PDF</button>
           <button class="btn primary" type="button" id="btnPublicEstimateApprove">Approve estimate</button>
           <button class="btn danger" type="button" id="btnPublicEstimateDecline">Decline</button>
         </div>
@@ -2015,6 +2018,9 @@
               "Payment verification is pending. Please contact your contractor before paying again.";
           }
         }
+
+        const pdfActions = $("publicEstimatePdfActions");
+        if (pdfActions) pdfActions.style.display = "";
 
         if (paid) {
           if (depositFlowPanel) depositFlowPanel.style.display = "none";
