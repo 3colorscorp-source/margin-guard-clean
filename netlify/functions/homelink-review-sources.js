@@ -33,7 +33,8 @@ function reviewSources(row) {
   };
 }
 
-function html(statusCode, body) {
+function html(statusCode, body, lang) {
+  const locale = lang === "es" ? "es" : "en";
   return {
     statusCode: statusCode,
     headers: {
@@ -42,7 +43,18 @@ function html(statusCode, body) {
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "DENY"
     },
-    body: "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>HomeLink reviews</title></head><body>" + body + "</body></html>"
+    body: "<!DOCTYPE html><html lang=\"" + locale + "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>HomeLink</title>" +
+      "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>" +
+      "<link href=\"https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,560;8..60,650&display=swap\" rel=\"stylesheet\">" +
+      "<style>" +
+      ":root{color-scheme:light;--cream:#f6f1e9;--ink:#1b2433;--muted:#5d6470;--navy:#13233a;--card:#fffdf9;--line:rgba(19,35,58,.12);--green:#174a37;--danger:#8d2d2d;--danger-bg:#fde8e4;--serif:\"Source Serif 4\",Georgia,serif;--sans:Figtree,\"Segoe UI\",sans-serif}" +
+      "*{box-sizing:border-box}body{margin:0;min-height:100vh;font:16px/1.5 var(--sans);color:var(--ink);background:var(--cream)}" +
+      ".band{background:var(--navy);color:#f5efe5;padding:28px 24px 22px}.band p{margin:0;letter-spacing:.16em;font-size:12px;font-weight:700}.wrap{width:min(560px,calc(100% - 32px));margin:-28px auto 48px}.card{background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 1px 2px rgba(19,35,58,.05),0 18px 40px rgba(19,35,58,.08);padding:32px 28px 28px}" +
+      "h1{margin:0 0 10px;font-family:var(--serif);font-size:40px;font-weight:560;letter-spacing:-.03em;line-height:1.05}.lead{margin:0 0 22px;color:var(--muted)}" +
+      "label{display:block;margin:0 0 14px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}input{display:block;width:100%;margin-top:8px;min-height:52px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);font:16px/1.4 var(--sans)}input:focus{outline:2px solid #d08a55;outline-offset:1px}" +
+      "button{width:100%;margin-top:8px;min-height:54px;border:0;border-radius:14px;background:linear-gradient(180deg,#23694f,var(--green));color:#f4fbf6;font:600 18px/1 var(--sans);cursor:pointer;box-shadow:0 8px 18px rgba(23,74,55,.22)}button:focus-visible{outline:2px solid #d08a55;outline-offset:3px}" +
+      ".error{margin:0 0 16px;padding:12px 14px;border-radius:14px;background:var(--danger-bg);color:var(--danger)}.plain{padding:48px 0}" +
+      "</style></head><body><header class=\"band\"><p>HOMELINK</p></header><main class=\"wrap\"><section class=\"card\">" + body + "</section></main></body></html>"
   };
 }
 
@@ -72,6 +84,10 @@ function sameSitePost(event) {
   }
 }
 
+function field(name, label, value) {
+  return "<label>" + label + "<input name=\"" + name + "\" type=\"url\" inputmode=\"url\" maxlength=\"500\" placeholder=\"https://\" autocomplete=\"off\" spellcheck=\"false\" value=\"" + esc(value) + "\"></label>";
+}
+
 function formPage(lang, values, error) {
   const es = lang === "es";
   const title = es ? "Enlaces de reseñas" : "Review links";
@@ -79,21 +95,22 @@ function formPage(lang, values, error) {
     ? "Estos enlaces quedan en tu cuenta. El cliente ve Abrir. HomeLink no escribe el número."
     : "These links stay on your account. The client sees Open. HomeLink does not write the count.";
   const save = es ? "Guardar en la cuenta" : "Save on the account";
-  const message = error ? "<p>" + esc(error) + "</p>" : "";
+  const message = error ? "<p class=\"error\">" + esc(error) + "</p>" : "";
   return html(error ? 400 : 200,
-    "<h1>" + title + "</h1><p>" + lead + "</p>" + message +
+    "<h1>" + title + "</h1><p class=\"lead\">" + lead + "</p>" + message +
     "<form method=\"post\">" +
-    "<p><label>Google<br><input name=\"google\" type=\"url\" maxlength=\"500\" value=\"" + esc(values.google) + "\"></label></p>" +
-    "<p><label>Yelp<br><input name=\"yelp\" type=\"url\" maxlength=\"500\" value=\"" + esc(values.yelp) + "\"></label></p>" +
-    "<p><label>" + (es ? "Sitio web" : "Website") + "<br><input name=\"website\" type=\"url\" maxlength=\"500\" value=\"" + esc(values.website) + "\"></label></p>" +
-    "<p><button type=\"submit\">" + save + "</button></p></form>"
+    field("google", "Google", values.google) +
+    field("yelp", "Yelp", values.yelp) +
+    field("website", es ? "Sitio web" : "Website", values.website) +
+    "<button type=\"submit\">" + save + "</button></form>",
+    lang
   );
 }
 
 function returnPage(origin, sources) {
   const packed = encodeURIComponent(JSON.stringify(sources));
   const target = JSON.stringify(origin + "/#rs=" + packed);
-  return html(200, "<p>Returning to HomeLink.</p><script>location.replace(" + target + ");</script>");
+  return html(200, "<p class=\"plain\">Returning to HomeLink.</p><script>location.replace(" + target + ");</script>");
 }
 
 async function loadSources(tenantId, request) {
