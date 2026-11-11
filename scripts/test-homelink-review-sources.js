@@ -63,6 +63,23 @@ async function run(event, request) {
   assert.strictEqual(insert.opts.body.website_url, "https://example.com/work");
   assert.strictEqual(Object.prototype.hasOwnProperty.call(insert.opts.body, "business_email"), false);
 
+  const sameBrowser = await run({
+    httpMethod: "POST",
+    headers: {
+      origin: "https://marginguardsystem.netlify.app",
+      host: "internal-function-host",
+      "x-forwarded-host": "marginguardsystem.netlify.app",
+      "sec-fetch-site": "same-origin"
+    },
+    queryStringParameters: {},
+    body: "google=" + encodeURIComponent("https://maps.google.com/place") + "&yelp=&website=",
+    isBase64Encoded: false
+  }, function (path) {
+    if (String(path).includes("select=tenant_id")) return [{ tenant_id: tenantId }];
+    return [];
+  });
+  assert.strictEqual(sameBrowser.statusCode, 200);
+
   const cross = await run({
     httpMethod: "POST",
     headers: { origin: "https://evil.example", host: "marginguardsystem.netlify.app" },

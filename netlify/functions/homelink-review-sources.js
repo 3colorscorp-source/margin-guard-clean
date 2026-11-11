@@ -72,16 +72,32 @@ function formBody(event) {
   return new URLSearchParams(raw);
 }
 
-function sameSitePost(event) {
-  const headers = event && event.headers ? event.headers : {};
-  const origin = trim(headers.origin || headers.Origin);
-  const host = trim(headers.host || headers.Host).toLowerCase();
-  if (!origin || !host) return false;
-  try {
-    return new URL(origin).host.toLowerCase() === host;
-  } catch (_err) {
-    return false;
+function rawHeader(event, name) {
+  const sources = [event && event.headers, event && event.multiValueHeaders];
+  for (let i = 0; i < sources.length; i += 1) {
+    const headers = sources[i];
+    if (!headers) continue;
+    const raw = headers[name] || headers[name.toLowerCase()];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const text = trim(value).split(",")[0].trim();
+    if (text) return text;
   }
+  return "";
+}
+
+function sameSitePost(event) {
+  const fetchSite = rawHeader(event, "sec-fetch-site").toLowerCase();
+  if (fetchSite === "same-origin" || fetchSite === "same-site") return true;
+  if (fetchSite === "cross-site") return false;
+  const origin = rawHeader(event, "origin");
+  if (!origin) return false;
+  let originHost = "";
+  try { originHost = new URL(origin).host.toLowerCase(); } catch (_err) { return false; }
+  const hosts = [rawHeader(event, "x-forwarded-host"), rawHeader(event, "host")]
+    .filter(Boolean)
+    .map(function (host) { return host.toLowerCase().replace(/:\d+$/, ""); });
+  if (!hosts.length) return true;
+  return hosts.indexOf(originHost) !== -1;
 }
 
 function field(name, label, value) {
@@ -178,7 +194,12 @@ exports.handler = async function (event, deps) {
         website: typed.website || stored.website
       }, "");
     }
-    if (!sameSitePost(event)) return html(403, "<p>cross_site</p>");
+    if (!sameSitePost(event)) {
+      const blocked = lang === "es"
+        ? "Vuelve a abrir esta página desde HomeLink y guarda otra vez."
+        : "Open this page again from HomeLink, then save.";
+      return html(403, "<p class=\"plain\">" + blocked + "</p>", lang);
+    }
     const body = formBody(event);
     const submitted = {
       google: trim(body.get("google")),
