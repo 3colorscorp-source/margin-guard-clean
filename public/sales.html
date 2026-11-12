@@ -2114,6 +2114,7 @@
                 </div>
               </div>
             </div>
+            <section id="salesProposalPdfsSection" class="mg-proposal-pdfs-host" aria-label="3D Views / Proposal PDFs"></section>
 
             <div class="sep"></div>
 
@@ -2498,6 +2499,7 @@
   <script src="/js/seller-operational-plan-areas.js"></script>
   <script src="/js/project-location.js"></script>
   <script src="/js/app.js?v=seller-visual-dollar-source-v1"></script>
+  <script src="/js/quote-proposal-pdfs.js"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -12774,6 +12776,13 @@ async function openSellerSendModal(event) {
       stateFresh._sellerPublishFingerprint = sellerDraftFingerprint(stateFresh);
       removeSellerPublishOrphanNotice();
       saveSalesState(stateFresh);
+      if (
+        window.MarginGuardQuoteProposalPdfs &&
+        typeof window.MarginGuardQuoteProposalPdfs.attachToQuote === 'function' &&
+        publishData.quote_id
+      ) {
+        await window.MarginGuardQuoteProposalPdfs.attachToQuote(publishData.quote_id);
+      }
 
       if (
         window.MGSalesDevicePortal &&
@@ -13055,6 +13064,13 @@ async function runSellerSend(event) {
       warnPublishDepositVsSession(publishData, depositRequired);
 
       const publicQuoteUrl = publishData.public_url;
+      if (
+        window.MarginGuardQuoteProposalPdfs &&
+        typeof window.MarginGuardQuoteProposalPdfs.attachToQuote === 'function' &&
+        publishData.quote_id
+      ) {
+        await window.MarginGuardQuoteProposalPdfs.attachToQuote(publishData.quote_id);
+      }
       const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
 
       const savedRow =

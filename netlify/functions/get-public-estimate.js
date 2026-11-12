@@ -10,6 +10,10 @@ const {
   readSchedulingDeposit,
 } = require("./_lib/verified-scheduling-deposit");
 const { schedulingDepositCheckoutClosed } = require("./_lib/scheduling-deposit-maintenance");
+const {
+  publicProposalDocuments,
+  isMissingProposalPdfsColumn,
+} = require("./_lib/quote-proposal-pdfs");
 
 function json(statusCode, body) {
   return {
@@ -134,13 +138,19 @@ exports.handler = async (event) => {
 
     const pathWithDates =
       `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT_WITH_DATES},labor_area_breakdown&limit=2`;
+    const pathWithProposalPdfs = pathWithDates.replace("&limit=", ",proposal_pdfs&limit=");
     const pathBase =
       `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
     const pathLegacy = pathBase.replace(",scope_of_work", "").replace("scope_of_work,", "");
 
     let rows;
     try {
-      rows = await supabaseRequest(pathWithDates, { method: "GET" });
+      try {
+        rows = await supabaseRequest(pathWithProposalPdfs, { method: "GET" });
+      } catch (errProposal) {
+        if (!isMissingProposalPdfsColumn(errProposal && errProposal.message)) throw errProposal;
+        rows = await supabaseRequest(pathWithDates, { method: "GET" });
+      }
     } catch (err) {
       if (isMissingLaborAreaColumn(err.message)) {
         const pathWithoutAreas = pathWithDates.replace(",labor_area_breakdown", "");
@@ -202,6 +212,10 @@ exports.handler = async (event) => {
 
     const row = rows[0];
     const estimate = scrubPublicPayload(pickPublicEstimateFields(row));
+    const siteUrl = String(
+      process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.SITE_URL || ""
+    ).replace(/\/+$/, "");
+    const proposalDocuments = publicProposalDocuments(row.proposal_pdfs, trimmed, siteUrl);
 
     let tenantSettings = {};
     if (row.tenant_id) {
@@ -338,7 +352,8 @@ exports.handler = async (event) => {
         deposit_verification_state: depositVerification.deposit_verification_state,
         deposit_verification_message: depositVerification.deposit_verification_message,
         items: [],
-        labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown)
+        labor_areas: publicAreasFromBreakdown(row.labor_area_breakdown),
+        proposal_documents: proposalDocuments
       }))
     });
   } catch (err) {

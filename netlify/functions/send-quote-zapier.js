@@ -18,10 +18,15 @@ const {
   uploadEstimatePdf,
   buildEstimatePdfAccessUrl,
 } = require("./_lib/estimate-pdf-access");
+const {
+  normalizeProposalPdfs,
+  isMissingProposalPdfsColumn,
+} = require("./_lib/quote-proposal-pdfs");
 void ESTIMATES_HMAC_FAIL_CLOSED;
 
 const QUOTE_SEND_SELECT =
   "id,tenant_id,status,seller_membership_id,created_by_role,source_device_id";
+const QUOTE_SEND_SELECT_WITH_PDFS = `${QUOTE_SEND_SELECT},proposal_pdfs`;
 const BLOCKED_SEND_STATUSES = new Set(["archived", "accepted", "approved", "declined"]);
 
 function pickFirst(...values) {
@@ -67,10 +72,11 @@ function escapeHtmlAttr(value) {
 }
 
 /** Canonical client email — same HTML Gmail used to send (button + attached PDF). */
-function buildEstimateSendHtml({ publicQuoteUrl, pdfUrl }) {
+function buildEstimateSendHtml({ publicQuoteUrl, pdfUrl, proposalPdfCount }) {
   const url = String(publicQuoteUrl || "").trim();
   const href = escapeHtmlAttr(url);
   const pdfHref = escapeHtmlAttr(String(pdfUrl || "").trim());
+  const extraCount = Math.max(0, Math.floor(Number(proposalPdfCount) || 0));
   const parts = [
     "<p>Your project estimate is ready for review.</p>",
     "<p>To move forward, please complete the following steps:</p>",
@@ -85,6 +91,11 @@ function buildEstimateSendHtml({ publicQuoteUrl, pdfUrl }) {
   ];
   if (pdfHref) {
     parts.push(`<p><a href="${pdfHref}">Download estimate PDF</a></p>`);
+  }
+  if (extraCount > 0) {
+    parts.push(
+      "<p>3D views and additional proposal PDFs are included on the estimate page.</p>"
+    );
   }
   parts.push("<p>Thank you.</p>");
   return parts.join("");
@@ -239,6 +250,7 @@ exports.handler = async (event) => {
 
     const publicToken = pickFirst(data.publicToken, data.public_token);
     let quoteId = null;
+    let proposalPdfCount = 0;
 
     if (isSellerDevice && !publicToken) {
       logOps({
@@ -258,9 +270,19 @@ exports.handler = async (event) => {
     }
 
     if (publicToken) {
-      const rows = await supabaseRequest(
-        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=eq.${encodeURIComponent(String(tenant.id))}&select=${QUOTE_SEND_SELECT}&limit=1`
-      );
+      const quoteFilter =
+        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=eq.${encodeURIComponent(String(tenant.id))}`;
+      let rows;
+      try {
+        rows = await supabaseRequest(
+          `${quoteFilter}&select=${QUOTE_SEND_SELECT_WITH_PDFS}&limit=1`
+        );
+      } catch (errPdfs) {
+        if (!isMissingProposalPdfsColumn(errPdfs && errPdfs.message)) throw errPdfs;
+        rows = await supabaseRequest(
+          `${quoteFilter}&select=${QUOTE_SEND_SELECT}&limit=1`
+        );
+      }
       if (!Array.isArray(rows) || rows.length === 0) {
         logOps({
           req_id,
@@ -276,6 +298,7 @@ exports.handler = async (event) => {
       }
       const quote = rows[0];
       quoteId = quote?.id != null ? String(quote.id) : null;
+      proposalPdfCount = normalizeProposalPdfs(quote && quote.proposal_pdfs).length;
 
       if (isSellerDevice) {
         assertSellerOwnQuote(ctx, quote);
@@ -418,7 +441,8 @@ exports.handler = async (event) => {
     }
     zapierBody.messageText = buildEstimateSendHtml({
       publicQuoteUrl: zapierBody.public_quote_url,
-      pdfUrl: zapierBody.pdf_url
+      pdfUrl: zapierBody.pdf_url,
+      proposalPdfCount
     });
 
     const webhookUrl = pickFirst(
