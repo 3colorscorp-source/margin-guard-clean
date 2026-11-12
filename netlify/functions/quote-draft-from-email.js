@@ -85,16 +85,15 @@ function openAiResponsesUrl(rawBase) {
   return /\/v1$/i.test(base) ? `${base}/responses` : `${base}/v1/responses`;
 }
 
-function buildModelInput(emailBody) {
+function buildModelInput(sourceText) {
   return [
-    "CLIENT_EMAIL_BODY",
-    emailBody,
-    "END_CLIENT_EMAIL_BODY",
-    "Extract only facts present in the email. Leave missing fields empty. Do not invent crew, hours, dates, quantities, materials, or prices.",
+    sourceText,
+    "Extract only facts present in the email and proposal PDF text. Leave missing fields empty. Do not invent crew, hours, dates, quantities, materials, or prices.",
+    "If numbered proposal concepts exist (01 demolition, 02 preparation, 03 tile installed), map each to a document day.",
   ].join("\n");
 }
 
-async function callOpenAi({ emailBody, fetchImpl, getEnv }) {
+async function callOpenAi({ sourceText, fetchImpl, getEnv }) {
   const fetchFn = fetchImpl || fetch;
   const base = envValue("OPENAI_BASE_URL", getEnv) || "https://api.openai.com";
   const apiKey = envValue("OPENAI_API_KEY", getEnv);
@@ -118,7 +117,7 @@ async function callOpenAi({ emailBody, fetchImpl, getEnv }) {
       body: JSON.stringify({
         model: envValue("MG_QUOTE_EMAIL_OPENAI_MODEL", getEnv) || envValue("MG_VOICE_PLAN_OPENAI_MODEL", getEnv) || DEFAULT_MODEL,
         instructions: draft.SYSTEM_INSTRUCTIONS,
-        input: buildModelInput(emailBody),
+        input: buildModelInput(sourceText),
         text: {
           format: {
             type: "json_schema",
@@ -208,11 +207,21 @@ function createHandler(deps) {
       });
     }
     const emailBody = draft.normalizeEmailBody(body.email_body || body.email || body.text || "");
-    if (emailBody.length < draft.MIN_EMAIL_CHARS || emailBody.length > draft.MAX_EMAIL_CHARS) {
+    const sourcePdfs = draft.normalizeSourcePdfs(body.source_pdfs || body.pdfs);
+    const sourceText = draft.combineSourceText(emailBody, sourcePdfs);
+    if (draft.isInsufficientSource(draft.combinedWorkText(emailBody, sourcePdfs))) {
+      return json(400, {
+        ok: false,
+        code: "insufficient_source",
+        error:
+          "A client email address is not enough. Paste the email body or attach the proposal PDFs that show the work.",
+      });
+    }
+    if (sourceText.length > draft.MAX_EMAIL_CHARS + 24000) {
       return json(400, {
         ok: false,
         code: "invalid_email_body",
-        error: `Paste ${draft.MIN_EMAIL_CHARS} to ${draft.MAX_EMAIL_CHARS} characters from the client email.`,
+        error: "The pasted email and PDF text is too long. Attach fewer PDFs or shorten the paste.",
       });
     }
     let ctx;
@@ -232,6 +241,7 @@ function createHandler(deps) {
     let modelResult;
     try {
       modelResult = await interpret({
+        sourceText,
         emailBody,
         fetchImpl: options.fetchImpl,
         getEnv: options.getEnv,
@@ -245,7 +255,7 @@ function createHandler(deps) {
     }
     const quoteFields = draft.sanitizeQuoteFields(draft.stripFinancial(modelResult.quote_fields));
     const needsReview = draft.ensureNeedsReview(quoteFields, modelResult.needs_review);
-    const proposedDocument = buildProposedDocument(emailBody, modelResult.document);
+    const proposedDocument = buildProposedDocument(sourceText, modelResult.document);
     const incoming = voice.validateIncomingDocument(proposedDocument);
     if (!incoming.ok) {
       return json(422, {

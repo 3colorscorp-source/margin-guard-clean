@@ -40,6 +40,138 @@
     });
   }
 
+  function workDescriptionChars(text) {
+    return String(text || "")
+      .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, " ")
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function isInsufficientSource(text) {
+    return workDescriptionChars(text).length < 40;
+  }
+
+  function decodePdfLiteral(value) {
+    return String(value || "").replace(/\\([nrtbf()\\])/g, function (_, ch) {
+      return ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" })[ch] || ch;
+    });
+  }
+
+  function harvestPdfStrings(src) {
+    var texts = [];
+    var source = String(src || "");
+    var tj = /\((?:\\.|[^\\)])*\)\s*Tj/g;
+    var match;
+    while ((match = tj.exec(source))) {
+      texts.push(decodePdfLiteral(match[0].slice(1, match[0].lastIndexOf(")"))));
+    }
+    var arrayOp = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((match = arrayOp.exec(source))) {
+      var lit = /\((?:\\.|[^\\)])*\)/g;
+      var inner;
+      while ((inner = lit.exec(match[1]))) {
+        texts.push(decodePdfLiteral(inner[0].slice(1, -1)));
+      }
+    }
+    return texts;
+  }
+
+  function ascii85DecodeBytes(input) {
+    var s = String(input || "").replace(/\s+/g, "");
+    var end = s.indexOf("~>");
+    if (end >= 0) s = s.slice(0, end);
+    if (s.slice(0, 2) === "<~") s = s.slice(2);
+    var out = [];
+    var i = 0;
+    while (i < s.length) {
+      if (s.charAt(i) === "z") {
+        out.push(0, 0, 0, 0);
+        i += 1;
+        continue;
+      }
+      var chunk = s.slice(i, i + 5);
+      if (!chunk.length) break;
+      var pad = 5 - chunk.length;
+      var padded = chunk + "uuuuu".slice(0, pad);
+      var n = 0;
+      var k;
+      for (k = 0; k < 5; k += 1) n = n * 85 + (padded.charCodeAt(k) - 33);
+      var bytes = [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+      for (k = 0; k < 4 - pad; k += 1) out.push(bytes[k]);
+      i += chunk.length;
+    }
+    return new Uint8Array(out);
+  }
+
+  function latin1FromBytes(u8) {
+    var out = "";
+    var i;
+    var bytes = u8 || [];
+    for (i = 0; i < bytes.length; i += 1) out += String.fromCharCode(bytes[i]);
+    return out;
+  }
+
+  function inflateZlib(u8) {
+    if (typeof DecompressionStream !== "function") {
+      return Promise.reject(new Error("deflate unavailable"));
+    }
+    return new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer()
+      .then(function (buf) {
+        return new Uint8Array(buf);
+      });
+  }
+
+  function extractPdfTitle(latin1) {
+    var match = String(latin1 || "").match(/\/Title\s*\(((?:\\.|[^\\)])*)\)/);
+    return match ? decodePdfLiteral(match[1]).replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  }
+
+  function extractPdfTextFromArrayBuffer(buffer) {
+    var u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || []);
+    var latin1 = latin1FromBytes(u8);
+    var title = extractPdfTitle(latin1);
+    var streamRe = /<<([\s\S]{0,800}?)>>\s*stream(?:\r\n|\n|\r)/g;
+    var jobs = [];
+    var match;
+    while ((match = streamRe.exec(latin1))) {
+      var dict = match[1] || "";
+      var lengthMatch = dict.match(/\/Length\s+(\d+)/);
+      if (!lengthMatch) continue;
+      var length = Number(lengthMatch[1]);
+      if (!Number.isFinite(length) || length < 20 || length > 80000) continue;
+      var start = match.index + match[0].length;
+      var payload = latin1.slice(start, start + length);
+      var usesAscii85 = /ASCII85Decode/.test(dict);
+      var usesFlate = /FlateDecode/.test(dict);
+      var decoded = usesAscii85 ? ascii85DecodeBytes(payload) : new Uint8Array(payload.split("").map(function (ch) { return ch.charCodeAt(0); }));
+      if (usesFlate) {
+        jobs.push(
+          inflateZlib(decoded)
+            .then(function (inflated) {
+              var src = latin1FromBytes(inflated);
+              return /Tj|TJ|\sBT\s/.test(src) ? harvestPdfStrings(src) : [];
+            })
+            .catch(function () {
+              return [];
+            })
+        );
+      } else if (/Tj|TJ|\sBT\s/.test(payload)) {
+        jobs.push(Promise.resolve(harvestPdfStrings(payload)));
+      }
+    }
+    return Promise.all(jobs).then(function (groups) {
+      var texts = [];
+      groups.forEach(function (group) {
+        texts = texts.concat(group || []);
+      });
+      return {
+        title: title,
+        text: texts.join(" ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, 8000)
+      };
+    });
+  }
+
   function composeQuoteNotes(fields) {
     var src = fields || {};
     var lines = [];
@@ -179,7 +311,10 @@
       state.dueDate = dueDate;
       state.targetFinishDate = dueDate;
     }
-    if (!plan.length) {
+    var hasCrew = plan.some(function (day) {
+      return day && Array.isArray(day.workers) && day.workers.length;
+    });
+    if (!hasCrew) {
       state.workers = [];
     }
     if (workspace === "sales") {
@@ -252,6 +387,7 @@
       ".mg-email-draft-days{margin:0;padding-left:1.1rem;}" +
       ".mg-email-draft-status{min-height:1.2rem;color:#fda4af;font-size:.86rem;}" +
       ".mg-email-draft-actions{display:flex;gap:.6rem;flex-wrap:wrap;}" +
+      ".mg-email-draft-files{margin:.4rem 0 0;padding-left:1.1rem;color:rgba(232,238,252,.82);font-size:.82rem;}" +
       "@media (max-width:800px){.mg-email-draft-grid{grid-template-columns:1fr;}}";
     doc.head.appendChild(style);
   }
@@ -284,13 +420,16 @@
       "<header>" +
       "<div><span class=\"mg-email-draft-badge\">Draft proposal</span>" +
       "<h3 id=\"mgQuoteEmailDraftTitle\">Create quote draft from email</h3>" +
-      "<p class=\"sub\">Paste a client email. Margin Guard prepares an editable Project Quote draft. It does not send, save, or connect to a mailbox.</p></div>" +
+      "<p class=\"sub\">Paste the client email and attach proposal PDFs that show the work (for example 3D views). Margin Guard prepares an editable Project Quote draft. It does not send, save, or connect to a mailbox.</p></div>" +
       "<button type=\"button\" class=\"btn\" data-email-draft-close>Close</button>" +
       "</header>" +
       '<div class="mg-email-draft-body">' +
       '<div class="mg-email-draft-grid">' +
       '<div class="mg-email-draft-field"><label for="mgQuoteEmailDraftSource">Client email</label>' +
-      '<textarea id="mgQuoteEmailDraftSource" maxlength="12000" placeholder="Paste the client email here"></textarea></div>' +
+      '<textarea id="mgQuoteEmailDraftSource" maxlength="12000" placeholder="Paste the client email body, or the client address plus proposal PDFs"></textarea>' +
+      '<label for="mgQuoteEmailDraftPdfs" style="margin-top:.7rem">Proposal PDFs / 3D views</label>' +
+      '<input id="mgQuoteEmailDraftPdfs" type="file" accept="application/pdf,.pdf" multiple />' +
+      '<ul class="mg-email-draft-files" id="mgQuoteEmailDraftPdfList"></ul></div>' +
       '<div class="mg-email-draft-field"><label>Proposed fields</label>' +
       '<div id="mgQuoteEmailDraftFields"></div></div>' +
       "</div>" +
@@ -423,9 +562,26 @@
     if (!btn || !modal) return null;
     var pending = null;
     var sourceEmail = "";
+    var attachedPdfs = [];
+
+    function renderPdfList() {
+      var list = doc.getElementById("mgQuoteEmailDraftPdfList");
+      if (!list) return;
+      if (!attachedPdfs.length) {
+        list.innerHTML = "<li>No PDFs attached.</li>";
+        return;
+      }
+      list.innerHTML = attachedPdfs
+        .map(function (pdf) {
+          var note = pdf.text ? "text read" : "needs review";
+          return "<li>" + escapeHtml(pdf.name) + " — " + escapeHtml(note) + "</li>";
+        })
+        .join("");
+    }
 
     function openModal() {
       modal.classList.add("is-open");
+      renderPdfList();
       var ta = doc.getElementById("mgQuoteEmailDraftSource");
       if (ta) ta.focus();
     }
@@ -433,12 +589,16 @@
       modal.classList.remove("is-open");
       sourceEmail = "";
       pending = null;
+      attachedPdfs = [];
       var ta = doc.getElementById("mgQuoteEmailDraftSource");
       if (ta) ta.value = "";
+      var fileInput = doc.getElementById("mgQuoteEmailDraftPdfs");
+      if (fileInput) fileInput.value = "";
       var fields = doc.getElementById("mgQuoteEmailDraftFields");
       if (fields) fields.innerHTML = "";
       var applyBtn = doc.getElementById("mgQuoteEmailDraftApply");
       if (applyBtn) applyBtn.disabled = true;
+      renderPdfList();
       setStatus(doc, "");
     }
 
@@ -452,13 +612,57 @@
       }
     });
 
+    var pdfInput = doc.getElementById("mgQuoteEmailDraftPdfs");
+    if (pdfInput) {
+      pdfInput.addEventListener("change", function () {
+        var files = pdfInput.files ? Array.prototype.slice.call(pdfInput.files, 0, 6) : [];
+        attachedPdfs = [];
+        renderPdfList();
+        if (!files.length) return;
+        setStatus(doc, "Reading proposal PDFs…");
+        Promise.all(
+          files.map(function (file) {
+            return file.arrayBuffer().then(function (buf) {
+              return extractPdfTextFromArrayBuffer(buf).then(function (extracted) {
+                return {
+                  name: str(file.name, 180) || "proposal.pdf",
+                  title: extracted.title || "",
+                  text: extracted.text || ""
+                };
+              });
+            });
+          })
+        )
+          .then(function (rows) {
+            attachedPdfs = rows;
+            renderPdfList();
+            var readable = rows.filter(function (row) { return workDescriptionChars(row.text + " " + row.title).length >= 20; });
+            if (!readable.length) {
+              setStatus(doc, "Could not read work description from those PDFs. Paste the email body or try another proposal PDF.", true);
+              return;
+            }
+            setStatus(doc, "PDFs ready. Generate a proposal from the email and attached views.", false);
+          })
+          .catch(function () {
+            attachedPdfs = [];
+            renderPdfList();
+            setStatus(doc, "Could not read those PDFs.", true);
+          });
+      });
+    }
+
     var generateBtn = doc.getElementById("mgQuoteEmailDraftGenerate");
     if (generateBtn) {
       generateBtn.addEventListener("click", function () {
         var ta = doc.getElementById("mgQuoteEmailDraftSource");
         var emailBody = ta ? str(ta.value, 12000) : "";
-        if (emailBody.length < 20) {
-          setStatus(doc, "Paste at least 20 characters from the client email.", true);
+        var pdfParts = attachedPdfs
+          .map(function (pdf) {
+            return [pdf.title, pdf.text].filter(Boolean).join("\n");
+          })
+          .join("\n");
+        if (isInsufficientSource(emailBody + "\n" + pdfParts)) {
+          setStatus(doc, "A client email address is not enough. Paste the email body or attach the proposal PDFs that show the work.", true);
           return;
         }
         if (!fetchFn) {
@@ -471,7 +675,12 @@
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email_body: emailBody })
+          body: JSON.stringify({
+            email_body: emailBody,
+            source_pdfs: attachedPdfs.map(function (pdf) {
+              return { name: pdf.name, title: pdf.title, text: pdf.text };
+            })
+          })
         })
           .then(function (res) {
             return res.json().then(function (data) {
@@ -545,6 +754,8 @@
     composeQuoteNotes: composeQuoteNotes,
     deriveOperationalPlan: deriveOperationalPlan,
     applyToDraft: applyToDraft,
+    isInsufficientSource: isInsufficientSource,
+    extractPdfTextFromArrayBuffer: extractPdfTextFromArrayBuffer,
     mount: mount
   };
 });
