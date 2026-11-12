@@ -11,6 +11,9 @@
 [functions."voice-operational-plan-command"]
   timeout = 30
 
+[functions."quote-draft-from-email"]
+  timeout = 30
+
 # Support AI Stage 1 — bundle verified markdown into the function zip
 [functions."mg-support-chat"]
   included_files = ["docs/margin-guard-support/**"]
