@@ -43,6 +43,25 @@ eq("zip+4 stays intact", withApt.zip, "94541-2201");
 
 eq("single location stays in street", loc.partsFromLocation("Downtown").street, "Downtown");
 eq("single location has no city", loc.partsFromLocation("Downtown").city, "");
+
+const turpin = loc.partsFromLocation("35978 Turpin Way Fremont Ca 94536");
+eq("loose street", turpin.street, "35978 Turpin Way");
+eq("loose city", turpin.city, "Fremont");
+eq("loose state", turpin.state, "CA");
+eq("loose zip", turpin.zip, "94536");
+eq(
+  "loose address composes for quote fields",
+  loc.composeProjectLocation(turpin),
+  "35978 Turpin Way, Fremont, CA 94536"
+);
+ok(
+  "blob in street field is split on refresh",
+  loc.locationPartsNeedRefresh(
+    { street: "35978 Turpin Way Fremont Ca 94536", city: "", state: "CA", zip: "" },
+    "35978 Turpin Way Fremont Ca 94536"
+  ) === true
+);
+ok("membership line is not a loose address", !loc.parseLooseUsAddress("Member of the City of Fremont's Niles Main Street Association"));
 ok(
   "incomplete draft keeps city beside street",
   loc.locationPartsNeedRefresh(

@@ -14,6 +14,50 @@
     return String(value == null ? "" : value).trim();
   }
 
+  var STREET_SUFFIX =
+    "St|Street|Ave|Avenue|Blvd|Boulevard|Way|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Pl|Place|Cir|Circle|Hwy|Highway|Pkwy|Parkway|Ter|Terrace|Trl|Trail";
+  var STATE_ABBR =
+    "AL|AK|AZ|AR|CA|CO|CT|DC|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV";
+  var STATE_NAMES = {
+    california: "CA",
+    arizona: "AZ",
+    nevada: "NV",
+    oregon: "OR",
+    washington: "WA",
+    texas: "TX"
+  };
+
+  function normalizeState(value) {
+    var s = trim(value);
+    if (new RegExp("^(" + STATE_ABBR + ")$", "i").test(s)) return s.toUpperCase();
+    return STATE_NAMES[s.toLowerCase()] || "";
+  }
+
+  function parseLooseUsAddress(raw) {
+    var value = trim(raw).replace(/\s+/g, " ");
+    if (!value || /member of the city|niles main street association|chamber of commerce/i.test(value)) {
+      return null;
+    }
+    var tail = value.match(
+      new RegExp(
+        "^(.*?)\\s+(" + STATE_ABBR + "|California|Arizona|Nevada|Oregon|Washington|Texas)\\s+(\\d{5}(?:-\\d{4})?)$",
+        "i"
+      )
+    );
+    if (!tail) return null;
+    var head = trim(tail[1]).replace(/[.,]+$/, "");
+    var state = normalizeState(tail[2]);
+    var zip = tail[3];
+    var streetMatch = head.match(
+      new RegExp("^(\\d{1,6}\\s+.+?\\s+(?:" + STREET_SUFFIX + ")\\.?)\\s+(.+)$", "i")
+    );
+    if (!streetMatch) return null;
+    var street = trim(streetMatch[1]).replace(/[.,]+$/, "");
+    var city = trim(streetMatch[2]).replace(/[.,]+$/, "");
+    if (!street || !city || !state || !zip) return null;
+    return { street: street, city: city, state: state, zip: zip };
+  }
+
   function composeProjectLocation(parts) {
     var src = parts || {};
     var street = trim(src.street || src.line1).slice(0, 160);
@@ -50,7 +94,7 @@
   }
 
   function partsFromLocation(raw) {
-    var parsed = parseCommaProjectAddress(raw);
+    var parsed = parseCommaProjectAddress(raw) || parseLooseUsAddress(raw);
     if (parsed) return parsed;
     var street = trim(raw).slice(0, 160);
     return { street: street, city: "", state: "", zip: "" };
@@ -58,7 +102,16 @@
 
   function locationPartsNeedRefresh(currentParts, storedLocation) {
     var stored = trim(storedLocation);
-    if (parseCommaProjectAddress(stored)) return true;
+    var parsed = parseCommaProjectAddress(stored) || parseLooseUsAddress(stored);
+    if (parsed) {
+      var cur = currentParts || {};
+      return (
+        trim(cur.street) !== parsed.street ||
+        trim(cur.city) !== parsed.city ||
+        trim(cur.state).toUpperCase() !== parsed.state ||
+        trim(cur.zip) !== parsed.zip
+      );
+    }
     return composeProjectLocation(currentParts) !== stored;
   }
 
@@ -102,6 +155,7 @@
   return {
     composeProjectLocation: composeProjectLocation,
     parseCommaProjectAddress: parseCommaProjectAddress,
+    parseLooseUsAddress: parseLooseUsAddress,
     partsFromLocation: partsFromLocation,
     locationPartsNeedRefresh: locationPartsNeedRefresh,
     propertyPartsFromQuote: propertyPartsFromQuote,
