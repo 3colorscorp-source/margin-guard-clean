@@ -15,6 +15,10 @@ assert(html.includes("{ id: 'two_year', months: 24, label: '2 years' }"));
 assert(html.includes("{ id: 'three_year', months: 36, label: '3 years' }"));
 assert(html.includes("return amount / opexCycleById(cycleId).months"));
 assert(html.includes("operatingExpenseLines: currentOperatingExpenseLines()"));
+assert(html.includes("height:100dvh"));
+assert(html.includes("bs-opex-summary-stat--detail"));
+assert(html.includes("max-height:200px"));
+assert(html.includes(".bs-opex-summary-stats .bs-opex-summary-stat--detail"));
 
 function roundCents(value) {
   return Math.round(Number(value) * 100) / 100;
