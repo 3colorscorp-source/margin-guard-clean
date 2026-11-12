@@ -94,8 +94,9 @@ const guardSrc = read("netlify/functions/_lib/quote-edit-guard.js");
 
 ok("sql adds jsonb column on quotes, not a new table", /alter table public\.quotes/.test(sql) && /proposal_pdfs jsonb/.test(sql) && !/create table/i.test(sql));
 ok("handler reuses estimate-pdfs upload", /uploadEstimatePdf/.test(fnSrc));
-ok("handler issues signed uploads for large 3D PDFs", /createEstimatePdfSignedUpload/.test(fnSrc) && /upload-intent/.test(fnSrc) && /confirm/.test(fnSrc));
-ok("signed upload is not a public object URL", /object\/upload\/sign/.test(read("netlify/functions/_lib/estimate-pdf-access.js")));
+ok("handler issues signed uploads for large 3D PDFs", /createProposalPdfSignedUpload/.test(fnSrc) && /upload-intent/.test(fnSrc) && /confirm/.test(fnSrc));
+ok("signed upload is not a public object URL", /object\/upload\/sign/.test(libSrc));
+ok("core estimate-pdf-access is unchanged", !/createProposalPdfSignedUpload/.test(read("netlify/functions/_lib/estimate-pdf-access.js")));
 ok("handler uses owner or seller context", /resolveOwnerOrSellerContext/.test(fnSrc) && /assertSellerOwnQuote/.test(fnSrc));
 ok("handler does not create a second send path", !/send-quote-zapier/.test(fnSrc) && !/ZAPIER/.test(fnSrc));
 ok("lib keeps 3-part storage paths", /parseEstimatePdfObjectPath/.test(libSrc));

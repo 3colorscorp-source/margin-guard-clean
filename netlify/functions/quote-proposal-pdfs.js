@@ -12,11 +12,7 @@ const {
   assertSellerOwnQuote,
 } = require("./_lib/tenant-device-guard");
 const { evaluateQuoteEditGuard } = require("./_lib/quote-edit-guard");
-const {
-  uploadEstimatePdf,
-  createEstimatePdfSignedUpload,
-  peekEstimatePdf,
-} = require("./_lib/estimate-pdf-access");
+const { uploadEstimatePdf } = require("./_lib/estimate-pdf-access");
 const {
   MAX_FILES,
   MAX_BYTES,
@@ -31,6 +27,8 @@ const {
   removeProposalPdf,
   replaceProposalPdf,
   pathsBelongToTenant,
+  createProposalPdfSignedUpload,
+  peekProposalPdf,
 } = require("./_lib/quote-proposal-pdfs");
 
 const QUOTE_SELECT =
@@ -256,7 +254,7 @@ exports.handler = async (event) => {
       }
       const id = newFileId();
       const name = displayName(body.filename || body.file_name || body.name || "proposal.pdf");
-      const signed = await createEstimatePdfSignedUpload({
+      const signed = await createProposalPdfSignedUpload({
         fileName: storageFileName(id, name),
         estimateNumber: quoteId || "proposal",
         tenantId,
@@ -287,10 +285,10 @@ exports.handler = async (event) => {
       if (!UUID_RE.test(id)) {
         return json(400, { ok: false, error: "id is required", code: "invalid_pdf" });
       }
-      let peeked = await peekEstimatePdf(objectPath);
+      let peeked = await peekProposalPdf(objectPath);
       if (!peeked) {
         await new Promise((resolve) => setTimeout(resolve, 250));
-        peeked = await peekEstimatePdf(objectPath);
+        peeked = await peekProposalPdf(objectPath);
       }
       if (!peeked || peeked.size < 5 || peeked.size > MAX_BYTES) {
         return json(400, {

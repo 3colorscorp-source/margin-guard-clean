@@ -159,94 +159,6 @@ async function uploadEstimatePdf({ base64, fileName, estimateNumber, tenantId })
   return { objectPath, bucket: ESTIMATE_PDF_BUCKET };
 }
 
-function encodeObjectPath(objectPath) {
-  return String(objectPath || "")
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-}
-
-async function createEstimatePdfSignedUpload({ fileName, tenantId, estimateNumber }) {
-  const parsedTenant = trimField(tenantId).toLowerCase();
-  if (!UUID_RE.test(parsedTenant)) return null;
-  await ensureEstimatePdfBucket();
-  const safeName =
-    String(fileName || `Estimate-${estimateNumber || Date.now()}.pdf`)
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || `Estimate-${Date.now()}.pdf`;
-  const withExt = /\.pdf$/i.test(safeName) ? safeName : `${safeName}.pdf`;
-  if (!FILE_RE.test(withExt)) return null;
-  const objectPath = `${parsedTenant}/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${withExt}`;
-  const encodedPath = encodeObjectPath(objectPath);
-  const { url, key } = getSupabaseConfig();
-  const response = await fetch(
-    `${url}/storage/v1/object/upload/sign/${ESTIMATE_PDF_BUCKET}/${encodedPath}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({ upsert: true }),
-    }
-  );
-  const text = await response.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch (_err) {
-    data = null;
-  }
-  if (!response.ok || !data) {
-    throw new Error(`Unable to create signed upload: ${text || response.status}`);
-  }
-  const token = trimField(data.token);
-  let signedPath = trimField(data.url || data.signedUrl || data.signedURL);
-  if (!signedPath && token) {
-    signedPath = `/object/upload/sign/${ESTIMATE_PDF_BUCKET}/${encodedPath}?token=${encodeURIComponent(token)}`;
-  }
-  if (!signedPath) {
-    throw new Error("Signed upload URL missing from storage response");
-  }
-  if (token && signedPath.indexOf("token=") < 0) {
-    signedPath += (signedPath.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(token);
-  }
-  const uploadUrl = /^https?:\/\//i.test(signedPath)
-    ? signedPath
-    : `${url}/storage/v1${signedPath.charAt(0) === "/" ? "" : "/"}${signedPath}`;
-  return { objectPath, bucket: ESTIMATE_PDF_BUCKET, uploadUrl };
-}
-
-async function peekEstimatePdf(objectPath) {
-  const parsed = parseEstimatePdfObjectPath(objectPath);
-  if (!parsed) return null;
-  const { url, key } = getSupabaseConfig();
-  const encodedPath = encodeObjectPath(parsed.objectPath);
-  const response = await fetch(`${url}/storage/v1/object/${ESTIMATE_PDF_BUCKET}/${encodedPath}`, {
-    method: "GET",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      Range: "bytes=0-7",
-    },
-  });
-  if (!response.ok && response.status !== 206) return null;
-  const buf = Buffer.from(await response.arrayBuffer());
-  if (buf.length < 4 || buf[0] !== 0x25 || buf[1] !== 0x50 || buf[2] !== 0x44 || buf[3] !== 0x46) {
-    return null;
-  }
-  let size = buf.length;
-  const range = String(response.headers.get("content-range") || "").match(/\/(\d+)\s*$/);
-  if (range) size = Number(range[1]);
-  else {
-    const length = Number(response.headers.get("content-length"));
-    if (Number.isFinite(length) && length > 0) size = length;
-  }
-  return { objectPath: parsed.objectPath, size };
-}
-
 async function createEstimatePdfSignedUrl(objectPath, expiresIn = SIGNED_URL_EXPIRES_SEC) {
   const parsed = parseEstimatePdfObjectPath(objectPath);
   if (!parsed) {
@@ -300,7 +212,5 @@ module.exports = {
   buildEstimatePdfAccessUrl,
   ensureEstimatePdfBucket,
   uploadEstimatePdf,
-  createEstimatePdfSignedUpload,
-  peekEstimatePdf,
   createEstimatePdfSignedUrl,
 };
