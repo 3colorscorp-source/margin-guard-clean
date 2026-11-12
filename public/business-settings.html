@@ -397,7 +397,7 @@
     }
     .business-settings-page .bs-opex-row{
       display:grid;
-      grid-template-columns:auto minmax(0,1fr) minmax(108px,128px);
+      grid-template-columns:auto minmax(0,1fr) minmax(108px,140px) minmax(108px,128px);
       gap:8px 10px;
       align-items:start;
       padding:8px 10px;
@@ -407,7 +407,7 @@
       background:rgba(255,255,255,.02);
     }
     .business-settings-page .bs-opex-row--custom{
-      grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) minmax(108px,128px);
+      grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) minmax(108px,140px) minmax(108px,128px);
     }
     .business-settings-page .bs-opex-row__check{
       margin-top:8px;
@@ -434,8 +434,25 @@
       color:inherit;
       box-sizing:border-box;
     }
-    .business-settings-page .bs-opex-row__amount:disabled{
+    .business-settings-page .bs-opex-row__amount:disabled,
+    .business-settings-page .bs-opex-row__cycle:disabled{
       opacity:.45;
+    }
+    .business-settings-page .bs-opex-row__cycle{
+      width:100%;
+      padding:7px 9px;
+      font-size:13px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.2);
+      color:inherit;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-row__share{
+      margin:4px 0 0;
+      font-size:10px;
+      line-height:1.35;
+      color:#86efac;
     }
     .business-settings-page .bs-opex-row__name{
       width:100%;
@@ -580,7 +597,8 @@
         grid-template-columns:auto minmax(0,1fr);
       }
       .business-settings-page .bs-opex-row__amount,
-      .business-settings-page .bs-opex-row__name{
+      .business-settings-page .bs-opex-row__name,
+      .business-settings-page .bs-opex-row__cycle{
         grid-column:2;
       }
     }
@@ -1300,7 +1318,7 @@
         <div class="bs-opex-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bsOperatingExpenseTitle">
           <div class="bs-opex-modal__header">
             <h2 class="bs-card-title" id="bsOperatingExpenseTitle">Operating Expense Calculator</h2>
-            <p class="bs-opex-modal__subtitle">Choose every fixed monthly business cost your company actually pays. This calculator only prepares your Monthly Overhead number.</p>
+            <p class="bs-opex-modal__subtitle">Enter each bill for the period you pay it. A yearly or multi-year bill is divided into a monthly cost. That monthly total is your Monthly Overhead.</p>
             <p class="bs-opex-modal__warning" role="note">Use only fixed monthly business costs required to keep the business operating. Do not include job labor, project materials, payroll burden, Workers Comp, commissions, profit, or reserves.</p>
           </div>
           <div class="bs-opex-modal__body">
@@ -1312,6 +1330,7 @@
                 <div class="bs-opex-summary-stats">
                   <div><span>Selected costs</span><strong id="opexSelectedCount">0</strong></div>
                   <div><span>Monthly total</span><strong id="opexMonthlyTotal">$0.00</strong></div>
+                  <div><span>Per labor hour</span><strong id="opexPerHour">$0.00</strong></div>
                   <div><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
                   <div><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
                   <div><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
@@ -1418,6 +1437,7 @@
     pricingMode: 'hour',
     hoursPerDay: 8,
     overheadMonthly: 0,
+    operatingExpenseLines: [],
     stdHours: 160,
     wcPct: 10,
     ficaPct: 7.65,
@@ -1793,6 +1813,7 @@
       pricingMode: safeTrim(document.getElementById('pricingMode')?.value || 'hour'),
       hoursPerDay: Number(document.getElementById('hoursPerDay')?.value || 0),
       overheadMonthly: Number(document.getElementById('overheadMonthly')?.value || 0),
+      operatingExpenseLines: currentOperatingExpenseLines(),
       stdHours: Number(document.getElementById('stdHours')?.value || 0),
       wcPct: Number(document.getElementById('wcPct')?.value || 0),
       ficaPct: Number(document.getElementById('ficaPct')?.value || 0),
@@ -1873,6 +1894,8 @@
     setInputValue('scheduleBufferDays', settings.scheduleBufferDays != null ? settings.scheduleBufferDays : DEFAULT_SETTINGS.scheduleBufferDays);
     setInputValue('allowSellerScheduleOverride', settings.allowSellerScheduleOverride ? 'true' : 'false');
     setInputValue('overheadMonthly', settings.overheadMonthly);
+    operatingExpenseDraft = normalizeOperatingExpenseLines(settings.operatingExpenseLines);
+    applyOperatingExpenseDraftToDom();
     setInputValue('stdHours', settings.stdHours);
     setInputValue('wcPct', settings.wcPct);
     setInputValue('ficaPct', settings.ficaPct);
@@ -2916,6 +2939,14 @@
   ];
 
   let operatingExpenseCategoriesRendered = false;
+  let operatingExpenseDraft = [];
+
+  const OPEX_CYCLES = [
+    { id: 'month', months: 1, label: 'Monthly' },
+    { id: 'year', months: 12, label: '1 year' },
+    { id: 'two_year', months: 24, label: '2 years' },
+    { id: 'three_year', months: 36, label: '3 years' }
+  ];
 
   function formatOpexMoney(amount) {
     const n = Number(amount || 0);
@@ -2928,6 +2959,61 @@
     const n = Number(s);
     if (!Number.isFinite(n) || n < 0) return 0;
     return n;
+  }
+
+  function roundOpexCents(value) {
+    return Math.round(Number(value) * 100) / 100;
+  }
+
+  function opexCycleById(id) {
+    for (let i = 0; i < OPEX_CYCLES.length; i += 1) {
+      if (OPEX_CYCLES[i].id === id) return OPEX_CYCLES[i];
+    }
+    return OPEX_CYCLES[0];
+  }
+
+  function opexMonthlyShare(amount, cycleId) {
+    return amount / opexCycleById(cycleId).months;
+  }
+
+  function findOperatingExpenseItem(itemId) {
+    for (let g = 0; g < OPERATING_EXPENSE_GROUPS.length; g += 1) {
+      const items = OPERATING_EXPENSE_GROUPS[g].items;
+      for (let i = 0; i < items.length; i += 1) {
+        if (items[i].id === itemId) return items[i];
+      }
+    }
+    return null;
+  }
+
+  function normalizeOperatingExpenseLines(raw) {
+    if (!Array.isArray(raw)) return [];
+    const lines = [];
+    raw.forEach(function (row) {
+      if (!row || typeof row !== 'object') return;
+      const item = findOperatingExpenseItem(row.id);
+      if (!item) return;
+      const line = {
+        id: item.id,
+        amount: parseOpexAmount(row.amount),
+        cycle: opexCycleById(row.cycle).id
+      };
+      if (item.customName) line.name = safeTrim(row.name || '').slice(0, 80);
+      lines.push(line);
+    });
+    return lines;
+  }
+
+  function currentOperatingExpenseLines() {
+    if (operatingExpenseCategoriesRendered) readOperatingExpenseDraftFromDom();
+    return normalizeOperatingExpenseLines(operatingExpenseDraft);
+  }
+
+  function opexCycleOptionsHtml(selectedId) {
+    return OPEX_CYCLES.map(function (cycle) {
+      const selected = cycle.id === selectedId ? ' selected' : '';
+      return '<option value="' + cycle.id + '"' + selected + '>' + cycle.label + '</option>';
+    }).join('');
   }
 
   function getOverheadMonthlyNumeric() {
@@ -2958,24 +3044,89 @@
         const rowClass = isCustomName ? 'bs-opex-row bs-opex-row--custom' : 'bs-opex-row';
         parts.push('<div class="' + rowClass + '" data-opex-id="' + item.id + '">');
         parts.push('<input type="checkbox" class="bs-opex-row__check" id="opex-check-' + item.id + '" data-opex-check="' + item.id + '" aria-label="Include ' + item.label + '" />');
-        parts.push('<div><div class="bs-opex-row__label">' + item.label + '</div><p class="bs-opex-row__desc">' + item.desc + '</p></div>');
+        parts.push('<div><div class="bs-opex-row__label">' + item.label + '</div><p class="bs-opex-row__desc">' + item.desc + '</p><p class="bs-opex-row__share" id="opex-share-' + item.id + '"></p></div>');
         if (isCustomName) {
           parts.push('<input type="text" class="bs-opex-row__name" id="opex-name-' + item.id + '" data-opex-name="' + item.id + '" maxlength="80" placeholder="Custom cost name" disabled />');
         }
-        parts.push('<input type="number" class="bs-opex-row__amount" id="opex-amount-' + item.id + '" data-opex-amount="' + item.id + '" step="0.01" min="0" placeholder="0.00" disabled />');
+        parts.push('<select class="bs-opex-row__cycle" id="opex-cycle-' + item.id + '" data-opex-cycle="' + item.id + '" aria-label="Billing period for ' + item.label + '" disabled>' + opexCycleOptionsHtml('month') + '</select>');
+        parts.push('<input type="number" class="bs-opex-row__amount" id="opex-amount-' + item.id + '" data-opex-amount="' + item.id + '" step="0.01" min="0" placeholder="Bill amount" disabled />');
         parts.push('</div>');
       });
       parts.push('</section>');
     });
     host.innerHTML = parts.join('');
     operatingExpenseCategoriesRendered = true;
+    applyOperatingExpenseDraftToDom();
   }
 
   function setOperatingExpenseRowEnabled(itemId, enabled) {
     const amountEl = document.getElementById('opex-amount-' + itemId);
     const nameEl = document.getElementById('opex-name-' + itemId);
+    const cycleEl = document.getElementById('opex-cycle-' + itemId);
     if (amountEl) amountEl.disabled = !enabled;
     if (nameEl) nameEl.disabled = !enabled;
+    if (cycleEl) cycleEl.disabled = !enabled;
+  }
+
+  function paintOperatingExpenseShare(itemId) {
+    const el = document.getElementById('opex-share-' + itemId);
+    const check = document.getElementById('opex-check-' + itemId);
+    if (!el) return;
+    if (!check || !check.checked) {
+      el.textContent = '';
+      return;
+    }
+    const amount = parseOpexAmount(document.getElementById('opex-amount-' + itemId)?.value);
+    const cycle = opexCycleById(document.getElementById('opex-cycle-' + itemId)?.value);
+    const monthly = roundOpexCents(opexMonthlyShare(amount, cycle.id));
+    el.textContent = cycle.months === 1
+      ? formatOpexMoney(monthly) + ' per month'
+      : formatOpexMoney(amount) + ' / ' + cycle.label.toLowerCase() + ' = ' + formatOpexMoney(monthly) + ' per month';
+  }
+
+  function readOperatingExpenseDraftFromDom() {
+    const lines = [];
+    OPERATING_EXPENSE_GROUPS.forEach(function (group) {
+      group.items.forEach(function (item) {
+        const check = document.getElementById('opex-check-' + item.id);
+        if (!check || !check.checked) return;
+        const line = {
+          id: item.id,
+          amount: parseOpexAmount(document.getElementById('opex-amount-' + item.id)?.value),
+          cycle: opexCycleById(document.getElementById('opex-cycle-' + item.id)?.value).id
+        };
+        if (item.customName) {
+          line.name = safeTrim(document.getElementById('opex-name-' + item.id)?.value || '').slice(0, 80);
+        }
+        lines.push(line);
+      });
+    });
+    operatingExpenseDraft = lines;
+  }
+
+  function applyOperatingExpenseDraftToDom() {
+    if (!operatingExpenseCategoriesRendered) return;
+    const byId = {};
+    normalizeOperatingExpenseLines(operatingExpenseDraft).forEach(function (line) {
+      byId[line.id] = line;
+    });
+    OPERATING_EXPENSE_GROUPS.forEach(function (group) {
+      group.items.forEach(function (item) {
+        const line = byId[item.id];
+        const check = document.getElementById('opex-check-' + item.id);
+        const amountEl = document.getElementById('opex-amount-' + item.id);
+        const cycleEl = document.getElementById('opex-cycle-' + item.id);
+        const nameEl = document.getElementById('opex-name-' + item.id);
+        const on = !!line;
+        if (check) check.checked = on;
+        if (amountEl) amountEl.value = on ? String(line.amount) : '';
+        if (cycleEl) cycleEl.value = on ? line.cycle : 'month';
+        if (nameEl) nameEl.value = on && line.name ? line.name : '';
+        setOperatingExpenseRowEnabled(item.id, on);
+        paintOperatingExpenseShare(item.id);
+      });
+    });
+    renderOperatingExpenseSummary();
   }
 
   function getOperatingExpenseSelections() {
@@ -2985,12 +3136,22 @@
         const check = document.getElementById('opex-check-' + item.id);
         if (!check || !check.checked) return;
         const amount = parseOpexAmount(document.getElementById('opex-amount-' + item.id)?.value);
+        const cycle = opexCycleById(document.getElementById('opex-cycle-' + item.id)?.value);
         let label = item.label;
         if (item.customName) {
           const customName = safeTrim(document.getElementById('opex-name-' + item.id)?.value || '');
-          label = customName || 'Custom fixed monthly cost';
+          label = customName || 'Custom fixed cost';
         }
-        selections.push({ id: item.id, label: label, amount: amount, tier: item.tier });
+        selections.push({
+          id: item.id,
+          label: label,
+          amount: amount,
+          cycle: cycle.id,
+          cycleLabel: cycle.label,
+          months: cycle.months,
+          monthly: opexMonthlyShare(amount, cycle.id),
+          tier: item.tier
+        });
       });
     });
     return selections;
@@ -2998,7 +3159,7 @@
 
   function calculateOperatingExpenseTotal() {
     return getOperatingExpenseSelections().reduce(function (sum, row) {
-      return sum + row.amount;
+      return sum + row.monthly;
     }, 0);
   }
 
@@ -3014,9 +3175,11 @@
       else if (row.tier === 'custom') customCount += 1;
       else coreCount += 1;
     });
+    const stdHours = parseOpexAmount(document.getElementById('stdHours')?.value);
     setText('opexPreparedMonthlyCost', formatOpexMoney(monthlyTotal));
     setText('opexSelectedCount', String(selections.length));
     setText('opexMonthlyTotal', formatOpexMoney(monthlyTotal));
+    setText('opexPerHour', stdHours > 0 ? formatOpexMoney(monthlyTotal / stdHours) : '—');
     setText('opexAnnualTotal', formatOpexMoney(annualTotal));
     setText('opexCoreCount', String(coreCount));
     setText('opexOptionalCount', String(optionalCount));
@@ -3028,12 +3191,20 @@
       return;
     }
     listEl.innerHTML = selections.map(function (row) {
-      return '<li><span>' + row.label + '</span><strong>' + formatOpexMoney(row.amount) + '</strong></li>';
+      const detail = row.months === 1
+        ? formatOpexMoney(row.monthly) + '/mo'
+        : formatOpexMoney(row.amount) + ' / ' + row.cycleLabel.toLowerCase();
+      return '<li><span>' + row.label + '<br>' + detail + '</span><strong>' + formatOpexMoney(row.monthly) + '/mo</strong></li>';
     }).join('');
   }
 
   function applyOperatingExpenseTotal() {
-    const total = Math.round(calculateOperatingExpenseTotal() * 100) / 100;
+    readOperatingExpenseDraftFromDom();
+    if (!operatingExpenseDraft.length) {
+      setStatus('Select at least one cost. Monthly overhead was left as it is.', 'error');
+      return;
+    }
+    const total = roundOpexCents(calculateOperatingExpenseTotal());
     setInputValue('overheadMonthly', total);
     markBusinessSettingsDirty();
     const overheadInput = document.getElementById('overheadMonthly');
@@ -3042,7 +3213,7 @@
       const wrap = getBusinessFieldWrap('overheadMonthly');
       if (wrap) wrap.classList.remove('field--error');
     }
-    const confirmMsg = 'Applied to Monthly Overhead. Review the value and click Save Business Settings to save.';
+    const confirmMsg = 'Monthly overhead is each bill divided by its period. Review the value and click Save Business Settings to save.';
     const confirmEl = document.getElementById('opexApplyConfirm');
     if (confirmEl) {
       confirmEl.textContent = confirmMsg;
@@ -3085,17 +3256,25 @@
         const checkId = target.getAttribute('data-opex-check');
         if (checkId) {
           setOperatingExpenseRowEnabled(checkId, !!target.checked);
+          paintOperatingExpenseShare(checkId);
+          readOperatingExpenseDraftFromDom();
           renderOperatingExpenseSummary();
           return;
         }
-        if (target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name')) {
+        const touched = target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name') || target.getAttribute('data-opex-cycle');
+        if (touched) {
+          paintOperatingExpenseShare(touched);
+          readOperatingExpenseDraftFromDom();
           renderOperatingExpenseSummary();
         }
       });
       list.addEventListener('input', function (event) {
         const target = event.target;
         if (!target || !target.getAttribute) return;
-        if (target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name')) {
+        const touched = target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name') || target.getAttribute('data-opex-cycle');
+        if (touched) {
+          paintOperatingExpenseShare(touched);
+          readOperatingExpenseDraftFromDom();
           renderOperatingExpenseSummary();
         }
       });
