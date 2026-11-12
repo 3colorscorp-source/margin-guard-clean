@@ -355,6 +355,16 @@
       state.clientEmail = str(fields.client_email, 80);
       state.clientPhone = str(fields.client_phone, 40);
     }
+    var seedText = [notes, str(fields.materials)].filter(Boolean).join("\n");
+    var matsApi = win && win.MgQuoteMaterials;
+    if (!matsApi && typeof require === "function") {
+      try {
+        matsApi = require("./quote-materials");
+      } catch (_matsErr) {}
+    }
+    if (matsApi && typeof matsApi.mergeSeed === "function") {
+      state.material_lines = matsApi.mergeSeed(state.material_lines, seedText);
+    }
     delete state.email_body;
     delete state.source_email;
     delete state.emailBody;

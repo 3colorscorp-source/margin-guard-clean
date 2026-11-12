@@ -2162,6 +2162,8 @@
               </div>
             </section>
 
+            <section class="sales-materials" id="salesMaterialsSection" aria-labelledby="salesMaterialsHeading"></section>
+
             <div class="sep"></div>
 
             <details class="sales-operational sales-operational--pro seller-operational owner-operational" id="salesOperationalSection" open>
@@ -2493,6 +2495,7 @@
   <script src="/js/tenant.js"></script>
   <script src="/js/quote-send-feedback.js?v=owner-total-parity-1"></script>
   <script src="/js/labor-areas.js"></script>
+  <script src="/js/quote-materials.js?v=mat-v1"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
@@ -2500,7 +2503,7 @@
   <script src="/js/project-location.js?v=split-addr-1"></script>
   <script src="/js/app.js?v=seller-visual-dollar-source-v1"></script>
   <script src="/js/quote-proposal-pdfs.js?v=pdf12mb-1"></script>
-  <script src="/js/quote-draft-from-email.js?v=split-addr-1"></script>
+  <script src="/js/quote-draft-from-email.js?v=mat-v1"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -5843,6 +5846,9 @@
             : (Array.isArray(state.laborAreas) ? state.laborAreas : []);
         }
         state.laborAreaPublic = Array.isArray(state.laborAreaPublic) ? state.laborAreaPublic : [];
+        state.material_lines = window.MgQuoteMaterials
+          ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
+          : (Array.isArray(state.material_lines) ? state.material_lines : []);
         if (!state.seller_plan_area_draft || typeof state.seller_plan_area_draft !== 'object') {
           state.seller_plan_area_draft = null;
         }
@@ -8411,6 +8417,19 @@
             } catch (_error) {}
           }
           renderSellerWorkersStandalone();
+          if (window.MgQuoteMaterials && document.getElementById('salesMaterialsSection')) {
+            window.MgQuoteMaterials.render(document.getElementById('salesMaterialsSection'), {
+              headingId: 'salesMaterialsHeading',
+              lines: loadSalesState().material_lines,
+              notes: [loadSalesState().messageToClient, loadSalesState().notes].filter(Boolean).join('\n'),
+              onChange: function (lines) {
+                const next = loadSalesState();
+                next.material_lines = lines;
+                saveSalesState(next);
+                refreshSellerFromStandalone();
+              }
+            });
+          }
           renderSalesOperationalPlanStandalone();
           bindSalesOperationalPlanStandalone();
           renderStandaloneSellerPanel();
@@ -8861,6 +8880,7 @@
                 { label: 'Subtotal', value: sellerMoney(offered, settings, state) },
                 { label: 'Recommended', value: sellerMoney(metrics.recommended, settings, state) },
                 { label: 'Minimum', value: sellerMoney(metrics.minimum, settings, state) },
+                { label: 'Materials', value: sellerMoney(metrics.materialCost || 0, settings, state) },
                 { label: 'Deposit', value: sellerMoney(metrics.depositRequired, settings, state) },
                 { label: 'Commission', value: sellerMoney(metrics.commissionDisplay, settings, state) },
               ];
@@ -9583,9 +9603,15 @@
           ? minimumMarginPctRaw
           : 15;
         const minimumProfit = beforeProfit * (minimumMarginPct / 100);
-        const recommended = beforeProfit + recommendedProfit + reserve;
-        const minimum = beforeProfit + minimumProfit + reserve;
-        const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+        const recommendedLabor = beforeProfit + recommendedProfit + reserve;
+        const minimumLabor = beforeProfit + minimumProfit + reserve;
+        const negotiationLabor = recommendedLabor > minimumLabor ? minimumLabor + ((recommendedLabor - minimumLabor) * 0.5) : minimumLabor;
+        const materialCost = window.MgQuoteMaterials
+          ? window.MgQuoteMaterials.contractorSubtotal(state.material_lines)
+          : 0;
+        const recommended = recommendedLabor + materialCost;
+        const minimum = minimumLabor + materialCost;
+        const negotiation = negotiationLabor + materialCost;
         const rawOffered = state.price == null ? '' : String(state.price);
         const sliderTouched = Boolean(state._sliderTouched || state._manualPriceTouched);
         const stageRaw = state.pricingStage;
@@ -9610,6 +9636,7 @@
           recommended,
           minimum,
           negotiation,
+          materialCost,
           offered,
           commissionRate,
           commissionDisplay,
@@ -9635,7 +9662,7 @@
             floorMarginPct: Number(settings.minimumMarginPct != null ? settings.minimumMarginPct : 15)
           };
         }
-        const g = fn(out.offered, bp, res, settings);
+        const g = fn(out.offered, bp, res, settings, out.materialCost);
         return {
           ...out,
           needsApproval: g.level === 'yellow',
@@ -10632,6 +10659,7 @@
           workers: DEFAULT_WORKERS.map(function (worker) {
             return { ...worker };
           }),
+          material_lines: [],
           _manualPriceTouched: false,
           _sliderTouched: false,
           pricingStage: 2,
@@ -12606,6 +12634,9 @@ async function openSellerSendModal(event) {
       address: projectAddress,
       workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
       labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(stateFresh.laborAreas) : [],
+      material_lines: window.MgQuoteMaterials
+        ? window.MgQuoteMaterials.sanitizeMaterialLines(stateFresh.material_lines)
+        : [],
       price: stateFresh.price,
       pricing_stage: stateFresh.pricingStage == null ? 2 : stateFresh.pricingStage,
       _sliderTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
