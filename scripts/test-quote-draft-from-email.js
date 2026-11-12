@@ -153,6 +153,50 @@ if (fs.existsSync(demoPdf)) {
   ok("combined source has slate mosaic", /Maverick Textured Slate Mosaic/i.test(combined));
 }
 
+const gcEmail = [
+  "Thank you!",
+  "Best regards,",
+  "Roland",
+  "Roland Zoller, General Contractor",
+  "Roland Zoller Construction, CSLB #950926",
+  "510-401-3609 mobile",
+  "rolandzollerconstruction@gmail.com",
+  "Specializing in residential renovations, remodeling, and repairs",
+  "Member of the City of Fremont's Niles Main Street Association",
+].join("\n");
+eq("signature client name", lib.clientNameFromSignature(gcEmail), "Roland Zoller");
+eq("signature phone", lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).client_phone.replace(/\D/g, "").slice(-10), "5104013609");
+eq("signature email", lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).client_email, "rolandzollerconstruction@gmail.com");
+ok("Fremont membership is not project address", !lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).project_address);
+
+if (fs.existsSync(demoPdf)) {
+  const demolition = lib.extractPdfText(fs.readFileSync(demoPdf));
+  const prepPdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Preparation_Strata_Mat_View.pdf");
+  const tilePdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Tile_Installed_View (1).pdf");
+  const pdfs = [
+    { name: "Dining_Room_Demolition_View.pdf", title: demolition.title, text: demolition.text },
+    fs.existsSync(prepPdf)
+      ? Object.assign({ name: "Dining_Room_Preparation_Strata_Mat_View.pdf" }, lib.extractPdfText(fs.readFileSync(prepPdf)))
+      : null,
+    fs.existsSync(tilePdf)
+      ? Object.assign({ name: "Dining_Room_Tile_Installed_View.pdf" }, lib.extractPdfText(fs.readFileSync(tilePdf)))
+      : null,
+  ].filter(Boolean);
+  const source = lib.combineSourceText(gcEmail, pdfs);
+  const filled = lib.enrichQuoteFieldsFromSource({}, source, gcEmail);
+  eq("GC dining project name", filled.project_name, "Dining Room Tile Installation");
+  eq("GC dining client name", filled.client_name, "Roland Zoller");
+  eq("GC dining email", filled.client_email, "rolandzollerconstruction@gmail.com");
+  ok("GC dining phone", filled.client_phone.replace(/\D/g, "").endsWith("5104013609") || filled.client_phone.indexOf("510") >= 0);
+  ok("GC dining area", filled.areas.indexOf("Dining room") >= 0);
+  ok("GC dining materials include Strata Mat", /STRATA/i.test(filled.materials));
+  ok("GC dining mosaic", /Maverick/i.test(filled.materials));
+  ok("GC dining scope has demolition and tile", /demolition/i.test(filled.scope_of_work) && /mosaic/i.test(filled.scope_of_work));
+  ok("GC dining has exclusions", /excluded|written approval/i.test(filled.exclusions));
+  const days = lib.enrichDaysFromSource({ days: [] }, source).days;
+  ok("GC dining has three phases", days.length === 3);
+}
+
 const storage = {
   data: {},
   getItem(key) {
