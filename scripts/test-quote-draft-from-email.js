@@ -169,6 +169,49 @@ eq("signature phone", lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).clie
 eq("signature email", lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).client_email, "rolandzollerconstruction@gmail.com");
 ok("Fremont membership is not project address", !lib.enrichQuoteFieldsFromSource({}, gcEmail, gcEmail).project_address);
 
+const gcFullEmail = [
+  "Bid/Estimate For Dining Room Floor tile. 35978 Turpin Way Fremont Ca 94536",
+  "",
+  "Hello Librado",
+  "",
+  "We spoke on the phone a few weeks ago and you also sent me an email.",
+  "Attached are floor plans for 1 of 2 projects I have in Fremont. The 2nd project I will send to you shortly.",
+  "This project is for floor tile in the dining room. There is an existing tile currently. This will need to be demoed and prepped for a new tile. The room is set on a lower level slab foundation. (Rough area is 16ft x 14ft.",
+  "Below is a link of the floor tile they have chosen. Clients will provide the tile and grout. All other materials by you. To include demo and tile installation",
+  "I have also attached some pictures of the dining room area.",
+  "",
+  gcEmail,
+].join("\n");
+eq("email subject project name", lib.inferProjectNameFromEmail(gcFullEmail), "Dining Room Floor Tile");
+ok("street address from subject", /35978 Turpin Way/i.test(lib.extractStreetAddress(gcFullEmail)));
+ok("membership line is not a street", !lib.extractStreetAddress(gcEmail));
+ok("pdf filename is not the client", lib.isPdfArtifactName("PDF Dining Room Tile", "PROPOSAL_PDF Dining Room Tile Area.pdf"));
+eq("address-only paste flagged", client.isAddressOnlyPaste("rolandzollerconstruction@gmail.com"), true);
+eq("full email is not address-only", client.isAddressOnlyPaste(gcFullEmail), false);
+
+const fromFullEmail = lib.enrichQuoteFieldsFromSource(
+  {
+    project_name: "TILE INSTALLATION | DINING ROOM FLOOR",
+    client_name: "PDF Dining Room Tile",
+    client_email: "rolandzollerconstruction@gmail.com",
+    client_phone: "",
+    project_address: "",
+  },
+  "PROPOSAL_PDF Dining Room Tile Area.pdf\nPDF_TITLE Dining Room Tile Area\nCLIENT_EMAIL_BODY\n" + gcFullEmail,
+  gcFullEmail
+);
+eq("full email overwrites pdf client name", fromFullEmail.client_name, "Roland Zoller");
+eq("full email project name from subject", fromFullEmail.project_name, "Dining Room Floor Tile");
+ok("full email fills Turpin address", /35978 Turpin Way/i.test(fromFullEmail.project_address) && /Fremont/i.test(fromFullEmail.project_address) && /94536/.test(fromFullEmail.project_address));
+ok("full email fills phone", fromFullEmail.client_phone.replace(/\D/g, "").endsWith("5104013609"));
+ok("full email dining area", fromFullEmail.areas.indexOf("Dining room") >= 0);
+ok("full email 16ft x 14ft", /16\s*ft\s*x\s*14\s*ft/i.test(fromFullEmail.requirements));
+ok("full email slab", /slab/i.test(fromFullEmail.requirements));
+ok("full email client tile grout", /tile and grout/i.test(fromFullEmail.materials) || /tile and grout/i.test(fromFullEmail.exclusions));
+ok("full email demo in scope", /demo/i.test(fromFullEmail.scope_of_work));
+ok("Librado is not the client", fromFullEmail.client_name !== "Librado");
+ok("client asks for full email paste", /subject, body, and signature/i.test(clientSrc));
+
 if (fs.existsSync(demoPdf)) {
   const demolition = lib.extractPdfText(fs.readFileSync(demoPdf));
   const prepPdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Preparation_Strata_Mat_View.pdf");
@@ -329,6 +372,38 @@ async function main() {
   eq("email not stored", body.email_stored, false);
   eq("draft status in response", body.draft_status, "draft");
   eq("extracted project name", body.quote_fields.project_name, "Kitchen tile");
+
+  const gcInterpreted = await handlerCase(
+    {
+      resolveContext: async () => ({ auth_mode: "owner", tenant: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }),
+      interpret: async () => ({
+        summary: "Dining room tile",
+        needs_review: [],
+        quote_fields: {
+          project_name: "TILE INSTALLATION | DINING ROOM FLOOR",
+          client_name: "PDF Dining Room Tile",
+          client_email: "rolandzollerconstruction@gmail.com",
+          client_phone: "",
+          project_address: "",
+          areas: [],
+          scope_of_work: "",
+          requirements: "",
+          materials: "",
+          exclusions: "",
+          important_dates: "",
+        },
+        document: { start_date: null, due_date: null, days: [] },
+      }),
+    },
+    { httpMethod: "POST", body: JSON.stringify({ email_body: gcFullEmail }) }
+  );
+  eq("full email handler success", gcInterpreted.statusCode, 200);
+  const gcBody = JSON.parse(gcInterpreted.body);
+  eq("handler replaces pdf client name", gcBody.quote_fields.client_name, "Roland Zoller");
+  eq("handler uses email subject project", gcBody.quote_fields.project_name, "Dining Room Floor Tile");
+  ok("handler fills job address", /Turpin Way/i.test(gcBody.quote_fields.project_address));
+  ok("handler fills signature phone", String(gcBody.quote_fields.client_phone).replace(/\D/g, "").endsWith("5104013609"));
+  ok("handler keeps CSLB in requirements", /950926/.test(gcBody.quote_fields.requirements));
   ok("model price stripped", body.quote_fields.price == null);
   eq("invalid due date dropped", body.proposed_document.due_date, null);
   ok("response omits original email", !JSON.stringify(body).includes("Hi, this is Ada Lopez"));

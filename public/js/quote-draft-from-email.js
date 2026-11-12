@@ -48,6 +48,10 @@
       .trim();
   }
 
+  function isAddressOnlyPaste(text) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(text || "").trim());
+  }
+
   function isInsufficientSource(text) {
     return workDescriptionChars(text).length < 40;
   }
@@ -420,13 +424,13 @@
       "<header>" +
       "<div><span class=\"mg-email-draft-badge\">Draft proposal</span>" +
       "<h3 id=\"mgQuoteEmailDraftTitle\">Create quote draft from email</h3>" +
-      "<p class=\"sub\">Paste the client email and attach proposal PDFs that show the work (for example 3D views). Margin Guard prepares an editable Project Quote draft. It does not send, save, or connect to a mailbox.</p></div>" +
+      "<p class=\"sub\">Paste the full client email — subject, message, and signature — then attach proposal PDFs. The subject often has the job address. The signature has the name, phone, and email. Margin Guard prepares an editable Project Quote draft. It does not send, save, or connect to a mailbox.</p></div>" +
       "<button type=\"button\" class=\"btn\" data-email-draft-close>Close</button>" +
       "</header>" +
       '<div class="mg-email-draft-body">' +
       '<div class="mg-email-draft-grid">' +
-      '<div class="mg-email-draft-field"><label for="mgQuoteEmailDraftSource">Client email</label>' +
-      '<textarea id="mgQuoteEmailDraftSource" maxlength="12000" placeholder="Paste the client email body, or the client address plus proposal PDFs"></textarea>' +
+      '<div class="mg-email-draft-field"><label for="mgQuoteEmailDraftSource">Full client email (subject, body, signature)</label>' +
+      '<textarea id="mgQuoteEmailDraftSource" maxlength="12000" placeholder="Bid/Estimate For Dining Room Floor tile. 35978 Turpin Way Fremont CA 94536&#10;&#10;Hello…&#10;This project is for floor tile in the dining room…&#10;&#10;Best regards,&#10;Roland Zoller, General Contractor&#10;510-401-3609&#10;name@email.com"></textarea>' +
       '<label for="mgQuoteEmailDraftPdfs" style="margin-top:.7rem">Proposal PDFs / 3D views</label>' +
       '<input id="mgQuoteEmailDraftPdfs" type="file" accept="application/pdf,.pdf" multiple />' +
       '<ul class="mg-email-draft-files" id="mgQuoteEmailDraftPdfList"></ul></div>' +
@@ -662,7 +666,11 @@
           })
           .join("\n");
         if (isInsufficientSource(emailBody + "\n" + pdfParts)) {
-          setStatus(doc, "A client email address is not enough. Paste the email body or attach the proposal PDFs that show the work.", true);
+          setStatus(doc, "A client email address is not enough. Paste the full email (subject, body, and signature) or attach the proposal PDFs that show the work.", true);
+          return;
+        }
+        if (isAddressOnlyPaste(emailBody)) {
+          setStatus(doc, "Paste the full email: subject line, message, and signature. The job address and phone are in the email, not in the PDFs.", true);
           return;
         }
         if (!fetchFn) {
@@ -755,6 +763,7 @@
     deriveOperationalPlan: deriveOperationalPlan,
     applyToDraft: applyToDraft,
     isInsufficientSource: isInsufficientSource,
+    isAddressOnlyPaste: isAddressOnlyPaste,
     extractPdfTextFromArrayBuffer: extractPdfTextFromArrayBuffer,
     mount: mount
   };
