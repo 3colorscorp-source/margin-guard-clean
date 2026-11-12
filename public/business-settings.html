@@ -571,24 +571,78 @@
         max-height:calc(100vh - 24px);
       }
       .business-settings-page .bs-opex-modal{
-        padding:12px;
+        padding:0;
+        align-items:stretch;
       }
       .business-settings-page .bs-opex-modal__dialog{
         width:100%;
-        max-height:calc(100vh - 24px);
+        height:100vh;
+        height:100dvh;
+        max-height:100vh;
+        max-height:100dvh;
+        border-radius:0;
+      }
+      .business-settings-page .bs-opex-modal__header{
+        padding:12px 14px 8px;
+      }
+      .business-settings-page .bs-opex-modal__subtitle{
+        margin-bottom:6px;
+      }
+      .business-settings-page .bs-opex-modal__warning{
+        padding:8px 10px;
+      }
+      .business-settings-page .bs-opex-modal__body{
+        display:flex;
+        flex-direction:column;
+        padding:0 12px;
       }
       .business-settings-page .bs-opex-modal__layout{
-        grid-template-columns:1fr;
+        display:flex;
+        flex-direction:column;
+        flex:1 1 auto;
+        min-height:0;
+        height:auto;
         max-height:none;
-      }
-      .business-settings-page .bs-opex-modal__categories{
-        max-height:min(52vh,420px);
-        order:2;
+        overflow:hidden;
+        gap:10px;
       }
       .business-settings-page .bs-opex-modal__summary{
         position:relative;
         top:auto;
         order:1;
+        flex:0 0 auto;
+        max-height:200px;
+        overflow:auto;
+        padding:10px 12px;
+      }
+      .business-settings-page .bs-opex-summary-total{
+        margin-bottom:8px;
+        font-size:1.35rem;
+      }
+      .business-settings-page .bs-opex-summary-stats{
+        margin-bottom:8px;
+      }
+      .business-settings-page .bs-opex-summary-stats .bs-opex-summary-stat--detail{
+        display:none;
+      }
+      .business-settings-page .bs-opex-summary-list{
+        max-height:64px;
+      }
+      .business-settings-page .bs-opex-summary-list li{
+        align-items:flex-start;
+      }
+      .business-settings-page .bs-opex-summary-list li span{
+        min-width:0;
+      }
+      .business-settings-page .bs-opex-modal__categories{
+        order:2;
+        flex:1 1 auto;
+        min-height:0;
+        max-height:none;
+        overflow-y:auto;
+      }
+      .business-settings-page .bs-opex-modal__footer{
+        padding:10px 12px calc(10px + env(safe-area-inset-bottom));
       }
       .business-settings-page .bs-opex-row{
         grid-template-columns:auto minmax(0,1fr);
@@ -1331,10 +1385,10 @@
                   <div><span>Selected costs</span><strong id="opexSelectedCount">0</strong></div>
                   <div><span>Monthly total</span><strong id="opexMonthlyTotal">$0.00</strong></div>
                   <div><span>Per labor hour</span><strong id="opexPerHour">$0.00</strong></div>
-                  <div><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
-                  <div><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
-                  <div><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
-                  <div><span>Custom costs selected</span><strong id="opexCustomCount">0</strong></div>
+                  <div class="bs-opex-summary-stat--detail"><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
+                  <div class="bs-opex-summary-stat--detail"><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
+                  <div class="bs-opex-summary-stat--detail"><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
+                  <div class="bs-opex-summary-stat--detail"><span>Custom costs selected</span><strong id="opexCustomCount">0</strong></div>
                 </div>
                 <span class="bs-opex-summary-label">Selected cost list</span>
                 <ul class="bs-opex-summary-list" id="opexSelectedList">
