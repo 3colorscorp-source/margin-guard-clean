@@ -4,7 +4,7 @@
  */
 (function () {
   const MAX_FILES = 6;
-  const MAX_BYTES = Math.floor(3.5 * 1024 * 1024);
+  const MAX_BYTES = 12 * 1024 * 1024;
   const ENDPOINT = "/.netlify/functions/quote-proposal-pdfs";
   const STYLE_ID = "mg-proposal-pdfs-style";
 
@@ -116,7 +116,7 @@
     host.innerHTML =
       '<div class="mg-proposal-pdfs">' +
       "<h3>3D Views / Proposal PDFs</h3>" +
-      "<p>Optional. These PDFs stay with this quote and are included when you send it. The client opens them from the public estimate page. Price, scope, and terms are unchanged.</p>" +
+      "<p>Optional. These PDFs stay with this quote and are included when you send it. The client opens them from the public estimate page. Price, scope, and terms are unchanged. Each PDF can be up to 12 MB. You can add several (up to 6).</p>" +
       (list.length
         ? '<ul class="mg-proposal-pdfs__list">' +
           list
@@ -155,7 +155,7 @@
       (busy || list.length >= MAX_FILES ? " " : " primary") +
       '">' +
       (list.length >= MAX_FILES ? "Limit reached" : "Add PDF") +
-      '<input type="file" accept="application/pdf,.pdf" ' +
+      '<input type="file" accept="application/pdf,.pdf" multiple ' +
       (busy || list.length >= MAX_FILES ? "disabled" : "") +
       " /></label>" +
       "</div>" +
@@ -166,9 +166,9 @@
     const addInput = host.querySelector('input[type=file]:not([data-replace-input])');
     if (addInput) {
       addInput.onchange = function () {
-        const file = addInput.files && addInput.files[0];
+        const picked = addInput.files ? Array.prototype.slice.call(addInput.files, 0) : [];
         addInput.value = "";
-        if (file) void uploadFile(file, null, host);
+        if (picked.length) void uploadFiles(picked, null, host);
       };
     }
     const replaceInput = host.querySelector("[data-replace-input]");
@@ -200,19 +200,61 @@
     hosts.forEach(renderHost);
   }
 
-  function fileToBase64(file) {
-    return new Promise(function (resolve, reject) {
-      const reader = new FileReader();
-      reader.onload = function () {
-        const result = String(reader.result || "");
-        const comma = result.indexOf(",");
-        resolve(comma >= 0 ? result.slice(comma + 1) : result);
-      };
-      reader.onerror = function () {
-        reject(new Error("Unable to read that file."));
-      };
-      reader.readAsDataURL(file);
+  async function postJson(payload) {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
     });
+    const data = await res.json().catch(function () {
+      return {};
+    });
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Unable to upload the PDF.");
+    }
+    return data;
+  }
+
+  async function putPdfToSignedUrl(uploadUrl, file) {
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf", "x-upsert": "true" },
+      body: file,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(function () {
+        return "";
+      });
+      throw new Error(text || "Unable to store the PDF.");
+    }
+  }
+
+  function applyUploadResult(data, replaceId, quoteId) {
+    if (Array.isArray(data.files) && quoteId) {
+      persist(data.files);
+      return;
+    }
+    if (data.file) {
+      const next = currentFiles().slice();
+      if (replaceId) {
+        const idx = next.findIndex(function (row) {
+          return String(row.id) === String(replaceId);
+        });
+        if (idx >= 0) next[idx] = data.file;
+        else next.push(data.file);
+      } else {
+        next.push(data.file);
+      }
+      persist(next);
+    }
+  }
+
+  async function uploadFiles(list, replaceId, host) {
+    const filesToSend = Array.isArray(list) ? list.filter(Boolean) : [];
+    for (let i = 0; i < filesToSend.length; i += 1) {
+      await uploadFile(filesToSend[i], i === 0 ? replaceId : null, host);
+    }
   }
 
   async function uploadFile(file, replaceId, host) {
@@ -222,7 +264,7 @@
       return;
     }
     if (file.size > MAX_BYTES) {
-      setStatus(host, "Each PDF must be 3.5 MB or smaller.", true);
+      setStatus(host, "Each PDF can be up to 12 MB.", true);
       return;
     }
     if (!replaceId && currentFiles().length >= MAX_FILES) {
@@ -231,43 +273,32 @@
     }
     busy = true;
     renderAll();
-    setStatus(host, "Uploading…", false);
+    setStatus(host, "Uploading " + (file.name || "PDF") + "…", false);
     try {
-      const contentBase64 = await fileToBase64(file);
-      const body = {
-        filename: file.name,
-        content_base64: contentBase64,
-      };
       const quoteId = quoteIdFromWorkspace();
-      if (quoteId) body.quote_id = quoteId;
-      if (replaceId) body.replace_id = replaceId;
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(function () {
-        return {};
-      });
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Unable to upload the PDF.");
+      const intentBody = {
+        action: "upload-intent",
+        filename: file.name,
+        size: file.size,
+      };
+      if (quoteId) intentBody.quote_id = quoteId;
+      if (replaceId) intentBody.replace_id = replaceId;
+      const intent = await postJson(intentBody);
+      if (!intent.upload_url || !intent.object_path || !intent.file_id) {
+        throw new Error("Unable to upload the PDF.");
       }
-      if (Array.isArray(data.files) && quoteId) {
-        persist(data.files);
-      } else if (data.file) {
-        const next = currentFiles().slice();
-        if (replaceId) {
-          const idx = next.findIndex(function (row) {
-            return String(row.id) === String(replaceId);
-          });
-          if (idx >= 0) next[idx] = data.file;
-          else next.push(data.file);
-        } else {
-          next.push(data.file);
-        }
-        persist(next);
-      }
+      await putPdfToSignedUrl(intent.upload_url, file);
+      const confirmBody = {
+        action: "confirm",
+        id: intent.file_id,
+        object_path: intent.object_path,
+        filename: intent.filename || file.name,
+        size: file.size,
+      };
+      if (quoteId) confirmBody.quote_id = quoteId;
+      if (replaceId) confirmBody.replace_id = replaceId;
+      const data = await postJson(confirmBody);
+      applyUploadResult(data, replaceId, quoteId);
       setStatus(host, "PDF attached to this quote.", false);
     } catch (err) {
       setStatus(host, err && err.message ? err.message : "Unable to upload the PDF.", true);

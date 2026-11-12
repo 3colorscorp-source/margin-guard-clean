@@ -12,7 +12,11 @@ const {
   assertSellerOwnQuote,
 } = require("./_lib/tenant-device-guard");
 const { evaluateQuoteEditGuard } = require("./_lib/quote-edit-guard");
-const { uploadEstimatePdf } = require("./_lib/estimate-pdf-access");
+const {
+  uploadEstimatePdf,
+  createEstimatePdfSignedUpload,
+  peekEstimatePdf,
+} = require("./_lib/estimate-pdf-access");
 const {
   MAX_FILES,
   MAX_BYTES,
@@ -212,6 +216,131 @@ exports.handler = async (event) => {
 
     const action = String(body.action || "upload").trim().toLowerCase();
     const quoteId = String(body.quote_id || body.quoteId || "").trim();
+
+    async function existingListForQuote() {
+      if (!quoteId) return { existing: [], managed: null, error: null };
+      if (!UUID_RE.test(quoteId)) {
+        return { error: json(400, { ok: false, error: "Invalid quote_id", code: "invalid_quote_id" }) };
+      }
+      const managed = await assertCanManageQuote(ctx, quoteId);
+      if (managed.error) return { error: managed.error };
+      return { existing: normalizeProposalPdfs(managed.quote.proposal_pdfs), managed };
+    }
+
+    function countWouldExceed(existing, replaceId) {
+      const nextCount =
+        replaceId && UUID_RE.test(replaceId)
+          ? existing.filter((row) => row.id.toLowerCase() !== replaceId.toLowerCase()).length + 1
+          : existing.length + 1;
+      return nextCount > MAX_FILES;
+    }
+
+    if (action === "upload-intent") {
+      const size = Math.max(0, Math.floor(Number(body.size || body.byte_size) || 0));
+      if (size < 5 || size > MAX_BYTES) {
+        return json(400, {
+          ok: false,
+          error: `Choose a PDF up to ${Math.floor(MAX_BYTES / (1024 * 1024))} MB.`,
+          code: "invalid_pdf",
+        });
+      }
+      const replaceId = String(body.replace_id || body.replaceId || "").trim();
+      const listed = await existingListForQuote();
+      if (listed.error) return listed.error;
+      if (countWouldExceed(listed.existing, replaceId)) {
+        return json(400, {
+          ok: false,
+          error: `A quote can include up to ${MAX_FILES} proposal PDFs.`,
+          code: "too_many_files",
+        });
+      }
+      const id = newFileId();
+      const name = displayName(body.filename || body.file_name || body.name || "proposal.pdf");
+      const signed = await createEstimatePdfSignedUpload({
+        fileName: storageFileName(id, name),
+        estimateNumber: quoteId || "proposal",
+        tenantId,
+      });
+      if (!signed || !signed.uploadUrl || !signed.objectPath) {
+        return json(503, { ok: false, error: "Unable to store the PDF.", code: "upload_failed" });
+      }
+      if (!pathsBelongToTenant([{ id, object_path: signed.objectPath }], tenantId)) {
+        return json(403, { ok: false, error: "Forbidden", code: "tenant_path_mismatch" });
+      }
+      return json(200, {
+        ok: true,
+        action: "upload-intent",
+        file_id: id,
+        filename: name,
+        object_path: signed.objectPath,
+        upload_url: signed.uploadUrl,
+        max_bytes: MAX_BYTES,
+        max_files: MAX_FILES,
+      });
+    }
+
+    if (action === "confirm") {
+      const id = String(body.id || body.file_id || "").trim();
+      const objectPath = String(body.object_path || body.objectPath || "").trim();
+      const name = displayName(body.filename || body.file_name || body.name || "proposal.pdf");
+      const replaceId = String(body.replace_id || body.replaceId || "").trim();
+      if (!UUID_RE.test(id)) {
+        return json(400, { ok: false, error: "id is required", code: "invalid_pdf" });
+      }
+      let peeked = await peekEstimatePdf(objectPath);
+      if (!peeked) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        peeked = await peekEstimatePdf(objectPath);
+      }
+      if (!peeked || peeked.size < 5 || peeked.size > MAX_BYTES) {
+        return json(400, {
+          ok: false,
+          error: `Choose a PDF up to ${Math.floor(MAX_BYTES / (1024 * 1024))} MB.`,
+          code: "invalid_pdf",
+        });
+      }
+      if (!pathsBelongToTenant([{ id, object_path: peeked.objectPath }], tenantId)) {
+        return json(403, { ok: false, error: "Forbidden", code: "tenant_path_mismatch" });
+      }
+      const row = {
+        id,
+        name,
+        object_path: peeked.objectPath,
+        size: peeked.size,
+        uploaded_at: new Date().toISOString(),
+      };
+      if (!quoteId) {
+        return json(200, {
+          ok: true,
+          file: filesPayload([row], siteUrl)[0],
+          files: filesPayload([row], siteUrl),
+          max_files: MAX_FILES,
+          max_bytes: MAX_BYTES,
+        });
+      }
+      const listed = await existingListForQuote();
+      if (listed.error) return listed.error;
+      if (countWouldExceed(listed.existing, replaceId)) {
+        return json(400, {
+          ok: false,
+          error: `A quote can include up to ${MAX_FILES} proposal PDFs.`,
+          code: "too_many_files",
+        });
+      }
+      const next =
+        replaceId && UUID_RE.test(replaceId)
+          ? replaceProposalPdf(listed.existing, replaceId, row)
+          : normalizeProposalPdfs([...listed.existing, row]);
+      const saved = await writeProposalPdfs(tenantId, quoteId, next);
+      return json(200, {
+        ok: true,
+        quote_id: quoteId,
+        file: filesPayload([row], siteUrl)[0],
+        files: filesPayload(saved.proposal_pdfs || next, siteUrl),
+        max_files: MAX_FILES,
+        max_bytes: MAX_BYTES,
+      });
+    }
 
     if (action === "attach") {
       if (!UUID_RE.test(quoteId)) {

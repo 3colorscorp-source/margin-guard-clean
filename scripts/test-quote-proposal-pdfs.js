@@ -94,12 +94,18 @@ const guardSrc = read("netlify/functions/_lib/quote-edit-guard.js");
 
 ok("sql adds jsonb column on quotes, not a new table", /alter table public\.quotes/.test(sql) && /proposal_pdfs jsonb/.test(sql) && !/create table/i.test(sql));
 ok("handler reuses estimate-pdfs upload", /uploadEstimatePdf/.test(fnSrc));
+ok("handler issues signed uploads for large 3D PDFs", /createEstimatePdfSignedUpload/.test(fnSrc) && /upload-intent/.test(fnSrc) && /confirm/.test(fnSrc));
+ok("signed upload is not a public object URL", /object\/upload\/sign/.test(read("netlify/functions/_lib/estimate-pdf-access.js")));
 ok("handler uses owner or seller context", /resolveOwnerOrSellerContext/.test(fnSrc) && /assertSellerOwnQuote/.test(fnSrc));
 ok("handler does not create a second send path", !/send-quote-zapier/.test(fnSrc) && !/ZAPIER/.test(fnSrc));
 ok("lib keeps 3-part storage paths", /parseEstimatePdfObjectPath/.test(libSrc));
 
 eq("max files is 6", MAX_FILES, 6);
-ok("max bytes stays under Netlify 6MB body", MAX_BYTES <= 3.5 * 1024 * 1024);
+ok("max bytes allows 4MB 3D views", MAX_BYTES >= 8 * 1024 * 1024);
+ok("max bytes stays capped", MAX_BYTES <= 12 * 1024 * 1024);
+ok("client never posts PDF bytes through Netlify", !/content_base64/.test(clientSrc) && /upload-intent/.test(clientSrc) && /upload_url/.test(clientSrc));
+ok("client allows several PDFs at once", /multiple/.test(clientSrc));
+ok("widget says 12 MB", /12 MB/.test(clientSrc));
 
 const pdfBuf = Buffer.from("%PDF-1.4 fake proposal stream\n%%EOF", "utf8");
 const decoded = decodePdfBase64(pdfBuf.toString("base64"));
