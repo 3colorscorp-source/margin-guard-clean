@@ -342,6 +342,14 @@
     const projectName = payload.projectName || state.projectName || "";
     const publicToken = publishData.public_token;
 
+    if (
+      window.MarginGuardQuoteProposalPdfs &&
+      typeof window.MarginGuardQuoteProposalPdfs.attachToQuote === "function" &&
+      publishData.quote_id
+    ) {
+      await window.MarginGuardQuoteProposalPdfs.attachToQuote(publishData.quote_id);
+    }
+
     const additionalRecipientsSend = String(state.additional_recipients || "").trim();
     console.info("[MG Quote Email Recipients]", {
       client_email: clientEmail,

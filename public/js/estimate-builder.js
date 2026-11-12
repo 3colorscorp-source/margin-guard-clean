@@ -1284,6 +1284,54 @@
     wrap.textContent = resolved.text;
   }
 
+  function isSafeProposalPdfUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    try {
+      const u = new URL(s, window.location.origin);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+      if (u.pathname !== "/.netlify/functions/get-estimate-pdf") return "";
+      return u.href;
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  function renderProposalDocuments(next) {
+    const section = $("publicEstimateProposalPdfsSection");
+    const list = $("publicEstimateProposalPdfs");
+    if (!section || !list) return;
+
+    const docs = Array.isArray(next && next.proposal_documents) ? next.proposal_documents : [];
+    const items = [];
+    docs.forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      const name = safe(row.name || row.file_name || "proposal.pdf");
+      const url = isSafeProposalPdfUrl(row.url);
+      if (!name || !url) return;
+      items.push({ name: name, url: url });
+    });
+
+    if (!items.length) {
+      section.style.display = "none";
+      list.textContent = "";
+      return;
+    }
+
+    section.style.display = "";
+    list.innerHTML = items
+      .map(function (row) {
+        return (
+          "<li><a href=\"" +
+          escapeHtml(row.url) +
+          "\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+          escapeHtml(row.name) +
+          "</a></li>"
+        );
+      })
+      .join("");
+  }
+
   function renderMessage(next) {
     const wrap = $("publicEstimateMessage");
     if (!wrap) return;
@@ -1390,6 +1438,7 @@
     renderTotals(next);
     renderItems(next);
     renderScopeOfWork(next);
+    renderProposalDocuments(next);
     renderMessage(next);
     renderTerms(next);
 

@@ -76,6 +76,7 @@
     startDate: "",
     targetFinishDate: "",
     quoteNotes: "",
+    proposalPdfs: [],
     location: "",
     dueDate: "",
     overheadMonthly: 0,
@@ -117,6 +118,7 @@
     offeredPrice: 0,
     messageToClient: "",
     notes: "",
+    proposalPdfs: [],
     sentAt: "",
     workers: [
       { name: "Worker 1", type: "installer", days: 5, rate: "" }
@@ -1005,6 +1007,7 @@ Thank you.`
       startDate: "",
       targetFinishDate: "",
       quoteNotes: "",
+      proposalPdfs: [],
       location: "",
       dueDate: "",
       overheadMonthly: 0,
@@ -1297,6 +1300,38 @@ Thank you.`
   }
   function saveSales(state) { writeStore(LS_SALES, state); }
 
+  function normalizeProposalPdfsState(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((row) => row && typeof row === "object" && String(row.id || "").trim());
+  }
+
+  window.MarginGuardQuoteProposalState = {
+    getQuoteId() {
+      if (document.getElementById("ownerKpis")) {
+        return String((loadOwner() || {}).quoteId || "").trim();
+      }
+      return String((loadSales() || {}).quoteId || "").trim();
+    },
+    getFiles() {
+      if (document.getElementById("ownerKpis")) {
+        return normalizeProposalPdfsState((loadOwner() || {}).proposalPdfs);
+      }
+      return normalizeProposalPdfsState((loadSales() || {}).proposalPdfs);
+    },
+    setFiles(next) {
+      const list = normalizeProposalPdfsState(next);
+      if (document.getElementById("ownerKpis")) {
+        const owner = loadOwner();
+        owner.proposalPdfs = list;
+        saveOwner(owner, calcOwner(owner, loadOwnerPricingSettings()));
+        return;
+      }
+      const sales = loadSales();
+      sales.proposalPdfs = list;
+      saveSales(sales);
+    }
+  };
+
   /** Hub sales draft only: same shape as New Quote, no fake client-side quote numbers. */
   function resetSalesDraftToNewQuote() {
     const fresh = structuredClone(DEFAULT_SALES);
@@ -1312,6 +1347,7 @@ Thank you.`
     fresh.location = "";
     fresh.projectName = "";
     fresh.clientName = "";
+    fresh.proposalPdfs = [];
     saveSales(fresh);
   }
   function syncSellerWorkersUi(state, settings) {
@@ -11516,6 +11552,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
 
       const publicQuoteUrl = publishData.public_url;
+      if (
+        window.MarginGuardQuoteProposalPdfs &&
+        typeof window.MarginGuardQuoteProposalPdfs.attachToQuote === "function" &&
+        publishData.quote_id
+      ) {
+        await window.MarginGuardQuoteProposalPdfs.attachToQuote(publishData.quote_id);
+      }
       const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
 
       if (sendStatus) {
