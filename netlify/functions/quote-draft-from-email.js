@@ -253,9 +253,16 @@ function createHandler(deps) {
         error: (err && err.message) || "Email interpretation is unavailable.",
       });
     }
-    const quoteFields = draft.sanitizeQuoteFields(draft.stripFinancial(modelResult.quote_fields));
+    const quoteFields = draft.enrichQuoteFieldsFromSource(
+      draft.sanitizeQuoteFields(draft.stripFinancial(modelResult.quote_fields)),
+      sourceText,
+      emailBody
+    );
     const needsReview = draft.ensureNeedsReview(quoteFields, modelResult.needs_review);
-    const proposedDocument = buildProposedDocument(sourceText, modelResult.document);
+    const proposedDocument = buildProposedDocument(
+      sourceText,
+      draft.enrichDaysFromSource(modelResult.document, sourceText)
+    );
     const incoming = voice.validateIncomingDocument(proposedDocument);
     if (!incoming.ok) {
       return json(422, {
