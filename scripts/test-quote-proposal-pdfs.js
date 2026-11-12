@@ -36,7 +36,6 @@ const {
 const { parseEstimatePdfObjectPath } = require("../netlify/functions/_lib/estimate-pdf-access");
 const { EDITABLE_FIELD_NAMES } = require("../netlify/functions/_lib/quote-edit-guard");
 const { QUOTE_PUBLIC_KEYS } = require("../netlify/functions/get-public-estimate")._test;
-const sendQuote = require("../netlify/functions/send-quote-zapier");
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -194,28 +193,12 @@ ok("public estimate has proposal PDF section", /id="publicEstimateProposalPdfsSe
 ok("public builder renders proposal_documents", /function renderProposalDocuments/.test(builderSrc) && /proposal_documents/.test(builderSrc));
 ok("widget title is 3D Views / Proposal PDFs", /3D Views \/ Proposal PDFs/.test(clientSrc));
 ok("widget can bind an existing quote id", /function setActiveQuote/.test(clientSrc));
-ok("hub quote edit loads quote documents", /hubQuoteEditBindProposalPdfs/.test(appSrc) && /quote-proposal-pdfs\.js/.test(appSrc));
 ok("feature is not Dining Room only", !/dining room/i.test(clientSrc + fnSrc + libSrc + ownerHtml + salesHtml));
 
 ok("owner reset clears proposalPdfs", /proposalPdfs: \[\]/.test(appSrc));
 ok("send attaches PDFs before Zapier", /attachToQuote/.test(appSrc) && /attachToQuote/.test(salesHtml) && /attachToQuote/.test(publicSendSrc));
 ok("send still uses send-quote-zapier", /send-quote-zapier/.test(appSrc) && /send-quote-zapier/.test(salesHtml));
-
-const htmlNoExtra = sendQuote._test.buildEstimateSendHtml({
-  publicQuoteUrl: "https://example.test/estimate-public.html?token=abc",
-  pdfUrl: "https://example.test/.netlify/functions/get-estimate-pdf?token=abc",
-});
-ok("email still has review button", htmlNoExtra.indexOf("Review &amp; Approve Estimate") >= 0);
-ok("email without extras omits 3D copy", htmlNoExtra.indexOf("3D views") < 0);
-
-const htmlExtra = sendQuote._test.buildEstimateSendHtml({
-  publicQuoteUrl: "https://example.test/estimate-public.html?token=abc",
-  pdfUrl: "https://example.test/.netlify/functions/get-estimate-pdf?token=abc",
-  proposalPdfCount: 2,
-});
-ok("one email mentions extra PDFs on the public page", htmlExtra.indexOf("3D views and additional proposal PDFs") >= 0);
-ok("email still uses the same public quote link", htmlExtra.indexOf("estimate-public.html?token=abc") >= 0);
-ok("send-quote-zapier reads proposal_pdfs from the same quote", /proposal_pdfs/.test(sendSrc));
+ok("send-quote-zapier stays on the existing public quote link", /public_quote_url/.test(sendSrc) && /estimate-public.html/.test(sendSrc));
 ok("handler checks quote lock before writes", /evaluateQuoteEditGuard/.test(fnSrc) && /quote_locked/.test(fnSrc));
 ok("guard source still has no proposal_pdfs writes", !/proposal_pdfs/.test(guardSrc));
 

@@ -17422,43 +17422,6 @@ window.renderSupervisor = renderSupervisor;
     modal.setAttribute("aria-hidden", "true");
     hubQuoteEditState = { quoteId: "", locked: false, requiresSentConfirm: false, saving: false };
     hubQuoteEditSetFeedback("");
-    if (window.MarginGuardQuoteProposalPdfs && typeof window.MarginGuardQuoteProposalPdfs.setActiveQuote === "function") {
-      window.MarginGuardQuoteProposalPdfs.setActiveQuote("");
-    }
-  }
-
-  function ensureQuoteProposalPdfsScript() {
-    if (window.MarginGuardQuoteProposalPdfs) {
-      return Promise.resolve(window.MarginGuardQuoteProposalPdfs);
-    }
-    return new Promise((resolve) => {
-      const existing = document.querySelector('script[src="/js/quote-proposal-pdfs.js"]');
-      if (existing) {
-        existing.addEventListener("load", function () {
-          resolve(window.MarginGuardQuoteProposalPdfs || null);
-        });
-        existing.addEventListener("error", function () {
-          resolve(null);
-        });
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "/js/quote-proposal-pdfs.js";
-      script.onload = function () {
-        resolve(window.MarginGuardQuoteProposalPdfs || null);
-      };
-      script.onerror = function () {
-        resolve(null);
-      };
-      document.body.appendChild(script);
-    });
-  }
-
-  async function hubQuoteEditBindProposalPdfs(quoteId) {
-    const api = await ensureQuoteProposalPdfsScript();
-    if (!api || typeof api.setActiveQuote !== "function") return;
-    if (typeof api.mount === "function") api.mount();
-    await api.setActiveQuote(quoteId);
   }
 
   function hubQuoteEditOpenShell() {
@@ -17562,7 +17525,6 @@ window.renderSupervisor = renderSupervisor;
       }
 
       hubQuoteEditApplyPayload(data, settings);
-      void hubQuoteEditBindProposalPdfs(hubQuoteEditState.quoteId);
     } catch (err) {
       const loading = $("hubQuoteEditLoading");
       if (loading) loading.style.display = "none";
