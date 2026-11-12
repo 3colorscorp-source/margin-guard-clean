@@ -339,12 +339,30 @@
       overflow:hidden;
     }
     .business-settings-page .bs-opex-modal__header{
+      position:relative;
       flex:0 0 auto;
       padding:16px 18px 12px;
       border-bottom:1px solid rgba(255,255,255,.08);
     }
+    .business-settings-page .bs-opex-modal__titlebar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
     .business-settings-page .bs-opex-modal__header .bs-card-title{
-      margin:0 0 4px;
+      margin:0;
+      min-width:0;
+    }
+    .business-settings-page .bs-opex-menu-btn,
+    .business-settings-page .bs-opex-compact-summary,
+    .business-settings-page .bs-opex-menu,
+    .business-settings-page .bs-opex-sheet__scrim,
+    .business-settings-page .bs-opex-sheet__head{
+      display:none;
+    }
+    .business-settings-page .bs-opex-sheet__body{
+      display:contents;
     }
     .business-settings-page .bs-opex-modal__subtitle{
       margin:0 0 10px;
@@ -581,9 +599,120 @@
         max-height:100vh;
         max-height:100dvh;
         border-radius:0;
+        overflow-x:hidden;
       }
       .business-settings-page .bs-opex-modal__header{
         padding:12px 14px 8px;
+      }
+      .business-settings-page .bs-opex-menu-btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        flex:0 0 auto;
+        width:48px;
+        height:48px;
+        min-width:44px;
+        min-height:44px;
+        padding:0;
+        border-radius:12px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:#e8eefc;
+      }
+      .business-settings-page .bs-opex-compact-summary{
+        display:block;
+        width:100%;
+        margin:8px 0 0;
+        padding:8px 10px;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.1);
+        background:rgba(255,255,255,.04);
+        color:#bbf7d0;
+        font-size:12px;
+        font-weight:650;
+        line-height:1.35;
+        text-align:left;
+        overflow-wrap:anywhere;
+      }
+      .business-settings-page .bs-opex-menu{
+        position:absolute;
+        right:12px;
+        top:62px;
+        z-index:6;
+        min-width:240px;
+        padding:8px;
+        border-radius:12px;
+        border:1px solid rgba(255,255,255,.12);
+        background:#0f172a;
+        box-shadow:0 16px 40px rgba(0,0,0,.45);
+      }
+      .business-settings-page .bs-opex-menu:not([hidden]){
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+      }
+      .business-settings-page .bs-opex-menu button{
+        min-height:44px;
+        padding:10px 12px;
+        border:0;
+        border-radius:8px;
+        background:transparent;
+        color:#e8eefc;
+        font-size:14px;
+        text-align:left;
+      }
+      .business-settings-page .bs-opex-help:not(.is-open),
+      .business-settings-page .bs-opex-modal__summary:not(.is-open){
+        display:none;
+      }
+      .business-settings-page .bs-opex-help.is-open,
+      .business-settings-page .bs-opex-modal__summary.is-open{
+        display:flex;
+        flex-direction:column;
+        justify-content:flex-end;
+        position:fixed;
+        inset:0;
+        z-index:5;
+        margin:0;
+        padding:0;
+        border:0;
+        background:transparent;
+        max-height:none;
+        overflow:hidden;
+      }
+      .business-settings-page .bs-opex-sheet__scrim{
+        display:block;
+        position:absolute;
+        inset:0;
+        background:rgba(2,6,23,.55);
+      }
+      .business-settings-page .bs-opex-sheet__head{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        margin:0 0 10px;
+      }
+      .business-settings-page .bs-opex-sheet__head h3{
+        margin:0;
+        font-size:1rem;
+      }
+      .business-settings-page .bs-opex-sheet__head .btn{
+        min-height:44px;
+        min-width:44px;
+      }
+      .business-settings-page .bs-opex-help.is-open .bs-opex-sheet__panel,
+      .business-settings-page .bs-opex-modal__summary.is-open .bs-opex-sheet__body{
+        display:block;
+        position:relative;
+        z-index:1;
+        width:100%;
+        max-height:78vh;
+        overflow:auto;
+        padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+        border-radius:16px 16px 0 0;
+        background:linear-gradient(180deg,rgba(15,23,42,.99),rgba(15,23,42,.95));
+        box-sizing:border-box;
       }
       .business-settings-page .bs-opex-modal__subtitle{
         margin-bottom:6px;
@@ -595,6 +724,7 @@
         display:flex;
         flex-direction:column;
         padding:0 12px;
+        overflow-x:hidden;
       }
       .business-settings-page .bs-opex-modal__layout{
         display:flex;
@@ -625,8 +755,14 @@
       .business-settings-page .bs-opex-summary-stats .bs-opex-summary-stat--detail{
         display:none;
       }
+      .business-settings-page .bs-opex-modal__summary.is-open .bs-opex-summary-stats .bs-opex-summary-stat--detail{
+        display:flex;
+      }
       .business-settings-page .bs-opex-summary-list{
         max-height:64px;
+      }
+      .business-settings-page .bs-opex-modal__summary.is-open .bs-opex-summary-list{
+        max-height:none;
       }
       .business-settings-page .bs-opex-summary-list li{
         align-items:flex-start;
@@ -640,8 +776,12 @@
         min-height:0;
         max-height:none;
         overflow-y:auto;
+        overflow-x:hidden;
       }
       .business-settings-page .bs-opex-modal__footer{
+        position:sticky;
+        bottom:0;
+        z-index:2;
         padding:10px 12px calc(10px + env(safe-area-inset-bottom));
       }
       .business-settings-page .bs-opex-row{
@@ -1371,29 +1511,61 @@
         <div class="bs-opex-modal__overlay" id="bsOperatingExpenseOverlay"></div>
         <div class="bs-opex-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bsOperatingExpenseTitle">
           <div class="bs-opex-modal__header">
-            <h2 class="bs-card-title" id="bsOperatingExpenseTitle">Operating Expense Calculator</h2>
-            <p class="bs-opex-modal__subtitle">Enter each bill for the period you pay it. A yearly or multi-year bill is divided into a monthly cost. That monthly total is your Monthly Overhead.</p>
-            <p class="bs-opex-modal__warning" role="note">Use only fixed monthly business costs required to keep the business operating. Do not include job labor, project materials, payroll burden, Workers Comp, commissions, profit, or reserves.</p>
+            <div class="bs-opex-modal__titlebar">
+              <h2 class="bs-card-title" id="bsOperatingExpenseTitle">Operating Expense Calculator</h2>
+              <button type="button" class="bs-opex-menu-btn" id="btnOpexOptions" aria-label="Expense calculator options" aria-haspopup="menu" aria-expanded="false" aria-controls="opexOptionsMenu">
+                <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <circle cx="10" cy="4" r="1.8" fill="currentColor"></circle>
+                  <circle cx="10" cy="10" r="1.8" fill="currentColor"></circle>
+                  <circle cx="10" cy="16" r="1.8" fill="currentColor"></circle>
+                </svg>
+              </button>
+            </div>
+            <div id="opexOptionsMenu" class="bs-opex-menu" hidden role="menu" aria-labelledby="btnOpexOptions">
+              <button type="button" role="menuitem" id="opexMenuHowTo">How to choose expenses</button>
+              <button type="button" role="menuitem" id="opexMenuSelected">View selected expenses (<span id="opexMenuSelectedCount">0</span>)</button>
+            </div>
+            <button type="button" class="bs-opex-compact-summary" id="opexCompactSummary">
+              Monthly overhead: <span id="opexCompactTotal">$0.00</span> · <span id="opexCompactCount">0</span> selected
+            </button>
+            <div id="opexHowToSheet" class="bs-opex-help">
+              <div class="bs-opex-sheet__scrim" id="opexHowToScrim" hidden></div>
+              <div class="bs-opex-sheet__panel">
+                <div class="bs-opex-sheet__head">
+                  <h3 id="opexHowToTitle">How to choose expenses</h3>
+                  <button type="button" class="btn" id="btnCloseOpexHowTo">Close</button>
+                </div>
+                <p class="bs-opex-modal__subtitle">Enter each bill for the period you pay it. A yearly or multi-year bill is divided into a monthly cost. That monthly total is your Monthly Overhead.</p>
+                <p class="bs-opex-modal__warning" role="note">Use only fixed monthly business costs required to keep the business operating. Do not include job labor, project materials, payroll burden, Workers Comp, commissions, profit, or reserves.</p>
+              </div>
+            </div>
           </div>
           <div class="bs-opex-modal__body">
             <div class="bs-opex-modal__layout">
               <div class="bs-opex-modal__categories" id="opexCategoryList"></div>
               <aside class="bs-opex-modal__summary" id="opexSummaryPanel" aria-live="polite">
-                <span class="bs-opex-summary-label">Prepared Monthly Cost</span>
-                <p class="bs-opex-summary-total" id="opexPreparedMonthlyCost">$0.00</p>
-                <div class="bs-opex-summary-stats">
-                  <div><span>Selected costs</span><strong id="opexSelectedCount">0</strong></div>
-                  <div><span>Monthly total</span><strong id="opexMonthlyTotal">$0.00</strong></div>
-                  <div><span>Per labor hour</span><strong id="opexPerHour">$0.00</strong></div>
-                  <div class="bs-opex-summary-stat--detail"><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
-                  <div class="bs-opex-summary-stat--detail"><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
-                  <div class="bs-opex-summary-stat--detail"><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
-                  <div class="bs-opex-summary-stat--detail"><span>Custom costs selected</span><strong id="opexCustomCount">0</strong></div>
+                <div class="bs-opex-sheet__scrim" id="opexSelectedScrim" hidden></div>
+                <div class="bs-opex-sheet__body">
+                  <div class="bs-opex-sheet__head">
+                    <h3 id="opexSelectedTitle">View selected expenses</h3>
+                    <button type="button" class="btn" id="btnCloseOpexSelected">Close</button>
+                  </div>
+                  <span class="bs-opex-summary-label">Prepared Monthly Cost</span>
+                  <p class="bs-opex-summary-total" id="opexPreparedMonthlyCost">$0.00</p>
+                  <div class="bs-opex-summary-stats">
+                    <div><span>Selected costs</span><strong id="opexSelectedCount">0</strong></div>
+                    <div><span>Monthly total</span><strong id="opexMonthlyTotal">$0.00</strong></div>
+                    <div><span>Per labor hour</span><strong id="opexPerHour">$0.00</strong></div>
+                    <div class="bs-opex-summary-stat--detail"><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
+                    <div class="bs-opex-summary-stat--detail"><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
+                    <div class="bs-opex-summary-stat--detail"><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
+                    <div class="bs-opex-summary-stat--detail"><span>Custom costs selected</span><strong id="opexCustomCount">0</strong></div>
+                  </div>
+                  <span class="bs-opex-summary-label">Selected cost list</span>
+                  <ul class="bs-opex-summary-list" id="opexSelectedList">
+                    <li class="bs-opex-summary-list__empty">No costs selected yet.</li>
+                  </ul>
                 </div>
-                <span class="bs-opex-summary-label">Selected cost list</span>
-                <ul class="bs-opex-summary-list" id="opexSelectedList">
-                  <li class="bs-opex-summary-list__empty">No costs selected yet.</li>
-                </ul>
               </aside>
             </div>
           </div>
@@ -3232,6 +3404,9 @@
     const stdHours = parseOpexAmount(document.getElementById('stdHours')?.value);
     setText('opexPreparedMonthlyCost', formatOpexMoney(monthlyTotal));
     setText('opexSelectedCount', String(selections.length));
+    setText('opexCompactCount', String(selections.length));
+    setText('opexMenuSelectedCount', String(selections.length));
+    setText('opexCompactTotal', formatOpexMoney(monthlyTotal));
     setText('opexMonthlyTotal', formatOpexMoney(monthlyTotal));
     setText('opexPerHour', stdHours > 0 ? formatOpexMoney(monthlyTotal / stdHours) : '—');
     setText('opexAnnualTotal', formatOpexMoney(annualTotal));
@@ -3278,12 +3453,93 @@
     closeOperatingExpenseModal();
   }
 
+  function opexOptionsButton() {
+    return document.getElementById('btnOpexOptions');
+  }
+
+  function opexOptionsMenu() {
+    return document.getElementById('opexOptionsMenu');
+  }
+
+  function isOpexMenuOpen() {
+    const menu = opexOptionsMenu();
+    return Boolean(menu && !menu.hasAttribute('hidden'));
+  }
+
+  function isOpexSheetOpen() {
+    return Boolean(
+      document.getElementById('opexHowToSheet')?.classList.contains('is-open') ||
+      document.getElementById('opexSummaryPanel')?.classList.contains('is-open')
+    );
+  }
+
+  function closeOpexOptionsMenu(opts) {
+    const menu = opexOptionsMenu();
+    const btn = opexOptionsButton();
+    if (menu) menu.setAttribute('hidden', '');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (opts && opts.restoreFocus) btn?.focus();
+  }
+
+  function openOpexOptionsMenu() {
+    const menu = opexOptionsMenu();
+    const btn = opexOptionsButton();
+    if (!menu || !btn) return;
+    closeOpexSheets({ restoreFocus: false });
+    menu.removeAttribute('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    document.getElementById('opexMenuHowTo')?.focus();
+  }
+
+  function toggleOpexOptionsMenu() {
+    if (isOpexMenuOpen()) closeOpexOptionsMenu({ restoreFocus: true });
+    else openOpexOptionsMenu();
+  }
+
+  function closeOpexSheets(opts) {
+    const howTo = document.getElementById('opexHowToSheet');
+    const summary = document.getElementById('opexSummaryPanel');
+    const howToScrim = document.getElementById('opexHowToScrim');
+    const selectedScrim = document.getElementById('opexSelectedScrim');
+    howTo?.classList.remove('is-open');
+    summary?.classList.remove('is-open');
+    if (howToScrim) howToScrim.setAttribute('hidden', '');
+    if (selectedScrim) selectedScrim.setAttribute('hidden', '');
+    if (opts && opts.restoreFocus) opexOptionsButton()?.focus();
+  }
+
+  function openOpexHowToSheet() {
+    closeOpexOptionsMenu({ restoreFocus: false });
+    closeOpexSheets({ restoreFocus: false });
+    const sheet = document.getElementById('opexHowToSheet');
+    const scrim = document.getElementById('opexHowToScrim');
+    if (sheet) sheet.classList.add('is-open');
+    if (scrim) scrim.removeAttribute('hidden');
+    document.getElementById('btnCloseOpexHowTo')?.focus();
+  }
+
+  function openOpexSelectedSheet() {
+    closeOpexOptionsMenu({ restoreFocus: false });
+    const howTo = document.getElementById('opexHowToSheet');
+    const howToScrim = document.getElementById('opexHowToScrim');
+    howTo?.classList.remove('is-open');
+    if (howToScrim) howToScrim.setAttribute('hidden', '');
+    const panel = document.getElementById('opexSummaryPanel');
+    const scrim = document.getElementById('opexSelectedScrim');
+    if (panel) panel.classList.add('is-open');
+    if (scrim) scrim.removeAttribute('hidden');
+    renderOperatingExpenseSummary();
+    document.getElementById('btnCloseOpexSelected')?.focus();
+  }
+
   function openOperatingExpenseModal() {
     const modal = document.getElementById('bsOperatingExpenseModal');
     const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
     if (!modal) return;
     renderOperatingExpenseCategories();
     renderOperatingExpenseSummary();
+    closeOpexOptionsMenu({ restoreFocus: false });
+    closeOpexSheets({ restoreFocus: false });
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('bs-opex-modal-open');
@@ -3294,6 +3550,8 @@
     const modal = document.getElementById('bsOperatingExpenseModal');
     const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
     if (!modal) return;
+    closeOpexOptionsMenu({ restoreFocus: false });
+    closeOpexSheets({ restoreFocus: false });
     modal.setAttribute('hidden', '');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('bs-opex-modal-open');
@@ -3351,11 +3609,58 @@
     const modal = document.getElementById('bsOperatingExpenseModal');
     modal?.querySelector('.bs-opex-modal__dialog')?.addEventListener('click', function (event) {
       event.stopPropagation();
+      const menu = opexOptionsMenu();
+      const btn = opexOptionsButton();
+      if (!isOpexMenuOpen()) return;
+      if (menu && menu.contains(event.target)) return;
+      if (btn && btn.contains(event.target)) return;
+      closeOpexOptionsMenu({ restoreFocus: false });
+    });
+    opexOptionsButton()?.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleOpexOptionsMenu();
+    });
+    document.getElementById('opexMenuHowTo')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      openOpexHowToSheet();
+    });
+    document.getElementById('opexMenuSelected')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      openOpexSelectedSheet();
+    });
+    document.getElementById('opexCompactSummary')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      openOpexSelectedSheet();
+    });
+    document.getElementById('btnCloseOpexHowTo')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      closeOpexSheets({ restoreFocus: true });
+    });
+    document.getElementById('btnCloseOpexSelected')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      closeOpexSheets({ restoreFocus: true });
+    });
+    document.getElementById('opexHowToScrim')?.addEventListener('click', function () {
+      closeOpexSheets({ restoreFocus: true });
+    });
+    document.getElementById('opexSelectedScrim')?.addEventListener('click', function () {
+      closeOpexSheets({ restoreFocus: true });
     });
     document.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape') return;
       const opexModal = document.getElementById('bsOperatingExpenseModal');
       if (!opexModal || opexModal.hasAttribute('hidden')) return;
+      if (isOpexMenuOpen()) {
+        event.preventDefault();
+        closeOpexOptionsMenu({ restoreFocus: true });
+        return;
+      }
+      if (isOpexSheetOpen()) {
+        event.preventDefault();
+        closeOpexSheets({ restoreFocus: true });
+        return;
+      }
       closeOperatingExpenseModal();
     });
     syncOperatingExpenseButtonLabel();
