@@ -184,6 +184,9 @@
         job_site: projectAddress,
         address: projectAddress,
         workers: Array.isArray(state.workers) ? state.workers : [],
+        material_lines: (typeof window !== "undefined" && window.MgQuoteMaterials)
+          ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
+          : [],
         price: state.price,
         pricing_stage: state.pricingStage == null ? 2 : state.pricingStage,
         _sliderTouched: Boolean(state._sliderTouched || state._manualPriceTouched),

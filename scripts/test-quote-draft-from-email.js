@@ -479,6 +479,35 @@ async function main() {
   ok("client endpoint is backend function", client.ENDPOINT === "/.netlify/functions/quote-draft-from-email");
   ok("generate uses credentials include", /credentials:\s*"include"/.test(clientSrc));
 
+  const matsApi = require("../public/js/quote-materials");
+  storage.setItem("mg_owner_v2", JSON.stringify({ estimateStatus: "draft", material_lines: [] }));
+  client.applyToDraft(
+    {
+      quote_fields: {
+        project_name: "Dining Room Floor Tile",
+        client_name: "Roland Zoller",
+        materials: "LATICRETE STRATA_MAT; tile and grout supplied by the client; thin-set mortar",
+      },
+      quote_notes: "LATICRETE STRATA_MAT. Tile and grout supplied by the client.",
+    },
+    {
+      workspace: "owner",
+      localStorage: storage,
+      document: null,
+      window: { localStorage: storage, MgQuoteMaterials: matsApi },
+    }
+  );
+  const seeded = JSON.parse(storage.getItem("mg_owner_v2"));
+  ok("email draft seeds material names", Array.isArray(seeded.material_lines) && seeded.material_lines.length >= 2);
+  ok(
+    "email draft never invents material unit costs",
+    seeded.material_lines.every((row) => Number(row.unit_cost) === 0)
+  );
+  ok(
+    "client-provided tile stays at zero",
+    seeded.material_lines.some((row) => row.provider === "client" && /tile/i.test(row.name))
+  );
+
   console.log("\n" + passed + " passed");
 }
 

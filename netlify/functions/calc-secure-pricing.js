@@ -53,7 +53,12 @@ function parsePublishPricingInput(body) {
   );
   const pricing_stage =
     body.pricing_stage ?? body.pricingStage ?? body.pricing_stage_index;
-  return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage };
+  const material_lines = Array.isArray(body.material_lines)
+    ? body.material_lines
+    : Array.isArray(body.materialLines)
+      ? body.materialLines
+      : [];
+  return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage, material_lines };
 }
 
 function resolveHoursPerDayForLabor(tenantSettings) {
@@ -152,6 +157,7 @@ exports.handler = async (event) => {
           _manualPriceTouched: pricingIn._manualPriceTouched,
           _sliderTouched: pricingIn._sliderTouched,
           pricing_stage: pricingIn.pricing_stage,
+          material_lines: pricingIn.material_lines,
         },
         tenantSettings
       );

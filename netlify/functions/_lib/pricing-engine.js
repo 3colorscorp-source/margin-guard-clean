@@ -3,6 +3,8 @@
  * Real migration from browser calcSales will come in later phases.
  */
 
+const quoteMaterials = require("../../../public/js/quote-materials");
+
 function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
@@ -257,8 +259,11 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
   const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
   const minimumMarginPct = finiteNumber(settings.minimumMarginPct ?? 15, 15);
   const minimumProfit = beforeProfit * (minimumMarginPct / 100);
-  const recommended = beforeProfit + recommendedProfit + reserve;
-  const minimum = beforeProfit + minimumProfit + reserve;
+  const materialCost = round2(
+    quoteMaterials.contractorSubtotal(input && input.material_lines)
+  );
+  const recommended = beforeProfit + recommendedProfit + reserve + materialCost;
+  const minimum = beforeProfit + minimumProfit + reserve + materialCost;
   const negotiation =
     recommended > minimum ? minimum + (recommended - minimum) * 0.5 : minimum;
 
@@ -295,7 +300,8 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     totalHours: round2(totalHours),
     totalWorkerDays: round2(totalWorkerDays),
     before_profit: round2(beforeProfit),
-    reserve: round2(reserve)
+    reserve: round2(reserve),
+    material_cost: round2(materialCost)
   };
 }
 

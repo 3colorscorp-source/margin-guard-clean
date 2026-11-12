@@ -77,6 +77,7 @@
     targetFinishDate: "",
     quoteNotes: "",
     proposalPdfs: [],
+    material_lines: [],
     location: "",
     dueDate: "",
     overheadMonthly: 0,
@@ -119,6 +120,7 @@
     messageToClient: "",
     notes: "",
     proposalPdfs: [],
+    material_lines: [],
     sentAt: "",
     workers: [
       { name: "Worker 1", type: "installer", days: 5, rate: "" }
@@ -970,6 +972,9 @@ Thank you.`
       ? window.MgLaborAreas.sanitizeClientAreas(saved.laborAreas)
       : (Array.isArray(saved.laborAreas) ? saved.laborAreas : []);
     merged.laborAreaPublic = Array.isArray(saved.laborAreaPublic) ? saved.laborAreaPublic : [];
+    merged.material_lines = window.MgQuoteMaterials
+      ? window.MgQuoteMaterials.sanitizeMaterialLines(saved.material_lines)
+      : (Array.isArray(saved.material_lines) ? saved.material_lines : []);
     normalizeOwnerQuoteDates(merged, loadOwnerPricingSettings());
     return merged;
   }
@@ -1008,6 +1013,7 @@ Thank you.`
       targetFinishDate: "",
       quoteNotes: "",
       proposalPdfs: [],
+      material_lines: [],
       location: "",
       dueDate: "",
       overheadMonthly: 0,
@@ -1295,6 +1301,9 @@ Thank you.`
       location: hasLocation ? String(saved.location ?? "") : (owner.location || ""),
       messageToClient: String(saved.messageToClient ?? ""),
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_SALES.workers.map((worker) => ({ ...worker })),
+      material_lines: window.MgQuoteMaterials
+        ? window.MgQuoteMaterials.sanitizeMaterialLines(saved.material_lines)
+        : (Array.isArray(saved.material_lines) ? saved.material_lines : []),
       offeredPrice: saved.offeredPrice ?? 0
     };
   }
@@ -8411,7 +8420,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
     const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
-    return {
+    const laborMetrics = {
       laborByWorker,
       labor,
       taxes,
@@ -8426,6 +8435,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       pricePerUnit,
       pricingModeLabel: settings.pricingMode === "day" ? "dia" : "hora"
     };
+    const materialCost = window.MgQuoteMaterials
+      ? window.MgQuoteMaterials.contractorSubtotal(state.material_lines)
+      : 0;
+    return window.MgQuoteMaterials
+      ? window.MgQuoteMaterials.applyToLaborTotals(laborMetrics, materialCost)
+      : Object.assign(laborMetrics, { materialCost: 0, laborRecommended: recommended });
   }
 
   function buildOwnerDailyBriefPlain(rows, derived) {
@@ -10130,6 +10145,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           body: JSON.stringify({
             workers: state.workers,
             labor_areas: window.MgLaborAreas.payloadAreas(areas),
+            material_lines: window.MgQuoteMaterials
+              ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
+              : [],
             pricing_stage: 2
           })
         });
@@ -10519,6 +10537,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } else {
       renderWorkers(state, settings, metrics);
     }
+    if (window.MgQuoteMaterials && $("ownerMaterialsSection")) {
+      window.MgQuoteMaterials.render($("ownerMaterialsSection"), {
+        headingId: "ownerMaterialsHeading",
+        lines: state.material_lines,
+        notes: [state.quoteNotes, state.messageToClient].filter(Boolean).join("\n"),
+        onChange: function (lines) {
+          const next = loadOwner();
+          next.material_lines = lines;
+          saveOwner(next, calcOwner(next, loadOwnerPricingSettings()));
+          renderOwner();
+        }
+      });
+    }
 
     const ownerProject = getSelectedProject() || {
       projectName: state.projectName,
@@ -10534,6 +10565,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Recommended", money(metrics.recommended, settings.currency), `${money(metrics.pricePerUnit, settings.currency)} ${pricingModeCopy}`],
       ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin · no vender por debajo`],
       ["Labor + Burden", money(metrics.labor + metrics.taxes, settings.currency), "Labor directa + employer burden"],
+      ["Materials", money(metrics.materialCost || 0, settings.currency), "Contractor-supplied pass-through · client items stay $0"],
       ["Overhead", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)]
     ];
     const detailCards = [
@@ -10552,7 +10584,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}${Number(metrics.materialCost) > 0 ? " · " + escapeHtml(money(metrics.materialCost, settings.currency)) + " materiales" : ""}</div>
           <p class="small owner-quote-pricing-source" role="note">${escapeHtml(pricingSource.detail)}</p>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
@@ -11011,6 +11043,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       workers: salesWorkers.length ? salesWorkers : existing.workers,
       laborAreas: Array.isArray(ownerState.laborAreas) ? ownerState.laborAreas : [],
       laborAreaPublic: Array.isArray(ownerState.laborAreaPublic) ? ownerState.laborAreaPublic : [],
+      material_lines: window.MgQuoteMaterials
+        ? window.MgQuoteMaterials.sanitizeMaterialLines(ownerState.material_lines)
+        : (Array.isArray(ownerState.material_lines) ? ownerState.material_lines : []),
       depositRequired: (() => {
         const raw = document.getElementById("deposit")?.value;
         if (raw === undefined || raw === null || String(raw).trim() === "") return 1000;
@@ -11262,6 +11297,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           body: JSON.stringify({
             workers: ownerForPdf.workers,
             labor_areas: window.MgLaborAreas.payloadAreas(ownerForPdf.laborAreas),
+            material_lines: window.MgQuoteMaterials
+              ? window.MgQuoteMaterials.sanitizeMaterialLines(ownerForPdf.material_lines)
+              : [],
             pricing_stage: 2
           })
         });
@@ -11478,6 +11516,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           address: projectAddress,
           workers: Array.isArray(state.workers) ? state.workers : [],
           labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
+          material_lines: window.MgQuoteMaterials
+            ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
+            : [],
           price: state.price,
           pricing_stage: state.pricingStage,
           _sliderTouched: Boolean(state._sliderTouched),
@@ -12089,7 +12130,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
    * real_margin_pct = ((price - internalCost) / price) * 100
    * internalCost = loaded cost before target profit: beforeProfit + reserve (same basis as recommended build).
    */
-  function computeSalesMarginDecisionFromEconomics(offeredPrice, beforeProfit, reserve, settings) {
+  function computeSalesMarginDecisionFromEconomics(offeredPrice, beforeProfit, reserve, settings, materialCost) {
     const targetPct = finiteNumber(settings?.profitPct, DEFAULTS.profitPct);
     const minPct = finiteNumber(
       settings?.minimumMarginPct != null ? settings.minimumMarginPct : DEFAULTS.minimumMarginPct,
@@ -12098,7 +12139,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const price = finiteNumber(offeredPrice, 0);
     const bp = finiteNumber(beforeProfit, 0);
     const res = finiteNumber(reserve, 0);
-    const internalCost = bp + res;
+    const mats = Math.max(0, finiteNumber(materialCost, 0));
+    const internalCost = bp + res + mats;
     if (!(price > 0) || !Number.isFinite(internalCost)) {
       return {
         realMarginPct: null,
@@ -12217,7 +12259,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const minimum = beforeProfit + minimumProfit + reserve;
     const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
 
-    return {
+    const laborMetrics = {
       hoursPerDay,
       laborByWorker,
       labor,
@@ -12233,6 +12275,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       minimum,
       negotiation
     };
+    const materialCost = window.MgQuoteMaterials
+      ? window.MgQuoteMaterials.contractorSubtotal(state.material_lines)
+      : 0;
+    return window.MgQuoteMaterials
+      ? window.MgQuoteMaterials.applyToLaborTotals(laborMetrics, materialCost)
+      : Object.assign(laborMetrics, { materialCost: 0, laborRecommended: recommended });
   }
 
   function resolveCommissionLaborBase(state, settings, workerLabor) {
@@ -12267,7 +12315,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const commissionLaborBase = resolveCommissionLaborBase(state, settings, base.labor);
     const commissionDisplay = round2(Math.max(commissionLaborBase, 0) * (commissionRate / 100));
     const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
-    const marginGate = computeSalesMarginDecisionFromEconomics(offered, base.beforeProfit, base.reserve, settings);
+    const marginGate = computeSalesMarginDecisionFromEconomics(offered, base.beforeProfit, base.reserve, settings, base.materialCost);
     const needsApproval = marginGate.level === "yellow";
     const marginBlocked = marginGate.level === "red";
     const approved = !marginBlocked;
