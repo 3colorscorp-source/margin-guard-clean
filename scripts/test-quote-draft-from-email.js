@@ -62,9 +62,9 @@ ok("client never sends quote", !/send-quote-zapier|publish-public-quote/.test(cl
 ok("client keeps draft status", /estimateStatus = "draft"/.test(clientSrc));
 ok("client uses existing operational plan", /operational_plan/.test(clientSrc) && /ownerOperationalHoursOverride/.test(clientSrc));
 ok(
-  "paste-only v1, no mailbox scan",
+  "no mailbox scan; PDFs are user-attached",
   !/gmail\.googleapis|accounts\.google|imap/i.test(clientSrc + fnSrc) &&
-    /Paste/.test(clientSrc) &&
+    /source_pdfs/.test(clientSrc) &&
     /does not send/.test(clientSrc)
 );
 ok("API key stays on backend", /OPENAI_API_KEY/.test(fnSrc) && !/OPENAI_API_KEY/.test(clientSrc));
@@ -123,9 +123,35 @@ const plan = lib.deriveOperationalPlan({
     },
   ],
 });
-eq("plan keeps stated crew day", plan.length, 1);
+eq("plan keeps stated crew day and empty-crew phase", plan.length, 2);
 eq("plan expands worker count", plan[0].workers.length, 2);
-ok("plan does not invent a second day without crew", plan.every((day) => day.workers.length > 0));
+eq("empty-crew day kept without invented hours", plan[1].workers.length, 0);
+
+ok("email address alone is insufficient", lib.isInsufficientSource("rolandzollerconstruction@gmail.com"));
+ok("client agrees email-only is insufficient", client.isInsufficientSource("rolandzollerconstruction@gmail.com"));
+
+const demoPdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Demolition_View.pdf");
+if (fs.existsSync(demoPdf)) {
+  const extracted = lib.extractPdfText(fs.readFileSync(demoPdf));
+  ok("dining demolition pdf has dining room text", /dining room/i.test(extracted.text));
+  ok("dining demolition pdf has 252 sq ft", /252/.test(extracted.text));
+  ok("dining demolition pdf title", /DEMOLITION/i.test(extracted.title || extracted.text));
+  const prepPdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Preparation_Strata_Mat_View.pdf");
+  const tilePdf = path.join("C:/Users/lalom/Downloads/Dining_Room_Tile_Installed_View (1).pdf");
+  const combined = lib.combineSourceText("rolandzollerconstruction@gmail.com", [
+    extracted,
+    fs.existsSync(prepPdf) ? lib.extractPdfText(fs.readFileSync(prepPdf)) : { name: "prep.pdf", text: "" },
+    fs.existsSync(tilePdf) ? lib.extractPdfText(fs.readFileSync(tilePdf)) : { name: "tile.pdf", text: "" },
+  ].map((row, i) => ({
+    name: ["Dining_Room_Demolition_View.pdf", "Dining_Room_Preparation_Strata_Mat_View.pdf", "Dining_Room_Tile_Installed_View.pdf"][i],
+    title: row.title,
+    text: row.text,
+  })));
+  ok("combined GC source is sufficient", !lib.isInsufficientSource(combined));
+  ok("combined source keeps GC email", /rolandzollerconstruction@gmail.com/.test(combined));
+  ok("combined source has strata mat", /STRATA_MAT/i.test(combined));
+  ok("combined source has slate mosaic", /Maverick Textured Slate Mosaic/i.test(combined));
+}
 
 const storage = {
   data: {},
@@ -161,7 +187,7 @@ eq("apply does not send", applied.sent, false);
 eq("saved status draft", saved.estimateStatus, "draft");
 eq("saved project name", saved.projectName, "Kitchen remodel");
 eq("saved client email", saved.clientEmail, "ada@example.com");
-ok("saved plan uses current operational_plan", Array.isArray(saved.operational_plan) && saved.operational_plan.length === 1);
+ok("saved plan uses current operational_plan", Array.isArray(saved.operational_plan) && saved.operational_plan.length === 2);
 ok("email body not stored", saved.email_body == null && saved.source_email == null);
 ok("no offered price written", saved.offeredPrice == null || saved.offeredPrice === 0 || saved.offeredPrice === "");
 
@@ -185,6 +211,12 @@ async function main() {
     { httpMethod: "POST", body: JSON.stringify({ email_body: "hi" }) }
   );
   eq("short email rejected before auth", shortRes.statusCode, 400);
+  const emailOnly = await handlerCase(
+    { resolveContext: async () => { throw new Error("should not auth"); } },
+    { httpMethod: "POST", body: JSON.stringify({ email_body: "rolandzollerconstruction@gmail.com" }) }
+  );
+  eq("email-only paste rejected", emailOnly.statusCode, 400);
+  eq("email-only code", JSON.parse(emailOnly.body).code, "insufficient_source");
 
   const tenantRes = await handlerCase(
     { resolveContext: async () => ({ tenant: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }) },
