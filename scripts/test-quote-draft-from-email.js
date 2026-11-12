@@ -183,6 +183,7 @@ const gcFullEmail = [
   gcEmail,
 ].join("\n");
 eq("email subject project name", lib.inferProjectNameFromEmail(gcFullEmail), "Dining Room Floor Tile");
+eq("composed street city state zip", lib.extractStreetAddress(gcFullEmail), "35978 Turpin Way, Fremont, CA 94536");
 ok("street address from subject", /35978 Turpin Way/i.test(lib.extractStreetAddress(gcFullEmail)));
 ok("membership line is not a street", !lib.extractStreetAddress(gcEmail));
 ok("pdf filename is not the client", lib.isPdfArtifactName("PDF Dining Room Tile", "PROPOSAL_PDF Dining Room Tile Area.pdf"));
@@ -202,6 +203,7 @@ const fromFullEmail = lib.enrichQuoteFieldsFromSource(
 );
 eq("full email overwrites pdf client name", fromFullEmail.client_name, "Roland Zoller");
 eq("full email project name from subject", fromFullEmail.project_name, "Dining Room Floor Tile");
+eq("full email composed address", fromFullEmail.project_address, "35978 Turpin Way, Fremont, CA 94536");
 ok("full email fills Turpin address", /35978 Turpin Way/i.test(fromFullEmail.project_address) && /Fremont/i.test(fromFullEmail.project_address) && /94536/.test(fromFullEmail.project_address));
 ok("full email fills phone", fromFullEmail.client_phone.replace(/\D/g, "").endsWith("5104013609"));
 ok("full email dining area", fromFullEmail.areas.indexOf("Dining room") >= 0);
@@ -277,6 +279,47 @@ eq("saved client email", saved.clientEmail, "ada@example.com");
 ok("saved plan uses current operational_plan", Array.isArray(saved.operational_plan) && saved.operational_plan.length === 2);
 ok("email body not stored", saved.email_body == null && saved.source_email == null);
 ok("no offered price written", saved.offeredPrice == null || saved.offeredPrice === 0 || saved.offeredPrice === "");
+
+const locApi = require("../public/js/project-location");
+const locEls = {};
+["projectName", "clientName", "clientEmail", "clientPhone", "location", "quoteNotes", "startDate", "targetFinishDate", "ownerOperationalHoursOverride", "locationStreet", "locationCity", "locationState", "locationZip"].forEach((id) => {
+  locEls[id] = { value: "", dispatchEvent() {} };
+});
+const locDoc = {
+  getElementById(id) {
+    return locEls[id] || null;
+  },
+  body: {
+    getAttribute(name) {
+      return name === "data-role" ? "owner" : "";
+    },
+  },
+};
+storage.setItem("mg_owner_v2", JSON.stringify({ estimateStatus: "draft", projectName: "", workers: [] }));
+client.applyToDraft(
+  {
+    quote_fields: {
+      project_name: "Dining Room Floor Tile",
+      client_name: "Roland Zoller",
+      client_email: "rolandzollerconstruction@gmail.com",
+      client_phone: "510-401-3609",
+      project_address: "35978 Turpin Way Fremont Ca 94536",
+    },
+    operational_plan: [],
+    proposed_document: { days: [] },
+  },
+  {
+    workspace: "owner",
+    localStorage: storage,
+    document: locDoc,
+    window: { localStorage: storage, MarginGuardProjectLocation: locApi },
+  }
+);
+eq("applied street field", locEls.locationStreet.value, "35978 Turpin Way");
+eq("applied city field", locEls.locationCity.value, "Fremont");
+eq("applied state field", locEls.locationState.value, "CA");
+eq("applied zip field", locEls.locationZip.value, "94536");
+eq("stored composed location", JSON.parse(storage.getItem("mg_owner_v2")).location, "35978 Turpin Way, Fremont, CA 94536");
 
 storage.setItem("mg_owner_v2", JSON.stringify({ estimateStatus: "sent", projectName: "Locked" }));
 let lockedError = "";
@@ -401,6 +444,7 @@ async function main() {
   const gcBody = JSON.parse(gcInterpreted.body);
   eq("handler replaces pdf client name", gcBody.quote_fields.client_name, "Roland Zoller");
   eq("handler uses email subject project", gcBody.quote_fields.project_name, "Dining Room Floor Tile");
+  eq("handler composes job address", gcBody.quote_fields.project_address, "35978 Turpin Way, Fremont, CA 94536");
   ok("handler fills job address", /Turpin Way/i.test(gcBody.quote_fields.project_address));
   ok("handler fills signature phone", String(gcBody.quote_fields.client_phone).replace(/\D/g, "").endsWith("5104013609"));
   ok("handler keeps CSLB in requirements", /950926/.test(gcBody.quote_fields.requirements));

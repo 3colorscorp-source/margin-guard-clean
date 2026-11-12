@@ -5,6 +5,8 @@
  */
 "use strict";
 
+const projectLocation = require("../../../public/js/project-location");
+
 const MAX_EMAIL_CHARS = 12000;
 const MIN_EMAIL_CHARS = 20;
 const MAX_FIELD = 2000;
@@ -417,6 +419,10 @@ function extractStreetAddress(text) {
     .replace(/[.,;:]+$/, "");
   if (!/^\d{3,6}\s/.test(addr)) return "";
   if (isMembershipAddress(addr)) return "";
+  const parts = projectLocation.partsFromLocation(addr);
+  if (parts && parts.street && parts.city && parts.state && parts.zip) {
+    return str(projectLocation.composeProjectLocation(parts), 255);
+  }
   if (!/\d{5}(?:-\d{4})?\s*$/.test(addr) && !/\b(?:Way|St|Street|Ave|Rd|Dr|Blvd)\b/i.test(addr)) {
     return "";
   }

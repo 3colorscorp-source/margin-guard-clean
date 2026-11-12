@@ -244,18 +244,45 @@
     return false;
   }
 
-  function fillLocationParts(doc, location, prefix) {
-    var api = typeof window !== "undefined" ? window.MarginGuardProjectLocation : null;
-    var parts = { street: location, city: "", state: "", zip: "" };
+  function locationApi(win) {
+    if (win && win.MarginGuardProjectLocation) return win.MarginGuardProjectLocation;
+    if (typeof globalThis !== "undefined" && globalThis.MarginGuardProjectLocation) {
+      return globalThis.MarginGuardProjectLocation;
+    }
+    return null;
+  }
+
+  function splitProjectAddress(location, win) {
+    var api = locationApi(win);
+    var raw = str(location, 255);
     if (api && typeof api.partsFromLocation === "function") {
       try {
-        parts = api.partsFromLocation(location) || parts;
+        var parsed = api.partsFromLocation(raw);
+        if (parsed && parsed.street) {
+          if (api.composeProjectLocation && parsed.city && parsed.state && parsed.zip) {
+            return {
+              parts: parsed,
+              composed: str(api.composeProjectLocation(parsed), 255)
+            };
+          }
+          return { parts: parsed, composed: raw };
+        }
       } catch (_err) {}
     }
+    return {
+      parts: { street: raw, city: "", state: "", zip: "" },
+      composed: raw
+    };
+  }
+
+  function fillLocationParts(doc, location, prefix, win) {
+    var split = splitProjectAddress(location, win);
+    var parts = split.parts || { street: location, city: "", state: "", zip: "" };
     setInput(doc, prefix ? "salesLocationStreet" : "locationStreet", parts.street || "");
     setInput(doc, prefix ? "salesLocationCity" : "locationCity", parts.city || "");
     setInput(doc, prefix ? "salesLocationState" : "locationState", parts.state || "");
     setInput(doc, prefix ? "salesLocationZip" : "locationZip", parts.zip || "");
+    return split.composed || location;
   }
 
   function setInput(doc, id, value) {
@@ -298,7 +325,7 @@
 
     state.projectName = str(fields.project_name, 60);
     state.clientName = str(fields.client_name, 60);
-    state.location = str(fields.project_address, 255);
+    state.location = splitProjectAddress(fields.project_address, win).composed;
     state.quoteNotes = notes;
     state.messageToClient = notes;
     state.operational_plan = plan;
@@ -342,7 +369,7 @@
       setInput(doc, "salesMessageToClient", notes);
       setInput(doc, "salesStartDate", state.startDate || "");
       setInput(doc, "salesTargetFinishDate", state.targetFinishDate || "");
-      fillLocationParts(doc, state.location, true);
+      fillLocationParts(doc, state.location, true, win);
       setInput(doc, "salesOperationalHoursOverride", "");
       if (win && typeof win.refreshSellerFromStandalone === "function") {
         try {
@@ -358,7 +385,7 @@
       setInput(doc, "quoteNotes", notes);
       setInput(doc, "startDate", state.startDate || "");
       setInput(doc, "targetFinishDate", state.targetFinishDate || "");
-      fillLocationParts(doc, state.location, false);
+      fillLocationParts(doc, state.location, false, win);
       setInput(doc, "ownerOperationalHoursOverride", "");
     }
     return {
