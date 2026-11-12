@@ -10434,6 +10434,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function renderOwner() {
     if (!$("ownerKpis")) return;
     bindOwnerSettingsStorageRefreshOnce();
+    if (window.MgContractorQuotePreview && typeof window.MgContractorQuotePreview.paint === "function") {
+      window.MgContractorQuotePreview.paint();
+    }
 
     const settings = loadOwnerPricingSettings();
     const state = loadOwner();
@@ -11086,6 +11089,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     ownerState.estimateStatus = "sent";
     ownerState.sentAt = new Date().toISOString();
     saveOwner(ownerState, calcOwner(ownerState, settings));
+    if (window.MgContractorQuotePreview && typeof window.MgContractorQuotePreview.save === "function") {
+      window.MgContractorQuotePreview.save({
+        publicUrl: ownerState.publicQuoteUrl,
+        projectName: ownerState.projectName,
+        clientName: ownerState.clientName,
+        sentAt: ownerState.sentAt
+      });
+    }
   }
 
   function ownerEstimatePickFirstNonEmpty(...candidates) {
@@ -11743,7 +11754,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             publicQuoteUrl: publishData.public_url,
             renderSuccessMode: "toast",
             successToastTitle: "Quote sent successfully",
-            successToastMessage: "Client received the proposal with the approval and Initial Scheduling Payment link."
+            successToastMessage: "Client received the proposal. Use Preview client quote anytime — it does not count as the client opening it."
           });
           if (zapierOutcome && zapierOutcome.variant === "warning") {
             closeDelayMs = 2600;
@@ -11756,7 +11767,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           if (fbToast && typeof fbToast.showQuoteSendToast === "function") {
             fbToast.showQuoteSendToast({
               title: "Quote sent successfully",
-              message: "Client received the proposal with the approval and Initial Scheduling Payment link.",
+              message: "Client received the proposal. Use Preview client quote anytime — it does not count as the client opening it.",
               publicUrl: publishData.public_url,
               dismissMs: 4500
             });

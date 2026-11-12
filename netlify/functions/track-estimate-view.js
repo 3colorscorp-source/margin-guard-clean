@@ -4,6 +4,7 @@ if (!fetch) {
 }
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 
 const OPS = "track-estimate-view";
 
@@ -27,6 +28,35 @@ function normalizePublicToken(raw) {
   if (!t || t.length < 10 || t.length > 256) return "";
   if (!/^[a-zA-Z0-9_]+$/.test(t)) return "";
   return t;
+}
+
+function sameTenantId(a, b) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase() && Boolean(String(a || "").trim());
+}
+
+/**
+ * Owner or seller of this quote's tenant reviewing the public page.
+ * Must run before first_view_tracked_at is claimed.
+ */
+async function resolveContractorPreviewSkip(event, publicToken) {
+  let ctx = null;
+  try {
+    ctx = await resolveOwnerOrSellerContext(event);
+  } catch (_err) {
+    return false;
+  }
+  const sessionTenant = ctx && ctx.tenant && ctx.tenant.id;
+  if (!sessionTenant) return false;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?public_token=eq.${encodeURIComponent(publicToken)}&select=tenant_id&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) && rows[0] && typeof rows[0] === "object" ? rows[0] : null;
+    return sameTenantId(row && row.tenant_id, sessionTenant);
+  } catch (_lookupErr) {
+    return false;
+  }
 }
 
 function headerValue(v) {
@@ -246,6 +276,18 @@ exports.handler = async (event) => {
         ok: true,
         forwarded: false,
         reason: "no_public_token"
+      });
+    }
+
+    const contractorPreview = await resolveContractorPreviewSkip(event, public_token);
+    if (contractorPreview) {
+      console.info(`[${OPS}] skipped contractor preview`, { public_token });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        claimed: false,
+        reason: "contractor_preview",
+        skipped: "contractor_preview"
       });
     }
 

@@ -1983,6 +1983,7 @@
 
             <div class="sales-quote-header seller-quote-header owner-quote-header">
               <button type="button" class="btn seller-quote-header__new owner-quote-header__new" id="btnNewSalesQuote">+ New Quote</button>
+              <button type="button" class="btn" id="btnContractorPreviewClientQuote" hidden>Preview client quote</button>
             </div>
 
             <div class="sales-quote-section" id="salesProjectInfoSection">
@@ -2494,6 +2495,7 @@
   <script src="/js/sales-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/quote-send-feedback.js?v=owner-total-parity-1"></script>
+  <script src="/js/quote-contractor-preview.js?v=preview-v1"></script>
   <script src="/js/labor-areas.js"></script>
   <script src="/js/quote-materials.js?v=mat-v1"></script>
   <script src="/js/sales-operational-plan.js"></script>
@@ -8417,6 +8419,9 @@
             } catch (_error) {}
           }
           renderSellerWorkersStandalone();
+          if (window.MgContractorQuotePreview && typeof window.MgContractorQuotePreview.paint === 'function') {
+            window.MgContractorQuotePreview.paint();
+          }
           if (window.MgQuoteMaterials && document.getElementById('salesMaterialsSection')) {
             window.MgQuoteMaterials.render(document.getElementById('salesMaterialsSection'), {
               headingId: 'salesMaterialsHeading',
@@ -13316,6 +13321,15 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       console.log('[MG SEND] zapier success');
+      if (window.MgContractorQuotePreview && typeof window.MgContractorQuotePreview.save === 'function') {
+        const previewState = loadSalesState();
+        window.MgContractorQuotePreview.save({
+          publicUrl: publishData.public_url,
+          projectName: previewState.projectName,
+          clientName: previewState.clientName,
+          sentAt: new Date().toISOString()
+        });
+      }
 
       const hadPdfPayload = Boolean(String(zapierPayload.pdfBase64 || '').trim());
       if (data.pdfUploadError || (hadPdfPayload && !data.pdfUrl)) {
@@ -13338,7 +13352,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             publicQuoteUrl: publishData.public_url,
             renderSuccessMode: 'toast',
             successToastTitle: 'Quote sent successfully',
-            successToastMessage: 'Client received the proposal with the approval and Initial Scheduling Payment link.'
+            successToastMessage: 'Client received the proposal. Use Preview client quote anytime — it does not count as the client opening it.'
           });
         } else if (sendStatus) {
           sendStatus.innerHTML = '';
@@ -13348,7 +13362,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           if (fbToast && typeof fbToast.showQuoteSendToast === 'function') {
             fbToast.showQuoteSendToast({
               title: 'Quote sent successfully',
-              message: 'Client received the proposal with the approval and Initial Scheduling Payment link.',
+              message: 'Client received the proposal. Use Preview client quote anytime — it does not count as the client opening it.',
               publicUrl: publishData.public_url,
               dismissMs: 4500
             });

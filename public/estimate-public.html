@@ -2367,6 +2367,18 @@
           : null;
       var viewTrackSent = false;
 
+      function showContractorPreviewBanner() {
+        if (document.getElementById("mgContractorPreviewBanner")) return;
+        var bar = document.createElement("div");
+        bar.id = "mgContractorPreviewBanner";
+        bar.setAttribute("role", "status");
+        bar.style.cssText =
+          "position:sticky;top:0;z-index:40;background:#134e4a;color:#ecfdf5;padding:10px 16px;font:650 13px/1.4 system-ui,sans-serif;text-align:center;";
+        bar.textContent =
+          "Contractor preview — this is how the client sees the quote. It does not count as the client opening it. Do not approve or pay from here.";
+        document.body.insertBefore(bar, document.body.firstChild);
+      }
+
       function pickStr(v) {
         return v == null || v === undefined ? "" : String(v).trim();
       }
@@ -2446,6 +2458,7 @@
 
         fetch(TRACK_VIEW_ENDPOINT, {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true
@@ -2459,6 +2472,11 @@
           })
           .then(function (data) {
             console.log("track-estimate-view response data", data);
+            if (data && data.skipped === "contractor_preview") {
+              viewTrackSent = true;
+              showContractorPreviewBanner();
+              return;
+            }
             if (data && data.skipped === "preview") {
               viewTrackSent = false;
               return;
