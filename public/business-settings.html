@@ -303,6 +303,56 @@
       gap:8px;
       margin:8px 0 4px;
     }
+    .business-settings-page .bs-opex-saved[hidden]{
+      display:none !important;
+    }
+    .business-settings-page .bs-opex-saved{
+      margin:8px 0 6px;
+      padding:10px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
+    }
+    .business-settings-page .bs-opex-saved__hint{
+      margin:0 0 8px;
+      font-size:12px;
+      line-height:1.4;
+    }
+    .business-settings-page .bs-opex-saved__list{
+      list-style:none;
+      margin:0;
+      padding:0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .business-settings-page .bs-opex-saved__row{
+      display:grid;
+      grid-template-columns:minmax(0,1.2fr) minmax(92px,120px) minmax(92px,110px) auto auto;
+      gap:6px 8px;
+      align-items:center;
+    }
+    .business-settings-page .bs-opex-saved__name{
+      font-size:12px;
+      font-weight:650;
+      color:rgba(248,250,252,.95);
+    }
+    .business-settings-page .bs-opex-saved__amount,
+    .business-settings-page .bs-opex-saved__cycle,
+    .business-settings-page .bs-opex-saved__name-input{
+      width:100%;
+      min-width:0;
+      min-height:36px;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-saved__monthly{
+      font-size:12px;
+      white-space:nowrap;
+      color:rgba(232,238,252,.82);
+    }
+    .business-settings-page .bs-opex-saved__remove{
+      min-height:36px;
+    }
     .business-settings-page #opexApplyConfirm[hidden]{
       display:none !important;
     }
@@ -535,6 +585,21 @@
       gap:8px;
       padding:4px 0;
       border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .business-settings-page .bs-opex-summary-edit{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:8px;
+      width:100%;
+      margin:0;
+      padding:0;
+      border:0;
+      background:transparent;
+      color:inherit;
+      font:inherit;
+      text-align:left;
+      cursor:pointer;
     }
     .business-settings-page .bs-opex-summary-list__empty{
       color:var(--muted);
@@ -789,6 +854,13 @@
       }
       .business-settings-page .bs-opex-row--custom{
         grid-template-columns:auto minmax(0,1fr);
+      }
+      .business-settings-page .bs-opex-saved__row{
+        grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      }
+      .business-settings-page .bs-opex-saved__monthly,
+      .business-settings-page .bs-opex-saved__remove{
+        grid-column:1 / -1;
       }
       .business-settings-page .bs-opex-row__amount,
       .business-settings-page .bs-opex-row__name,
@@ -1300,6 +1372,10 @@
                 <div class="inline-actions bs-overhead-actions">
                   <button type="button" class="btn primary" id="btnOpenOperatingExpenseCalc">Add Monthly Overhead</button>
                 </div>
+                <div id="opexSavedListWrap" class="bs-opex-saved" hidden>
+                  <p class="sub bs-opex-saved__hint">Saved overhead costs. Change one bill when the price changes — the other costs stay as they are.</p>
+                  <ul id="opexSavedList" class="bs-opex-saved__list"></ul>
+                </div>
                 <p class="sub bs-payroll-preset-confirm" id="opexApplyConfirm" hidden></p>
               </div>
               <div class="field">
@@ -1570,7 +1646,7 @@
             </div>
           </div>
           <div class="bs-opex-modal__footer">
-            <button type="button" class="btn primary" id="btnApplyOperatingExpenseTotal">Apply Total to Monthly Overhead</button>
+            <button type="button" class="btn primary" id="btnApplyOperatingExpenseTotal">Save expenses &amp; update Monthly overhead</button>
             <button type="button" class="btn" id="btnCloseOperatingExpense">Close</button>
           </div>
         </div>
@@ -2120,8 +2196,10 @@
     setInputValue('scheduleBufferDays', settings.scheduleBufferDays != null ? settings.scheduleBufferDays : DEFAULT_SETTINGS.scheduleBufferDays);
     setInputValue('allowSellerScheduleOverride', settings.allowSellerScheduleOverride ? 'true' : 'false');
     setInputValue('overheadMonthly', settings.overheadMonthly);
-    operatingExpenseDraft = normalizeOperatingExpenseLines(settings.operatingExpenseLines);
+    operatingExpenseSaved = normalizeOperatingExpenseLines(settings.operatingExpenseLines);
+    operatingExpenseDraft = cloneOperatingExpenseLines(operatingExpenseSaved);
     applyOperatingExpenseDraftToDom();
+    renderSavedOperatingExpenseList();
     setInputValue('stdHours', settings.stdHours);
     setInputValue('wcPct', settings.wcPct);
     setInputValue('ficaPct', settings.ficaPct);
@@ -3166,6 +3244,7 @@
 
   let operatingExpenseCategoriesRendered = false;
   let operatingExpenseDraft = [];
+  let operatingExpenseSaved = [];
 
   const OPEX_CYCLES = [
     { id: 'month', months: 1, label: 'Monthly' },
@@ -3231,8 +3310,141 @@
   }
 
   function currentOperatingExpenseLines() {
-    if (operatingExpenseCategoriesRendered) readOperatingExpenseDraftFromDom();
-    return normalizeOperatingExpenseLines(operatingExpenseDraft);
+    return cloneOperatingExpenseLines(operatingExpenseSaved);
+  }
+
+  function cloneOperatingExpenseLines(lines) {
+    return normalizeOperatingExpenseLines(lines).map(function (line) {
+      const copy = { id: line.id, amount: line.amount, cycle: line.cycle };
+      if (line.name) copy.name = line.name;
+      return copy;
+    });
+  }
+
+  function escapeOpexText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function operatingExpenseLineLabel(line) {
+    const item = findOperatingExpenseItem(line && line.id);
+    if (!item) return line && line.id ? String(line.id) : '';
+    if (item.customName) return safeTrim(line.name) || 'Custom fixed cost';
+    return item.label;
+  }
+
+  function overheadTotalFromLines(lines) {
+    return roundOpexCents(normalizeOperatingExpenseLines(lines).reduce(function (sum, line) {
+      return sum + opexMonthlyShare(line.amount, line.cycle);
+    }, 0));
+  }
+
+  function paintOverheadMonthlyFromSaved() {
+    const total = overheadTotalFromLines(operatingExpenseSaved);
+    setInputValue('overheadMonthly', total);
+    markBusinessSettingsDirty();
+    const overheadInput = document.getElementById('overheadMonthly');
+    if (overheadInput) {
+      overheadInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const wrap = getBusinessFieldWrap('overheadMonthly');
+      if (wrap) wrap.classList.remove('field--error');
+    }
+    syncOperatingExpenseButtonLabel();
+  }
+
+  function renderSavedOperatingExpenseList() {
+    const wrap = document.getElementById('opexSavedListWrap');
+    const listEl = document.getElementById('opexSavedList');
+    if (!wrap || !listEl) return;
+    const lines = normalizeOperatingExpenseLines(operatingExpenseSaved);
+    if (!lines.length) {
+      wrap.setAttribute('hidden', '');
+      listEl.innerHTML = '';
+      return;
+    }
+    wrap.removeAttribute('hidden');
+    listEl.innerHTML = lines.map(function (line) {
+      const item = findOperatingExpenseItem(line.id);
+      const label = operatingExpenseLineLabel(line);
+      const monthly = roundOpexCents(opexMonthlyShare(line.amount, line.cycle));
+      const nameField = item && item.customName
+        ? '<input type="text" class="bs-opex-saved__name-input" data-opex-saved-name="' + line.id + '" maxlength="80" value="' + escapeOpexText(line.name || '') + '" aria-label="Name for ' + escapeOpexText(label) + '" />'
+        : '<span class="bs-opex-saved__name">' + escapeOpexText(label) + '</span>';
+      return '<li class="bs-opex-saved__row" data-opex-saved-id="' + line.id + '">' +
+        nameField +
+        '<select class="bs-opex-saved__cycle" data-opex-saved-cycle="' + line.id + '" aria-label="Billing period for ' + escapeOpexText(label) + '">' + opexCycleOptionsHtml(line.cycle) + '</select>' +
+        '<input type="number" class="bs-opex-saved__amount" data-opex-saved-amount="' + line.id + '" step="0.01" min="0" value="' + String(line.amount) + '" aria-label="Bill amount for ' + escapeOpexText(label) + '" />' +
+        '<span class="bs-opex-saved__monthly">' + formatOpexMoney(monthly) + '/mo</span>' +
+        '<button type="button" class="btn bs-opex-saved__remove" data-opex-saved-remove="' + line.id + '">Remove</button>' +
+        '</li>';
+    }).join('');
+  }
+
+  function setOpexSavedConfirm(message) {
+    const confirmEl = document.getElementById('opexApplyConfirm');
+    if (!confirmEl) return;
+    confirmEl.textContent = message;
+    confirmEl.removeAttribute('hidden');
+  }
+
+  function patchSavedOperatingExpenseLine(itemId, patch) {
+    const lines = cloneOperatingExpenseLines(operatingExpenseSaved);
+    let found = false;
+    const next = [];
+    lines.forEach(function (line) {
+      if (line.id !== itemId) {
+        next.push(line);
+        return;
+      }
+      found = true;
+      if (patch && patch.remove) return;
+      const updated = {
+        id: line.id,
+        amount: patch && patch.amount != null ? parseOpexAmount(patch.amount) : line.amount,
+        cycle: patch && patch.cycle != null ? opexCycleById(patch.cycle).id : line.cycle
+      };
+      if ((patch && patch.name != null) || line.name) {
+        updated.name = patch && patch.name != null ? safeTrim(patch.name).slice(0, 80) : line.name;
+      }
+      next.push(updated);
+    });
+    if (!found) return;
+    operatingExpenseSaved = normalizeOperatingExpenseLines(next);
+    operatingExpenseDraft = cloneOperatingExpenseLines(operatingExpenseSaved);
+    paintOverheadMonthlyFromSaved();
+    renderSavedOperatingExpenseList();
+    applyOperatingExpenseDraftToDom();
+    setOpexSavedConfirm(
+      operatingExpenseSaved.length
+        ? 'That overhead cost was updated. The other saved costs stayed as they are. Click Save Business Settings to save.'
+        : 'All saved overhead costs were removed. Monthly overhead is $0.00. Click Save Business Settings to save.'
+    );
+  }
+
+  function bindSavedOperatingExpenseList() {
+    const wrap = document.getElementById('opexSavedListWrap');
+    if (!wrap || wrap.getAttribute('data-opex-saved-bound') === '1') return;
+    wrap.setAttribute('data-opex-saved-bound', '1');
+    wrap.addEventListener('change', function (event) {
+      const target = event.target;
+      if (!target || !target.getAttribute) return;
+      const cycleId = target.getAttribute('data-opex-saved-cycle');
+      const amountId = target.getAttribute('data-opex-saved-amount');
+      const nameId = target.getAttribute('data-opex-saved-name');
+      if (cycleId) patchSavedOperatingExpenseLine(cycleId, { cycle: target.value });
+      else if (amountId) patchSavedOperatingExpenseLine(amountId, { amount: target.value });
+      else if (nameId) patchSavedOperatingExpenseLine(nameId, { name: target.value });
+    });
+    wrap.addEventListener('click', function (event) {
+      const btn = event.target && event.target.closest ? event.target.closest('[data-opex-saved-remove]') : null;
+      if (!btn) return;
+      event.preventDefault();
+      const id = btn.getAttribute('data-opex-saved-remove');
+      if (id) patchSavedOperatingExpenseLine(id, { remove: true });
+    });
   }
 
   function opexCycleOptionsHtml(selectedId) {
@@ -3250,6 +3462,10 @@
   function syncOperatingExpenseButtonLabel() {
     const btn = document.getElementById('btnOpenOperatingExpenseCalc');
     if (!btn) return;
+    if (normalizeOperatingExpenseLines(operatingExpenseSaved).length) {
+      btn.textContent = 'Add or edit operating expenses';
+      return;
+    }
     const value = getOverheadMonthlyNumeric();
     const raw = String(document.getElementById('overheadMonthly')?.value ?? '').trim();
     if (raw === '' || value === 0) {
@@ -3423,7 +3639,7 @@
       const detail = row.months === 1
         ? formatOpexMoney(row.monthly) + '/mo'
         : formatOpexMoney(row.amount) + ' / ' + row.cycleLabel.toLowerCase();
-      return '<li><span>' + row.label + '<br>' + detail + '</span><strong>' + formatOpexMoney(row.monthly) + '/mo</strong></li>';
+      return '<li><button type="button" class="bs-opex-summary-edit" data-opex-focus="' + row.id + '"><span>' + escapeOpexText(row.label) + '<br>' + detail + '</span><strong>' + formatOpexMoney(row.monthly) + '/mo</strong></button></li>';
     }).join('');
   }
 
@@ -3433,23 +3649,13 @@
       setStatus('Select at least one cost. Monthly overhead was left as it is.', 'error');
       return;
     }
-    const total = roundOpexCents(calculateOperatingExpenseTotal());
-    setInputValue('overheadMonthly', total);
-    markBusinessSettingsDirty();
-    const overheadInput = document.getElementById('overheadMonthly');
-    if (overheadInput) {
-      overheadInput.dispatchEvent(new Event('input', { bubbles: true }));
-      const wrap = getBusinessFieldWrap('overheadMonthly');
-      if (wrap) wrap.classList.remove('field--error');
-    }
-    const confirmMsg = 'Monthly overhead is each bill divided by its period. Review the value and click Save Business Settings to save.';
-    const confirmEl = document.getElementById('opexApplyConfirm');
-    if (confirmEl) {
-      confirmEl.textContent = confirmMsg;
-      confirmEl.removeAttribute('hidden');
-    }
-    setStatus('Operating expense total applied to Monthly overhead. Review and click Save Business Settings to save.', 'success');
-    syncOperatingExpenseButtonLabel();
+    operatingExpenseSaved = cloneOperatingExpenseLines(operatingExpenseDraft);
+    operatingExpenseDraft = cloneOperatingExpenseLines(operatingExpenseSaved);
+    paintOverheadMonthlyFromSaved();
+    renderSavedOperatingExpenseList();
+    applyOperatingExpenseDraftToDom();
+    setOpexSavedConfirm('Saved overhead list updated. Change one cost later without rebuilding the list. Click Save Business Settings to save.');
+    setStatus('Saved overhead costs were updated. Change one bill later without starting over. Click Save Business Settings to save.', 'success');
     closeOperatingExpenseModal();
   }
 
@@ -3532,24 +3738,35 @@
     document.getElementById('btnCloseOpexSelected')?.focus();
   }
 
-  function openOperatingExpenseModal() {
+  function focusOperatingExpenseRow(itemId) {
+    if (!itemId) return;
+    const row = document.querySelector('[data-opex-id="' + itemId + '"]');
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'center' });
+    const amountEl = document.getElementById('opex-amount-' + itemId);
+    if (amountEl && !amountEl.disabled) amountEl.focus();
+  }
+
+  function openOperatingExpenseModal(focusId) {
     const modal = document.getElementById('bsOperatingExpenseModal');
-    const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
     if (!modal) return;
     renderOperatingExpenseCategories();
-    renderOperatingExpenseSummary();
+    operatingExpenseDraft = cloneOperatingExpenseLines(operatingExpenseSaved);
+    applyOperatingExpenseDraftToDom();
     closeOpexOptionsMenu({ restoreFocus: false });
     closeOpexSheets({ restoreFocus: false });
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('bs-opex-modal-open');
-    document.getElementById('btnCloseOperatingExpense')?.focus();
+    if (focusId) focusOperatingExpenseRow(focusId);
+    else document.getElementById('btnCloseOperatingExpense')?.focus();
   }
 
   function closeOperatingExpenseModal() {
     const modal = document.getElementById('bsOperatingExpenseModal');
     const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
     if (!modal) return;
+    operatingExpenseDraft = cloneOperatingExpenseLines(operatingExpenseSaved);
+    applyOperatingExpenseDraftToDom();
     closeOpexOptionsMenu({ restoreFocus: false });
     closeOpexSheets({ restoreFocus: false });
     modal.setAttribute('hidden', '');
@@ -3560,6 +3777,7 @@
 
   function bindOperatingExpenseCalculator() {
     renderOperatingExpenseCategories();
+    bindSavedOperatingExpenseList();
     const list = document.getElementById('opexCategoryList');
     if (list) {
       list.addEventListener('change', function (event) {
@@ -3646,6 +3864,13 @@
     });
     document.getElementById('opexSelectedScrim')?.addEventListener('click', function () {
       closeOpexSheets({ restoreFocus: true });
+    });
+    document.getElementById('opexSelectedList')?.addEventListener('click', function (event) {
+      const btn = event.target && event.target.closest ? event.target.closest('[data-opex-focus]') : null;
+      if (!btn) return;
+      event.preventDefault();
+      closeOpexSheets({ restoreFocus: false });
+      focusOperatingExpenseRow(btn.getAttribute('data-opex-focus'));
     });
     document.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape') return;

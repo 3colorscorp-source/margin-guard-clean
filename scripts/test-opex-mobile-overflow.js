@@ -26,7 +26,7 @@ assert(html.includes("Monthly overhead:"));
 assert(html.includes('id="opexCompactTotal"'));
 assert(html.includes('id="opexCompactCount"'));
 assert(html.includes('id="btnApplyOperatingExpenseTotal"'));
-assert(html.includes("Apply Total to Monthly Overhead"));
+assert(html.includes("Save expenses &amp; update Monthly overhead"));
 assert(html.includes('id="opexSummaryPanel"'));
 assert(html.includes("Prepared Monthly Cost"));
 assert(html.includes("Selected cost list"));
