@@ -426,6 +426,7 @@ function mgSwCreateAutoDocsSession(io) {
   const PDFS_API = "/.netlify/functions/contract-signed-pdfs";
   const PDF_CREATE_API = "/.netlify/functions/contract-signed-pdf-create";
   const EMAIL_QUEUE_API = "/.netlify/functions/contract-invitation-email-queue";
+  const COPY_LINK_API = "/.netlify/functions/contract-invitation-copy-link";
 
   const ENV_STATUSES = [
     "draft",
@@ -456,6 +457,7 @@ function mgSwCreateAutoDocsSession(io) {
     emailStuck: false,
     emailRecoverable: false,
     emailRecoveredAttemptId: null,
+    copyLinkBusy: false,
     visualStep: 1,
     visualStepOverride: null,
     busy: false,
@@ -2196,7 +2198,12 @@ function mgSwCreateAutoDocsSession(io) {
       setText("swVis3Lead", deliveryCopy.lead);
       setText("swVis3Why", deliveryCopy.why);
     }
-    syncVisAction("swVis3CopyLinkBtn", "swCopyLinkBtn");
+    const vis3Copy = $("swVis3CopyLinkBtn");
+    const envWaiting = envSt === "sent" || envSt === "opened";
+    if (vis3Copy) {
+      vis3Copy.hidden = !envWaiting;
+      vis3Copy.disabled = !envWaiting || state.copyLinkBusy;
+    }
     setProgRow(
       "swVisProgEmail",
       emailDone ? "complete" : emailCurrent ? "current" : "waiting",
@@ -3200,20 +3207,53 @@ function mgSwCreateAutoDocsSession(io) {
       }
     });
 
-    $("swCopyLinkBtn")?.addEventListener("click", async () => {
-      if (!state.signingLink) {
-        toast(
-          "The secure link was generated previously and is not available to copy in this session.",
-          "error"
-        );
-        return;
-      }
+    async function copySigningLinkForOwner() {
+      if (state.copyLinkBusy) return;
+      const hadLink = hasCopyableLink();
       try {
+        if (!hadLink) {
+          const envId = state.envelope?.id;
+          const signer = customerDeliverySigner();
+          if (!envId || !signer?.id) {
+            toast("Signer required before copying a signing link", "error");
+            return;
+          }
+          state.copyLinkBusy = true;
+          renderSend();
+          renderVisualWorkflow();
+          const res = await api(COPY_LINK_API, {
+            method: "POST",
+            body: JSON.stringify({
+              envelope_id: envId,
+              signer_id: signer.id,
+            }),
+          });
+          if (!res.ok || res.data?.ok !== true || !res.data?.signing_url) {
+            throw new Error(res.data?.error || "Could not create a signing link");
+          }
+          if (res.data.signing_token || res.data.raw_token) {
+            throw new Error("Unexpected secure fields in copy-link response");
+          }
+          state.signingLink = String(res.data.signing_url);
+        }
         await navigator.clipboard.writeText(state.signingLink);
-        toast("Link copied", "ok");
-      } catch (_err) {
-        toast("Could not copy link", "error");
+        toast(
+          hadLink
+            ? "Link copied"
+            : "Signing link copied. Send it to the customer. The previous email link no longer works.",
+          "ok"
+        );
+      } catch (err) {
+        toast(err?.message || "Could not copy link", "error");
+      } finally {
+        state.copyLinkBusy = false;
+        renderSend();
+        renderVisualWorkflow();
       }
+    }
+
+    $("swCopyLinkBtn")?.addEventListener("click", async () => {
+      await copySigningLinkForOwner();
     });
 
     $("swEmailLinkBtn")?.addEventListener("click", async () => {
@@ -3541,7 +3581,10 @@ function mgSwCreateAutoDocsSession(io) {
       });
     };
     proxyClick("swVisCopyLinkBtn", "swCopyLinkBtn");
-    proxyClick("swVis3CopyLinkBtn", "swCopyLinkBtn");
+    $("swVis3CopyLinkBtn")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      copySigningLinkForOwner();
+    });
     proxyClick("swVisRetryEmailBtn", "swEmailRetryBtn");
     proxyClick("swVisIssueCertBtn", "swIssueCertBtn");
     proxyClick("swVisViewCertBtn", "swViewCertBtn");

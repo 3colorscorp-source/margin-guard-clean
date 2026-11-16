@@ -80,7 +80,9 @@ test("4 presentation proxies existing handlers", () => {
   assert.ok(js.includes("openConfirmCustomerModal"));
   assert.ok(js.includes("Continue to Contractor Signature"));
   assert.ok(js.includes('proxyClick("swVisCopyLinkBtn", "swCopyLinkBtn")'));
-  assert.ok(js.includes('proxyClick("swVis3CopyLinkBtn", "swCopyLinkBtn")'));
+  assert.ok(js.includes("copySigningLinkForOwner"));
+  assert.ok(js.includes("swVis3CopyLinkBtn"));
+  assert.ok(js.includes("COPY_LINK_API"));
   assert.ok(js.includes('proxyClick("swVisRetryEmailBtn", "swEmailRetryBtn")'));
   assert.ok(js.includes('proxyClick("swVisIssueCertBtn", "swIssueCertBtn")'));
   assert.ok(js.includes('proxyClick("swVisViewCertBtn", "swViewCertBtn")'));
