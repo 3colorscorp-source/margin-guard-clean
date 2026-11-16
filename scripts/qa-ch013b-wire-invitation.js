@@ -113,6 +113,9 @@ test("AUDIT 4 Copy Link button is not broken after refresh", () => {
   assert.ok(swJs.includes("The secure link was generated previously"));
   assert.ok(swJs.includes("copyBtn.hidden = !canCopy") || swJs.includes("hidden = !canCopy"));
   assert.ok(swJs.includes("hasCopyableLink"));
+  assert.ok(swJs.includes("COPY_LINK_API"));
+  assert.ok(swJs.includes("copySigningLinkForOwner"));
+  assert.ok(swJs.includes("Never reconstruct"));
   assert.ok(!/sessionStorage\.getItem/.test(swJs));
 });
 
