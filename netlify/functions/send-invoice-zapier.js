@@ -12,6 +12,7 @@ const {
   uploadInvoicePdf,
   buildInvoicePdfAccessUrl
 } = require("./_lib/invoice-pdf-access");
+const { resolveInvoiceContractTotal } = require("./_lib/invoice-contract-total");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -605,12 +606,24 @@ async function resolveProjectPaymentEmailContext(invoice, body) {
   const quoteTotal = await loadQuoteTotal(tenantId, quoteId);
   const projectTotal = await loadProjectTotal(tenantId, projectId);
   const dbPaid = Math.max(await loadProjectPaidToDate(tenantId, projectId, quoteId), 0);
-
+  const invoiceAmountFallback = Math.max(roundMoney(toNumber(invoice.amount, 0)), 0);
+  const resolvedContract = await resolveInvoiceContractTotal(supabaseRequest, {
+    tenantId,
+    quoteId,
+    projectId,
+    notes: invoice.notes,
+    isProjectPayment: true,
+    invoiceAmount: invoiceAmountFallback
+  });
+  const fromBody = positiveMoney(body.project_contract_total, body.contract_total);
   const projectContractTotal =
-    positiveMoney(body.project_contract_total, body.contract_total) ??
-    (quoteTotal > 0 ? roundMoney(quoteTotal) : null) ??
-    (projectTotal > 0 ? roundMoney(projectTotal) : null) ??
-    Math.max(roundMoney(toNumber(invoice.amount, 0)), 0);
+    resolvedContract > 0
+      ? roundMoney(resolvedContract)
+      : fromBody && Math.abs(fromBody - invoiceAmountFallback) > 0.005
+        ? fromBody
+        : (quoteTotal > 0 ? roundMoney(quoteTotal) : null) ??
+          (projectTotal > 0 ? roundMoney(projectTotal) : null) ??
+          0;
 
   // Prefer explicit project_paid_to_date only when it does not zero-out a positive ledger total.
   const bodyProjectPaid = nonNegativeMoney(body.project_paid_to_date);

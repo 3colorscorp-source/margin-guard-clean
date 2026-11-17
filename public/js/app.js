@@ -16601,6 +16601,7 @@ window.renderSupervisor = renderSupervisor;
       /* keep settings license rather than inventing one */
     }
     try {
+      const pdfContractTotal = hubRowResolvedProjectContractTotal(row);
       return await api.buildInvoicePdfPayload({
         businessName: nonEmptyString(settings.bizName, settings.businessName, branding.businessName),
         serviceLine: nonEmptyString(settings.serviceLine, branding.serviceLine),
@@ -16623,7 +16624,7 @@ window.renderSupervisor = renderSupervisor;
         laborAmount,
         materialsAmount,
         currency: nonEmptyString(settings.currency, row?.currency),
-        contractTotal: finiteNumber(row?.projectContractTotal, finiteNumber(row?.salePrice, 0)),
+        contractTotal: pdfContractTotal > 0 ? pdfContractTotal : null,
         contractTotalLabel: "Contract total",
         invoiceAmount:
           finiteNumber(row?.amount, finiteNumber(row?.project?.invoice?.baseAmount, 0)) + sendExtras.extraDue,
@@ -17209,25 +17210,26 @@ window.renderSupervisor = renderSupervisor;
 
   /** Project remaining balance from hub row (contract total minus paid applied). */
   function hubRowProjectRemainingBalance(row) {
-    const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
+    const contractTotal = hubRowResolvedProjectContractTotal(row);
     const paid = hubRowPaidToDateApprox(row);
     return Math.max(0, Math.round((contractTotal - paid) * 100) / 100);
   }
 
   async function hubRowResolveProjectPaymentTotals(row) {
+    const resolvedContract = hubRowResolvedProjectContractTotal(row);
     if (hubDrawerRowUsesProjectFolderLedger(row)) {
       const pack = await fetchHubDrawerFolderLedgerPack(row);
       if (pack && Number.isFinite(pack.netSum)) {
         const contractTotal = Math.max(
+          finiteNumber(resolvedContract, 0),
           finiteNumber(pack.contractTotal, 0),
-          finiteNumber(row?.projectContractTotal, 0),
           0
         );
         const paidToDate = finiteNumber(pack.netSum, 0);
         return hubProjectPaymentTotalsFrom(row, contractTotal, paidToDate);
       }
     }
-    const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
+    const contractTotal = Math.max(finiteNumber(resolvedContract, 0), 0);
     let paidToDate = hubRowPaidToDateApprox(row);
     if (hubRowCanRecordLedgerPayment(row)) {
       const pack = await fetchHubDrawerLedgerPayments(row);
@@ -18465,6 +18467,38 @@ window.renderSupervisor = renderSupervisor;
     return 0;
   }
 
+  /**
+   * Approved quote / parent contract total. Start Payment children omit quote_id,
+   * so row.projectContractTotal often copies this invoice amount — never treat
+   * that billed amount as the project contract.
+   */
+  function hubRowResolvedProjectContractTotal(row) {
+    const billingGroup = hubDrawerResolveBillingGroup(row);
+    const groupContract = hubBillingContractTotalForGroup(billingGroup);
+    if (groupContract > 0) return groupContract;
+    const sourceId = hubRowSourceInvoiceIdFromNotes(row);
+    if (sourceId) {
+      const pool = Array.isArray(hubMergedRowsForProjectBilling) ? hubMergedRowsForProjectBilling : [];
+      const parent = pool.find((r) => {
+        const id = String(r?.serverInvoiceId || "").trim().toLowerCase();
+        return id && id === sourceId;
+      });
+      if (parent && parent !== row) {
+        const parentTotal = Math.max(
+          finiteNumber(parent.projectContractTotal, 0),
+          finiteNumber(parent.salePrice, 0),
+          0
+        );
+        if (parentTotal > 0) return parentTotal;
+      }
+    }
+    const own = Math.max(finiteNumber(row?.projectContractTotal, 0), finiteNumber(row?.salePrice, 0), 0);
+    if (!hubRowIsProjectPaymentInvoice(row) && !hubRowIsBillingChildInvoice(row)) return own;
+    const billed = Math.max(finiteNumber(row?.amount, 0), 0);
+    if (own > 0 && Math.abs(own - billed) > 0.005) return own;
+    return 0;
+  }
+
   function hubDrawerResolveBillingGroup(row) {
     const pool = Array.isArray(hubMergedRowsForProjectBilling) ? hubMergedRowsForProjectBilling : [];
     return hubCollectProjectBillingGroup(row, pool);
@@ -19181,10 +19215,7 @@ window.renderSupervisor = renderSupervisor;
       groupContract > 0 &&
       Array.isArray(billingGroup.members) &&
       billingGroup.members.length >= 2;
-    let contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
-    if (useFolderLedger || childUsesProjectContract) {
-      if (groupContract > 0) contractTotal = groupContract;
-    }
+    const contractTotal = hubRowResolvedProjectContractTotal(row);
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row) || useFolderLedger;
     const materialSplit = hubMaterialBalanceSplit(row);
