@@ -1,6 +1,7 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
 const { materialsOnBalance, balanceWithMaterials } = require("./_lib/material-balance");
+const { resolveInvoiceContractTotal } = require("./_lib/invoice-contract-total");
 
 function json(statusCode, body) {
   return {
@@ -158,12 +159,15 @@ exports.handler = async (event) => {
     const projectId = String(rawRow.project_id || "").trim();
 
     const invoiceAmount = Number.isFinite(Number(rawRow.amount)) ? Number(rawRow.amount) : 0;
-    const quoteTotal = await loadQuoteTotal(tenantId, quoteId);
-    const projectTotal = await loadProjectTotal(tenantId, projectId);
-    const contractTotal =
-      quoteTotal > 0 ? quoteTotal : projectTotal > 0 ? projectTotal : Math.max(invoiceAmount, 0);
-
     const isProjectPaymentInvoice = isProjectPaymentChildRow(rawRow);
+    const contractTotal = await resolveInvoiceContractTotal(supabaseRequest, {
+      tenantId,
+      quoteId,
+      projectId,
+      notes: rawRow.notes,
+      isProjectPayment: isProjectPaymentInvoice,
+      invoiceAmount
+    });
 
     // Project payment children stay on the existing invoice/project-payment path.
     // Parent/root accepted project invoices with a billing group use unique folder paid.
@@ -385,36 +389,6 @@ async function loadUniqueFolderPaidToDate(tenantId, members) {
   const batches = await Promise.all(jobs);
   const payments = uniquePaymentsById(batches);
   return sumContractPaidFromPayments(payments, excludedContractInvoiceIds(list));
-}
-
-async function loadQuoteTotal(tenantId, quoteId) {
-  if (!tenantId || !quoteId) return 0;
-  try {
-    const rows = await supabaseRequest(
-      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=total&limit=1`,
-      { method: "GET" }
-    );
-    const row = Array.isArray(rows) ? rows[0] : null;
-    const n = Number(row?.total);
-    return Number.isFinite(n) ? Math.max(n, 0) : 0;
-  } catch (_err) {
-    return 0;
-  }
-}
-
-async function loadProjectTotal(tenantId, projectId) {
-  if (!tenantId || !projectId) return 0;
-  try {
-    const rows = await supabaseRequest(
-      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=sale_price&limit=1`,
-      { method: "GET" }
-    );
-    const row = Array.isArray(rows) ? rows[0] : null;
-    const n = Number(row?.sale_price);
-    return Number.isFinite(n) ? Math.max(n, 0) : 0;
-  } catch (_err) {
-    return 0;
-  }
 }
 
 async function loadTenantPublicPaymentSettings(tenantId) {
