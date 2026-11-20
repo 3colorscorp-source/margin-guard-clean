@@ -9578,9 +9578,6 @@
           Number(settings.futaPct || 0) +
           Number(settings.casuiPct || 0)
         ) / 100;
-        const overheadPerHour = Number(settings.stdHours || 0) > 0
-          ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
-          : 0;
         const laborByWorker = state.workers.map((worker) => {
           const days = workerDaysAsInteger(worker);
           const fallbackRate = worker.type === 'helper'
@@ -9595,7 +9592,19 @@
         const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
         const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
         const taxes = labor * taxPct;
-        const overhead = totalHours * overheadPerHour;
+        const planMetrics = typeof getOperationalMetricsForState === 'function'
+          ? getOperationalMetricsForState(state, settings)
+          : null;
+        let exclusiveDays = planMetrics ? Number(planMetrics.estimated_days || 0) : 0;
+        if (!(exclusiveDays > 0)) {
+          laborByWorker.forEach(function (row) {
+            if (row.days > exclusiveDays) exclusiveDays = row.days;
+          });
+        }
+        const overheadMonthly = Number(settings.overheadMonthly || 0);
+        const overhead = overheadMonthly > 0 && exclusiveDays > 0
+          ? (overheadMonthly / 20) * exclusiveDays
+          : 0;
         const beforeProfit = labor + taxes + overhead;
         const reservePctRaw = Number(settings.reservePct != null ? settings.reservePct : 5);
         const reservePct = Number.isFinite(reservePctRaw) ? reservePctRaw : 5;
@@ -9893,6 +9902,8 @@
           const payload = {
             workers: state.workers,
             labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
+            operational_plan: state.operational_plan || [],
+            operational_estimated_days_override: state.operational_estimated_days_override || '',
             price: state.price,
             pricing_stage: state.pricingStage == null ? 2 : state.pricingStage,
             _sliderTouched: Boolean(state._sliderTouched || state._manualPriceTouched),

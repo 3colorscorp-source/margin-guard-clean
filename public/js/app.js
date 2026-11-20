@@ -384,12 +384,58 @@ Thank you.`
     return `${summary.workersCount} workers · ${summary.workerHours.toFixed(2)} labor hours${suffix}`;
   }
 
+  const OVERHEAD_WORKING_DAYS = 20;
+
+  function exclusiveCrewDaysFromWorkers(workers) {
+    let maxDays = 0;
+    for (const worker of Array.isArray(workers) ? workers : []) {
+      const days = Math.max(0, Number(worker?.days || 0));
+      if (days > maxDays) maxDays = days;
+    }
+    return maxDays;
+  }
+
+  function exclusiveCrewDaysForState(state, settings, workers) {
+    const api = typeof window !== "undefined" ? window.MgSalesOperationalPlan : null;
+    const plan = state?.operational_plan;
+    if (api && typeof api.planHasDays === "function" && api.planHasDays(plan)) {
+      const hpd = typeof api.getHoursPerDay === "function"
+        ? api.getHoursPerDay(settings)
+        : Math.max(Number(settings?.hoursPerDay || 8), 0.25);
+      const rawOv = state?.operational_estimated_days_override;
+      const override =
+        rawOv != null && rawOv !== "" && Number.isFinite(Number(rawOv)) && Number(rawOv) > 0
+          ? Number(rawOv)
+          : null;
+      const normalized = api.normalizeOperationalPlan(plan, override, hpd);
+      const mode = typeof api.getOperationalPlanUnitMode === "function"
+        ? api.getOperationalPlanUnitMode(settings)
+        : "day";
+      const metrics = api.computeOperationalPlanMetrics(
+        normalized,
+        mode === "day" ? override : null,
+        null,
+        hpd
+      );
+      const span = Number(metrics?.estimated_days || 0);
+      if (span > 0) return span;
+    }
+    return exclusiveCrewDaysFromWorkers(workers);
+  }
+
+  function overheadForExclusiveDays(settings, exclusiveDays) {
+    const monthly = Number(settings?.overheadMonthly || 0);
+    const days = Math.max(0, Number(exclusiveDays || 0));
+    const daily = monthly > 0 ? monthly / OVERHEAD_WORKING_DAYS : 0;
+    return { overhead: daily * days, daily, exclusiveDays: days };
+  }
+
   function ownerOverheadMeta(settings, metrics) {
-    const stdHours = Number(settings.stdHours || 0);
-    if (stdHours <= 0) return "Set std hours in Business Settings to activate overhead";
-    const perHour = Number(settings.overheadMonthly || 0) / stdHours;
-    const hours = Number(metrics?.totalHours || 0);
-    return `${money(perHour, settings.currency)}/hr × ${hours.toFixed(2)} labor hrs`;
+    const monthly = Number(settings.overheadMonthly || 0);
+    if (!(monthly > 0)) return "Set monthly overhead in Business Settings";
+    const daily = monthly / OVERHEAD_WORKING_DAYS;
+    const days = Number(metrics?.exclusiveDays || 0);
+    return `${money(daily, settings.currency)}/day × ${days.toFixed(2)} exclusive days`;
   }
 
   if (typeof window !== "undefined") window.normalizeLaborQty = normalizeLaborQty;
@@ -8366,10 +8412,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       Number(settings.casuiPct || 0)
     ) / 100;
     const taxes = labor * taxPct;
-    const overheadPerHour = Number(settings.stdHours || 0) > 0
-      ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
-      : 0;
-    const overhead = totalHours * overheadPerHour;
+    const exclusiveDays = exclusiveCrewDaysFromWorkers(laborByWorker);
+    const overheadCharge = overheadForExclusiveDays(settings, exclusiveDays);
+    const overhead = overheadCharge.overhead;
     const beforeProfit = labor + taxes + overhead;
     const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
     const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
@@ -8389,6 +8434,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       totalWorkerDays,
       taxes,
       overhead,
+      exclusiveDays,
       beforeProfit,
       reserve,
       recommendedProfit,
@@ -8408,8 +8454,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
     const taxes = labor * ((Number(settings.wcPct || 0) + Number(settings.ficaPct || 0) + Number(settings.futaPct || 0) + Number(settings.casuiPct || 0)) / 100);
     const totalHours = state.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0);
-    const overheadPerHour = Number(settings.stdHours || 0) > 0 ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0) : 0;
-    const overhead = overheadPerHour * totalHours;
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    let exclusiveDays = Number(resolveOwnerEstimatedProjectDays(state, settings) || 0);
+    if (!(exclusiveDays > 0)) {
+      let maxHours = 0;
+      for (const worker of Array.isArray(state.workers) ? state.workers : []) {
+        maxHours = Math.max(maxHours, Number(worker.hours || 0));
+      }
+      exclusiveDays = hoursPerDay > 0 ? maxHours / hoursPerDay : 0;
+    }
+    const overheadCharge = overheadForExclusiveDays(settings, exclusiveDays);
+    const overhead = overheadCharge.overhead;
     const beforeProfit = labor + taxes + overhead;
     const profit = beforeProfit * (Number(settings.profitPct || 0) / 100);
     const reservePct = finiteNumber(settings.reservePct, DEFAULTS.reservePct);
@@ -8417,7 +8472,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const minimumMarginPct = finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct);
     const recommended = beforeProfit + profit + reserve;
     const minimum = beforeProfit * (1 + minimumMarginPct / 100 + reservePct / 100);
-    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
     const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
     const laborMetrics = {
@@ -8425,6 +8479,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       labor,
       taxes,
       overhead,
+      exclusiveDays,
       beforeProfit,
       profit,
       reserve,
@@ -10120,7 +10175,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     return [
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
       ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
-      ["Overhead Allocation", money(metrics.overhead, settings.currency), Number(settings.stdHours || 0) > 0 ? `${money(Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0), settings.currency)}/hour` : "Set standard hours to activate"],
+      ["Overhead Allocation", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)],
       ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
       ["Fixed Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% non-negotiable`],
@@ -10148,6 +10203,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             material_lines: window.MgQuoteMaterials
               ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
               : [],
+            operational_plan: state.operational_plan || [],
+            operational_estimated_days_override: state.operational_estimated_days_override || "",
             pricing_stage: 2
           })
         });
@@ -11311,6 +11368,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             material_lines: window.MgQuoteMaterials
               ? window.MgQuoteMaterials.sanitizeMaterialLines(ownerForPdf.material_lines)
               : [],
+            operational_plan: ownerForPdf.operational_plan || [],
+            operational_estimated_days_override: ownerForPdf.operational_estimated_days_override || "",
             pricing_stage: 2
           })
         });
@@ -12240,10 +12299,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       Number(settings.futaPct || 0) +
       Number(settings.casuiPct || 0)
     ) / 100;
-    const overheadPerHour = Number(settings.stdHours || 0) > 0
-      ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
-      : 0;
-
     const laborByWorker = (Array.isArray(state.workers) ? state.workers : []).map((worker) => {
       const days = Math.max(0, Number(worker.days || 0));
       const rate = workerRateFromSettings(worker, settings);
@@ -12256,7 +12311,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
     const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
     const taxes = labor * taxPct;
-    const overhead = totalHours * overheadPerHour;
+    const exclusiveDays = exclusiveCrewDaysForState(state, settings, laborByWorker);
+    const overheadCharge = overheadForExclusiveDays(settings, exclusiveDays);
+    const overhead = overheadCharge.overhead;
     const beforeProfit = labor + taxes + overhead;
     const reservePct = finiteNumber(settings.reservePct, DEFAULTS.reservePct);
     const reserve = beforeProfit * (reservePct / 100);
@@ -12278,6 +12335,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       totalWorkerDays,
       taxes,
       overhead,
+      exclusiveDays,
       beforeProfit,
       reserve,
       recommendedProfit,

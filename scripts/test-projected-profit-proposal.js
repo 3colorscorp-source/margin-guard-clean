@@ -66,7 +66,8 @@ const detail = buildOwnerProfitBreakdown({
   },
   acceptedQuote: { total: 9114.61, status: "accepted" },
 });
-assert.strictEqual(detail.projected_profit, 3396.8);
+// 8 exclusive days × ($2,676 / 20). Overhead is not multiplied by the 64 labor hours.
+assert.strictEqual(detail.projected_profit, 4039.04);
 assert.notStrictEqual(detail.projected_profit, 0);
 
 console.log("PASS projected profit comes from the accepted proposal");
