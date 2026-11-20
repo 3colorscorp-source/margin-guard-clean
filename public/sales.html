@@ -2142,6 +2142,17 @@
                   Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
                 </p>
                 <p class="sales-labor-guide__meta" id="salesCrewHint"></p>
+                <div class="sales-labor-weekend">
+                  <label class="sales-labor-sync-toggle">
+                    <input type="checkbox" id="salesClientWantsSaturday" />
+                    El cliente quiere sábado
+                  </label>
+                  <label class="sales-labor-sync-toggle">
+                    <input type="checkbox" id="salesClientWantsSunday" />
+                    El cliente quiere domingo
+                  </label>
+                  <p class="sales-labor-guide__text">Se suman cada semana. Tiempo y medio después de 40 horas de esa persona. El overhead sigue igual por hora.</p>
+                </div>
               </div>
 
               <div id="salesLaborAreasHost"></div>
@@ -2503,6 +2514,7 @@
   <script src="/js/voice-operational-plan.js"></script>
   <script src="/js/seller-operational-plan-areas.js"></script>
   <script src="/js/project-location.js?v=split-addr-1"></script>
+  <script src="/js/overtime-week.js?v=ot-week-1"></script>
   <script src="/js/app.js?v=seller-visual-dollar-source-v1"></script>
   <script src="/js/quote-proposal-pdfs.js?v=pdf12mb-1"></script>
   <script src="/js/quote-draft-from-email.js?v=mat-v1"></script>
@@ -5840,6 +5852,8 @@
         if (state.labor_manual_override == null) {
           state.labor_manual_override = false;
         }
+        state.clientWantsSaturday = state.clientWantsSaturday === true;
+        state.clientWantsSunday = state.clientWantsSunday === true;
         if (state.labor_from_work_areas === true) {
           state.laborAreas = Array.isArray(state.laborAreas) ? state.laborAreas : [];
         } else {
@@ -8400,10 +8414,35 @@
         });
       }
 
+      function syncSalesWeekendChecks(state) {
+        const sat = document.getElementById('salesClientWantsSaturday');
+        const sun = document.getElementById('salesClientWantsSunday');
+        if (sat) sat.checked = state && state.clientWantsSaturday === true;
+        if (sun) sun.checked = state && state.clientWantsSunday === true;
+      }
+
+      function bindSalesWeekendOnce() {
+        const sat = document.getElementById('salesClientWantsSaturday');
+        const sun = document.getElementById('salesClientWantsSunday');
+        if (!sat || !sun || typeof sat.addEventListener !== 'function' || sat.dataset.bound === '1') return;
+        sat.dataset.bound = '1';
+        const commit = function () {
+          const state = loadSalesState();
+          state.clientWantsSaturday = sat.checked === true;
+          state.clientWantsSunday = sun.checked === true;
+          saveSalesState(state);
+          refreshSellerFromStandalone();
+        };
+        sat.addEventListener('change', commit);
+        sun.addEventListener('change', commit);
+      }
+
       function refreshSellerFromStandalone() {
         try {
           ensureSellerBusinessSettingsReadyFromCache();
           const state = loadSalesState();
+          syncSalesWeekendChecks(state);
+          bindSalesWeekendOnce();
           const settings = loadSettings();
           if (syncLaborWorkersFromOperationalPlan(state, settings)) {
             saveSalesState(state);
@@ -9578,19 +9617,25 @@
           Number(settings.futaPct || 0) +
           Number(settings.casuiPct || 0)
         ) / 100;
+        const weekend = {
+          saturday: state.clientWantsSaturday === true,
+          sunday: state.clientWantsSunday === true
+        };
+        const overtimeApi = window.MgOvertimeWeek;
         const laborByWorker = state.workers.map((worker) => {
           const days = workerDaysAsInteger(worker);
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
           const rate = fallbackRate;
-          const hours = days * hoursPerDay;
-          const cost = hours * rate;
-          return { days, rate, hours, cost };
+          const priced = overtimeApi && typeof overtimeApi.pricedLabor === 'function'
+            ? overtimeApi.pricedLabor(days, hoursPerDay, rate, weekend)
+            : { totalHours: days * hoursPerDay, cost: days * hoursPerDay * rate, overtimeHours: 0, weekendDays: 0 };
+          return { days, rate, hours: priced.totalHours, cost: priced.cost, overtimeHours: priced.overtimeHours || 0, weekendDays: priced.weekendDays || 0 };
         });
         const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
         const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
-        const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
+        const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days + row.weekendDays, 0);
         const taxes = labor * taxPct;
         const overheadMonthly = Number(settings.overheadMonthly || 0);
         const overheadPerHour = overheadMonthly > 0 ? overheadMonthly / 24 / hoursPerDay : 0;
@@ -9693,7 +9738,9 @@
         const fingerprint = {
           w: state.workers,
           s: state.pricingStage == null ? 2 : state.pricingStage,
-          t: Boolean(state._sliderTouched || state._manualPriceTouched)
+          t: Boolean(state._sliderTouched || state._manualPriceTouched),
+          sat: state.clientWantsSaturday === true,
+          sun: state.clientWantsSunday === true
         };
         if (Array.isArray(state.laborAreas) && state.laborAreas.length) {
           fingerprint.a = state.laborAreas;
@@ -9894,6 +9941,8 @@
             labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
             operational_plan: state.operational_plan || [],
             operational_estimated_days_override: state.operational_estimated_days_override || '',
+            client_wants_saturday: state.clientWantsSaturday === true,
+            client_wants_sunday: state.clientWantsSunday === true,
             price: state.price,
             pricing_stage: state.pricingStage == null ? 2 : state.pricingStage,
             _sliderTouched: Boolean(state._sliderTouched || state._manualPriceTouched),
@@ -10676,6 +10725,8 @@
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
           labor_manual_override: false,
+          clientWantsSaturday: false,
+          clientWantsSunday: false,
           quote_mode: quoteMode,
           work_areas_ui: quoteMode === 'multi_area' ? 'active' : 'global',
           labor_from_work_areas: false,
@@ -12639,6 +12690,8 @@ async function openSellerSendModal(event) {
       job_site: projectAddress,
       address: projectAddress,
       workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
+      client_wants_saturday: stateFresh.clientWantsSaturday === true,
+      client_wants_sunday: stateFresh.clientWantsSunday === true,
       labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(stateFresh.laborAreas) : [],
       material_lines: window.MgQuoteMaterials
         ? window.MgQuoteMaterials.sanitizeMaterialLines(stateFresh.material_lines)

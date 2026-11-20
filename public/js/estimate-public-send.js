@@ -184,6 +184,8 @@
         job_site: projectAddress,
         address: projectAddress,
         workers: Array.isArray(state.workers) ? state.workers : [],
+        client_wants_saturday: state.clientWantsSaturday === true,
+        client_wants_sunday: state.clientWantsSunday === true,
         material_lines: (typeof window !== "undefined" && window.MgQuoteMaterials)
           ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
           : [],
