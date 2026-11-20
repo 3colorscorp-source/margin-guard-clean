@@ -911,14 +911,13 @@
 
     if (response.status === 409 || data?.code === "schedule_conflict") {
       throw new Error(
-        data?.error_es ||
-          data?.error ||
-          "Las fechas propuestas ya no están disponibles. La compañía se comunicará para reprogramar."
+        data?.error ||
+          "The proposed dates are no longer available. The company will contact you to reschedule."
       );
     }
 
     if (!response.ok || !data?.ok) {
-      throw new Error(data?.error || "No se pudo actualizar el estimate.");
+      throw new Error(data?.error || "Could not update the estimate.");
     }
 
     return data;
@@ -948,7 +947,7 @@
       if (!response.ok || !data?.ok || !data?.estimate) {
         document.title = "Estimate";
         renderEstimateNotFound(
-          data?.error || "El token publico no existe en este navegador o en este tenant."
+          data?.error || "The public token is not in this browser or this tenant."
         );
         return;
       }
@@ -967,7 +966,7 @@
       renderEstimatePublic(data.estimate);
     } catch (err) {
       document.title = "Estimate";
-      renderEstimateNotFound(err.message || "No se pudo cargar el estimate.");
+      renderEstimateNotFound(err.message || "Could not load the estimate.");
     }
   }
 
@@ -1403,7 +1402,7 @@
     const items = Array.isArray(next.items) ? next.items : [];
 
     if (!items.length) {
-      itemsWrap.innerHTML = `<div class="muted">No hay line items todavía.</div>`;
+      itemsWrap.innerHTML = `<div class="muted">No line items available yet.</div>`;
       return;
     }
 
@@ -1477,7 +1476,7 @@
 
     if (currentStatus === "declined") {
       hideDecisionButtons();
-      showFeedback("Estimate rechazado correctamente.", "warning");
+      showFeedback("Estimate declined.", "warning");
       return;
     }
 
@@ -1492,7 +1491,7 @@
           await loadEstimatePublic();
         } catch (err) {
           setButtonsDisabled(false);
-          showFeedback(err.message || "No se pudo aprobar el estimate.", "error");
+          showFeedback(err.message || "Could not approve the estimate.", "error");
         }
       };
     }
@@ -1515,10 +1514,10 @@
           }
 
           hideDecisionButtons();
-          showFeedback("Estimate rechazado correctamente.", "warning");
+          showFeedback("Estimate declined.", "warning");
         } catch (err) {
           setButtonsDisabled(false);
-          showFeedback(err.message || "No se pudo rechazar el estimate.", "error");
+          showFeedback(err.message || "Could not decline the estimate.", "error");
         }
       };
     }

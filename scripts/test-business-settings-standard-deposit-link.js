@@ -252,7 +252,7 @@ async function main() {
   ok("BS card sub is not Project deposits (Stripe)", !/Project deposits \(Stripe\)/.test(bsSrc));
   ok("BS presents Optional Stripe Connect", />Optional Stripe Connect</.test(bsSrc));
   ok("BS Connect button is optional", />Connect Stripe \(optional\)</.test(bsSrc));
-  ok("BS save copy uses enlace de pago del depósito", /enlace de pago del depósito/.test(bsSrc));
+  ok("BS save copy uses deposit payment link", /deposit payment link/.test(bsSrc));
   ok("BS save error is not a Stripe session", !/sesion \(Stripe\)/.test(bsSrc));
   ok("BS browser validator requires https:", /u\.protocol === 'https:'/.test(bsSrc));
 

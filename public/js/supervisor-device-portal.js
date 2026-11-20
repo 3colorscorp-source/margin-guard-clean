@@ -122,7 +122,7 @@
             body: "{}",
           });
           if (!response.ok || !data.url) {
-            throw new Error(data.error || "No se pudo abrir portal");
+            throw new Error(data.error || "Could not open the portal");
           }
           window.location.href = data.url;
         } catch (err) {

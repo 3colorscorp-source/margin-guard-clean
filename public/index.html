@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Margin Guard | Acceso</title>
+  <title>Margin Guard | Sign in</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body data-public="true">
@@ -13,11 +13,11 @@
         <div class="logo" aria-hidden="true"><b>MG</b></div>
         <div>
           <h1>Margin Guard</h1>
-          <p>Control de margen para contratistas y equipos de obra</p>
+          <p>Margin control for contractors and job crews</p>
         </div>
       </div>
       <div class="actions">
-        <a class="btn" href="#owner-login">Entrar</a>
+        <a class="btn" href="#owner-login">Sign in</a>
       </div>
     </div>
   </div>
@@ -27,33 +27,33 @@
       <div class="card-inner hero-inner">
         <div>
           <div class="badge green">marginguardsystem.netlify.app</div>
-          <h2>Vende con margen real, no con suposiciones.</h2>
-          <p class="sub hero-copy">Margin Guard calcula costos laborales, impuestos, overhead, margen objetivo y precio recomendado en tiempo real. Incluye exportacion PDF y envio de cotizacion.</p>
+          <h2>Sell with a real margin, not a guess.</h2>
+          <p class="sub hero-copy">Margin Guard calculates labor, taxes, overhead, target margin, and the recommended price in real time. It includes PDF export and quote sending.</p>
           <ul class="hero-list">
-            <li>Plan anual $2,000 USD para uso comercial.</li>
-            <li>Facturacion manual (QuickBooks o Square) confirmada por Margin Guard.</li>
-            <li>Acceso con cuenta verificada despues de la activacion.</li>
+            <li>Annual plan $2,000 USD for commercial use.</li>
+            <li>Manual billing (QuickBooks or Square) confirmed by Margin Guard.</li>
+            <li>Access with a verified account after activation.</li>
           </ul>
         </div>
 
         <form id="ownerLoginForm" class="card pricing-card" novalidate>
           <div class="card-inner">
-            <h3 id="owner-login">Entrar</h3>
-            <p class="sub">Usa el correo y contrasena de tu cuenta Margin Guard. El correo solo no abre sesion.</p>
+            <h3 id="owner-login">Sign in</h3>
+            <p class="sub">Use the email and password for your Margin Guard account. Email alone does not open a session.</p>
             <div class="field">
               <label for="loginEmail">Email</label>
-              <input id="loginEmail" type="email" maxlength="120" required autocomplete="username" placeholder="tu@empresa.com" />
+              <input id="loginEmail" type="email" maxlength="120" required autocomplete="username" placeholder="you@company.com" />
             </div>
             <div class="field">
-              <label for="loginPassword">Contrasena</label>
+              <label for="loginPassword">Password</label>
               <input id="loginPassword" type="password" maxlength="120" required autocomplete="current-password" />
             </div>
-            <button id="btnOwnerLogin" class="btn primary btn-block" type="submit">Entrar</button>
+            <button id="btnOwnerLogin" class="btn primary btn-block" type="submit">Sign in</button>
             <p class="small-note"><button type="button" id="btnForgotPassword" class="link-btn">Forgot password?</button></p>
             <div id="loginStatus" class="notice" style="display:none;"></div>
             <p class="small-note">By activating and using Margin Guard, your organization agrees to the Margin Guard Terms of Service and acknowledges the Privacy Policy.</p>
             <p class="small-note"><a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
-            <p class="small-note">Si tu pago anual ya fue confirmado y no tienes contrasena, pide la invitacion de acceso a Margin Guard.</p>
+            <p class="small-note">If your annual payment is already confirmed and you do not have a password, ask Margin Guard for an access invite.</p>
           </div>
         </form>
         <form id="ownerRecoveryForm" class="card pricing-card" hidden novalidate>

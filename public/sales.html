@@ -2145,13 +2145,13 @@
                 <div class="sales-labor-weekend">
                   <label class="sales-labor-sync-toggle">
                     <input type="checkbox" id="salesClientWantsSaturday" />
-                    El cliente quiere sábado
+                    Client wants Saturday
                   </label>
                   <label class="sales-labor-sync-toggle">
                     <input type="checkbox" id="salesClientWantsSunday" />
-                    El cliente quiere domingo
+                    Client wants Sunday
                   </label>
-                  <p class="sales-labor-guide__text">Se suman cada semana. Tiempo y medio después de 40 horas de esa persona. El overhead sigue igual por hora.</p>
+                  <p class="sales-labor-guide__text">Added each week. Time and a half after 40 hours for that person. Overhead stays the same per hour.</p>
                 </div>
               </div>
 
@@ -2382,14 +2382,14 @@
             <strong id="voicePlanCaptureTitle">Voice dictation</strong>
             <label>Dictation language
               <select id="voicePlanLanguage">
-                <option value="es-US">Español</option>
-                <option value="en-US">English</option>
+                <option value="en-US" selected>English</option>
+                <option value="es-US">Spanish</option>
               </select>
             </label>
             <label>Client document
               <select id="voicePlanClientLanguage">
                 <option value="en" selected>English</option>
-                <option value="es">Español</option>
+                <option value="es">Spanish</option>
               </select>
             </label>
           </div>
@@ -7590,7 +7590,7 @@
         const capture = getVoicePlanDictationCapture();
         voicePlanDictationGeneration = capture ? capture.start(voicePlanRecognitionBase) : 0;
         lockVoicePlanTranscriptForCapture(true);
-        recognition.lang = String((language && language.value) || 'es-US');
+        recognition.lang = String((language && language.value) || 'en-US');
         recognition.continuous = true;
         const voiceApi = getVoicePlanApi();
         recognition.interimResults = voiceApi && typeof voiceApi.prefersInterimSpeechResults === 'function'

@@ -14,11 +14,11 @@
   var EMPTY_DOCUMENT = { schema_version: 1, source: "keyboard", days: [] };
 
   var NO_SPEECH_API_MESSAGE =
-    "Este navegador no puede dictar por voz. Puedes escribir las instrucciones y pulsar Interpret and preview.";
+    "This browser cannot dictate by voice. Type the instructions and choose Interpret and preview.";
   var PERMISSION_DENIED_MESSAGE =
-    "El permiso del micrófono fue denegado. Actívalo en la configuración del navegador o escribe las instrucciones en el recuadro.";
+    "Microphone permission was denied. Turn it on in the browser settings, or type the instructions in the box.";
   var MIC_START_FAILED_MESSAGE =
-    "No se pudo iniciar el micrófono. Revisa el permiso del navegador o escribe las instrucciones.";
+    "Could not start the microphone. Check the browser permission, or type the instructions.";
   var EMPTY_INTERPRET_MESSAGE = "Dictate or type instructions first.";
   var LISTENING_MESSAGE = "Listening… describe the plan or say which day to modify.";
   var STOPPED_MESSAGE = "Dictation stopped. Review the text, then choose Interpret and preview.";
@@ -70,7 +70,7 @@
   function permissionErrorMessage(code) {
     if (isPermissionDeniedCode(code)) return PERMISSION_DENIED_MESSAGE;
     if (str(code).toLowerCase() === "audio-capture") {
-      return "No se encontró un micrófono. Conecta uno o escribe las instrucciones.";
+      return "No microphone was found. Connect one, or type the instructions.";
     }
     return MIC_START_FAILED_MESSAGE;
   }
@@ -644,7 +644,7 @@
       state.recognition = recognition;
       state.listening = true;
       state.listeningMode = appendExisting ? "continue" : "new";
-      recognition.lang = str(language && language.value) || "es-US";
+      recognition.lang = str(language && language.value) || "en-US";
       recognition.continuous = true;
       recognition.interimResults =
         global.MgVoiceOperationalPlan &&

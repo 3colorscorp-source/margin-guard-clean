@@ -51,7 +51,7 @@
       '<p class="sales-op-avail-lead sales-op-avail-lead--table">Supervisor labor reports</p>' +
       '<div class="supervisor-table-wrap sales-op-avail-entries-wrap">' +
       '<table class="table sales-op-avail-entries-table">' +
-      "<thead><tr><th>Fecha</th><th>Nota</th><th>Horas</th><th>Días</th></tr></thead><tbody>";
+      "<thead><tr><th>Date</th><th>Note</th><th>Hours</th><th>Days</th></tr></thead><tbody>";
     list.forEach(function (row) {
       const dateRaw = row && row.date ? String(row.date).trim().slice(0, 10) : "";
       const dateLabel =
