@@ -76,7 +76,7 @@ assert(html.includes("toggleOpexOptionsMenu"));
 assert(html.includes("return amount / opexCycleById(cycleId).months"));
 assert(html.includes("function calculateOperatingExpenseTotal()"));
 assert(html.includes("return sum + row.monthly"));
-assert(html.includes("stdHours > 0 ? formatOpexMoney(monthlyTotal / stdHours)"));
+assert(html.includes("formatOpexMoney(monthlyTotal / 24 / hoursPerDay)"));
 assert(html.includes("setInputValue('overheadMonthly', total)"));
 assert(!html.includes("operatingExpenseDraft = selections"));
 

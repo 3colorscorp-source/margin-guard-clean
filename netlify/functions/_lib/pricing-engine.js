@@ -4,14 +4,9 @@
  */
 
 const quoteMaterials = require("../../../public/js/quote-materials");
-const {
-  normalizeOperationalPlan,
-  computeOperationalPlanMetrics,
-  planHasDays,
-} = require("./operational-plan");
 
-/** Four work weeks. Each project pays this many days of its own crew, not worker hours. */
-const OVERHEAD_WORKING_DAYS = 20;
+/** Monday–Saturday month (4 weeks). Each worker hour carries the same share. */
+const OVERHEAD_MONTH_DAYS = 24;
 
 function round2(n) {
   return Math.round(Number(n) * 100) / 100;
@@ -59,51 +54,18 @@ function sanitizeWorkersForTenantPricing(workers) {
   });
 }
 
-function maxWorkerDays(workers) {
-  let maxDays = 0;
-  for (const worker of Array.isArray(workers) ? workers : []) {
-    const days = Math.max(0, Number(worker?.days || 0));
-    if (days > maxDays) maxDays = days;
-  }
-  return maxDays;
-}
-
-/**
- * Days one crew stays exclusive to this quote.
- * A plan span wins over summed worker-days. A second quote calculates its own span.
- */
-function exclusiveCrewDays(workers, input, settings) {
-  const src = settings && typeof settings === "object" ? settings : {};
-  const hoursPerDay = Math.max(Number(src.hoursPerDay || 8), 0.25);
-  const daysOvRaw =
-    input?.operational_estimated_days_override ?? input?.operationalEstimatedDaysOverride;
-  const daysOv = Number(daysOvRaw);
-  const override = Number.isFinite(daysOv) && daysOv > 0 ? daysOv : null;
-  const plan = normalizeOperationalPlan(
-    input?.operational_plan ?? input?.operationalPlan,
-    override,
-    hoursPerDay
-  );
-  if (planHasDays(plan)) {
-    const metrics = computeOperationalPlanMetrics(plan, override, null, hoursPerDay);
-    const span = Number(metrics?.estimated_days || 0);
-    if (span > 0) return span;
-  }
-  return maxWorkerDays(workers);
-}
-
-function overheadForExclusiveDays(overheadMonthly, exclusiveDays) {
+function overheadPerWorkerHour(overheadMonthly, hoursPerDay) {
   const monthly = Number(overheadMonthly || 0);
-  const days = Math.max(0, Number(exclusiveDays || 0));
-  if (!(monthly > 0) || !(days > 0)) return 0;
-  return (monthly / OVERHEAD_WORKING_DAYS) * days;
+  const hours = Number(hoursPerDay);
+  if (!(monthly > 0) || !(hours > 0)) return 0;
+  return monthly / OVERHEAD_MONTH_DAYS / hours;
 }
 
 /**
- * Labor and burden stay on each worker. Overhead is one exclusive-day charge for the quote.
- * Row beforeProfit is loaded labor only, so area weights do not multiply overhead by crew size.
+ * Each worker hour carries the same overhead dollar, whatever that person earns.
+ * Row beforeProfit includes that worker's own overhead share.
  */
-function computePublishLaborComponents(workers, settings, exclusiveDays) {
+function computePublishLaborComponents(workers, settings) {
   const src = settings && typeof settings === "object" ? settings : {};
   const hoursPerDay = Math.max(Number(src.hoursPerDay || 8), 0.25);
   const taxPct =
@@ -113,9 +75,7 @@ function computePublishLaborComponents(workers, settings, exclusiveDays) {
       Number(src.casuiPct || 0)) /
     100;
   const overheadMonthly = Number(src.overheadMonthly || 0);
-  const span = Number(exclusiveDays);
-  const exclusive =
-    Number.isFinite(span) && span > 0 ? span : maxWorkerDays(workers);
+  const perHour = overheadPerWorkerHour(overheadMonthly, hoursPerDay);
   const laborByWorker = (Array.isArray(workers) ? workers : []).map((worker) => {
     const days = Math.max(0, Number(worker.days || 0));
     const baseRate =
@@ -125,12 +85,14 @@ function computePublishLaborComponents(workers, settings, exclusiveDays) {
     const rate = baseRate;
     const hours = days * hoursPerDay;
     const cost = hours * rate;
-    const beforeProfit = cost * (1 + taxPct);
+    const overhead = hours * perHour;
+    const beforeProfit = cost * (1 + taxPct) + overhead;
     return {
       area_id: worker.area_id || "",
       days,
       hours,
       cost,
+      overhead,
       beforeProfit,
     };
   });
@@ -138,7 +100,7 @@ function computePublishLaborComponents(workers, settings, exclusiveDays) {
   const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
   const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
   const taxes = labor * taxPct;
-  const overhead = overheadForExclusiveDays(overheadMonthly, exclusive);
+  const overhead = totalHours * perHour;
   const beforeProfit = labor + taxes + overhead;
   return {
     laborByWorker,
@@ -147,7 +109,7 @@ function computePublishLaborComponents(workers, settings, exclusiveDays) {
     totalWorkerDays,
     taxes,
     overhead,
-    exclusiveDays: exclusive,
+    overheadPerHour: perHour,
     beforeProfit,
   };
 }
@@ -299,8 +261,7 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     return Number.isFinite(x) ? x : fallback;
   }
 
-  const exclusiveDays = exclusiveCrewDays(workers, input, settings);
-  const components = computePublishLaborComponents(workers, settings, exclusiveDays);
+  const components = computePublishLaborComponents(workers, settings);
   const labor = components.labor;
   const totalHours = components.totalHours;
   const totalWorkerDays = components.totalWorkerDays;
@@ -350,8 +311,8 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     labor: round2(labor),
     totalHours: round2(totalHours),
     totalWorkerDays: round2(totalWorkerDays),
-    exclusive_days: round2(components.exclusiveDays),
     overhead: round2(components.overhead),
+    overhead_per_hour: round2(components.overheadPerHour),
     before_profit: round2(beforeProfit),
     reserve: round2(reserve),
     material_cost: round2(materialCost)
@@ -478,6 +439,6 @@ module.exports = {
   sanitizeWorkersForTenantPricing,
   resolveOfferedFromPricingInput,
   computePublishLaborComponents,
-  OVERHEAD_WORKING_DAYS,
-  exclusiveCrewDays,
+  OVERHEAD_MONTH_DAYS,
+  overheadPerWorkerHour,
 };

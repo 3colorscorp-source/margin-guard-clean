@@ -1364,7 +1364,7 @@
                 <div class="bs-fin-column bs-fin-column--overhead">
               <div class="bs-fin-block field--full">
                 <h3 class="bs-subsection-title">Overhead Allocation</h3>
-                <p class="sub bs-fin-block-sub">Spread monthly fixed overhead across job labor hours.</p>
+                <p class="sub bs-fin-block-sub">Each worker hour carries the same share of the monthly overhead: monthly total ÷ 24 days ÷ hours per day.</p>
                 <div class="form bs-form-dense bs-fin-block-fields">
               <div class="field">
                 <label for="overheadMonthly">Monthly overhead ($)</label>
@@ -1381,7 +1381,7 @@
               <div class="field">
                 <label for="stdHours">Std hours / worker / mo</label>
                 <input id="stdHours" type="number" step="1" placeholder="160" />
-                <div class="hint hint--start">Used with monthly overhead to allocate office and fixed cost into each job hour.</div>
+                <div class="hint hint--start">Kept on file. The quote does not use this 160. It uses the monthly overhead divided by 24 days and by the hours in a day.</div>
               </div>
                 </div>
               </div>
@@ -3617,14 +3617,14 @@
       else if (row.tier === 'custom') customCount += 1;
       else coreCount += 1;
     });
-    const stdHours = parseOpexAmount(document.getElementById('stdHours')?.value);
     setText('opexPreparedMonthlyCost', formatOpexMoney(monthlyTotal));
     setText('opexSelectedCount', String(selections.length));
     setText('opexCompactCount', String(selections.length));
     setText('opexMenuSelectedCount', String(selections.length));
     setText('opexCompactTotal', formatOpexMoney(monthlyTotal));
     setText('opexMonthlyTotal', formatOpexMoney(monthlyTotal));
-    setText('opexPerHour', stdHours > 0 ? formatOpexMoney(monthlyTotal / stdHours) : '—');
+    const hoursPerDay = Math.max(parseOpexAmount(document.getElementById('hoursPerDay')?.value) || 8, 0.25);
+    setText('opexPerHour', monthlyTotal > 0 ? formatOpexMoney(monthlyTotal / 24 / hoursPerDay) : '—');
     setText('opexAnnualTotal', formatOpexMoney(annualTotal));
     setText('opexCoreCount', String(coreCount));
     setText('opexOptionalCount', String(optionalCount));

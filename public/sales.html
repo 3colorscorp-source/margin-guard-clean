@@ -9592,19 +9592,9 @@
         const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
         const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
         const taxes = labor * taxPct;
-        const planMetrics = typeof getOperationalMetricsForState === 'function'
-          ? getOperationalMetricsForState(state, settings)
-          : null;
-        let exclusiveDays = planMetrics ? Number(planMetrics.estimated_days || 0) : 0;
-        if (!(exclusiveDays > 0)) {
-          laborByWorker.forEach(function (row) {
-            if (row.days > exclusiveDays) exclusiveDays = row.days;
-          });
-        }
         const overheadMonthly = Number(settings.overheadMonthly || 0);
-        const overhead = overheadMonthly > 0 && exclusiveDays > 0
-          ? (overheadMonthly / 20) * exclusiveDays
-          : 0;
+        const overheadPerHour = overheadMonthly > 0 ? overheadMonthly / 24 / hoursPerDay : 0;
+        const overhead = totalHours * overheadPerHour;
         const beforeProfit = labor + taxes + overhead;
         const reservePctRaw = Number(settings.reservePct != null ? settings.reservePct : 5);
         const reservePct = Number.isFinite(reservePctRaw) ? reservePctRaw : 5;
