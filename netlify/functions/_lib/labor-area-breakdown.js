@@ -234,7 +234,7 @@ function publicAreasFromBreakdown(breakdown) {
  * Build the stored breakdown from tenant-priced workers and the already chosen contract total.
  * Client subtotals are ignored because normalizeLaborAreas rejects them.
  */
-function buildLaborAreaBreakdown({ areasInput, workers, tenantSettings, total }) {
+function buildLaborAreaBreakdown({ areasInput, workers, tenantSettings, total, weekend }) {
   const normalized = normalizeLaborAreas(areasInput);
   if (!normalized.ok) return normalized;
   if (!normalized.areas) {
@@ -259,7 +259,7 @@ function buildLaborAreaBreakdown({ areasInput, workers, tenantSettings, total })
     return fail("labor_area_required", "Add labor to at least one area.");
   }
 
-  const components = computePublishLaborComponents(storedWorkers, tenantSettings);
+  const components = computePublishLaborComponents(storedWorkers, tenantSettings, weekend);
   const weightById = new Map(areas.map((area) => [area.id, 0]));
   for (const row of components.laborByWorker) {
     const prev = weightById.get(row.area_id) || 0;

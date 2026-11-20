@@ -4,6 +4,7 @@
  */
 
 const quoteMaterials = require("../../../public/js/quote-materials");
+const overtimeWeek = require("../../../public/js/overtime-week");
 
 /** Monday–Saturday month (4 weeks). Each worker hour carries the same share. */
 const OVERHEAD_MONTH_DAYS = 24;
@@ -65,7 +66,15 @@ function overheadPerWorkerHour(overheadMonthly, hoursPerDay) {
  * Each worker hour carries the same overhead dollar, whatever that person earns.
  * Row beforeProfit includes that worker's own overhead share.
  */
-function computePublishLaborComponents(workers, settings) {
+function weekendFromInput(input) {
+  const src = input && typeof input === "object" ? input : {};
+  return {
+    saturday: src.saturday === true || src.client_wants_saturday === true || src.clientWantsSaturday === true,
+    sunday: src.sunday === true || src.client_wants_sunday === true || src.clientWantsSunday === true,
+  };
+}
+
+function computePublishLaborComponents(workers, settings, weekend) {
   const src = settings && typeof settings === "object" ? settings : {};
   const hoursPerDay = Math.max(Number(src.hoursPerDay || 8), 0.25);
   const taxPct =
@@ -76,6 +85,7 @@ function computePublishLaborComponents(workers, settings) {
     100;
   const overheadMonthly = Number(src.overheadMonthly || 0);
   const perHour = overheadPerWorkerHour(overheadMonthly, hoursPerDay);
+  const flags = weekendFromInput(weekend);
   const laborByWorker = (Array.isArray(workers) ? workers : []).map((worker) => {
     const days = Math.max(0, Number(worker.days || 0));
     const baseRate =
@@ -83,14 +93,18 @@ function computePublishLaborComponents(workers, settings) {
         ? Number(src.baseHelper || 0)
         : Number(src.baseInstaller || 0);
     const rate = baseRate;
-    const hours = days * hoursPerDay;
-    const cost = hours * rate;
+    const priced = overtimeWeek.pricedLabor(days, hoursPerDay, rate, flags);
+    const hours = priced.totalHours;
+    const cost = priced.cost;
     const overhead = hours * perHour;
     const beforeProfit = cost * (1 + taxPct) + overhead;
     return {
       area_id: worker.area_id || "",
       days,
       hours,
+      regularHours: priced.regularHours,
+      overtimeHours: priced.overtimeHours,
+      weekendDays: priced.weekendDays,
       cost,
       overhead,
       beforeProfit,
@@ -98,7 +112,11 @@ function computePublishLaborComponents(workers, settings) {
   });
   const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
   const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
-  const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
+  const overtimeHours = laborByWorker.reduce((sum, row) => sum + row.overtimeHours, 0);
+  const totalWorkerDays = laborByWorker.reduce(
+    (sum, row) => sum + row.days + row.weekendDays,
+    0
+  );
   const taxes = labor * taxPct;
   const overhead = totalHours * perHour;
   const beforeProfit = labor + taxes + overhead;
@@ -106,6 +124,7 @@ function computePublishLaborComponents(workers, settings) {
     laborByWorker,
     labor,
     totalHours,
+    overtimeHours,
     totalWorkerDays,
     taxes,
     overhead,
@@ -261,7 +280,8 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     return Number.isFinite(x) ? x : fallback;
   }
 
-  const components = computePublishLaborComponents(workers, settings);
+  const weekend = weekendFromInput(input);
+  const components = computePublishLaborComponents(workers, settings, weekend);
   const labor = components.labor;
   const totalHours = components.totalHours;
   const totalWorkerDays = components.totalWorkerDays;
@@ -313,6 +333,7 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     totalWorkerDays: round2(totalWorkerDays),
     overhead: round2(components.overhead),
     overhead_per_hour: round2(components.overheadPerHour),
+    overtime_hours: round2(components.overtimeHours),
     before_profit: round2(beforeProfit),
     reserve: round2(reserve),
     material_cost: round2(materialCost)

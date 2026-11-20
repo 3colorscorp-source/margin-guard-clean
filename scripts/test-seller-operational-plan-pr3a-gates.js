@@ -231,6 +231,8 @@ function runRealNewQuoteReset(previous) {
     extractFunction(sales, "getOperationalPlanApi"),
     extractFunction(sales, "isLaborAutoSyncActive"),
     extractFunction(sales, "syncLaborWorkersFromOperationalPlan"),
+    extractFunction(sales, "syncSalesWeekendChecks"),
+    extractFunction(sales, "bindSalesWeekendOnce"),
     extractFunction(sales, "refreshSellerFromStandalone"),
     extractFunction(sales, "resetSalesQuoteStateForNewQuote"),
     "function ensureSellerBusinessSettingsReadyFromCache() {}",

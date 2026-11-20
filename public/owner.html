@@ -1146,6 +1146,17 @@
                         Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
                       </p>
                       <p class="owner-labor-guide__meta sales-labor-guide__meta" id="ownerCrewHint"></p>
+                      <div class="sales-labor-weekend">
+                        <label class="sales-labor-sync-toggle">
+                          <input type="checkbox" id="ownerClientWantsSaturday" />
+                          El cliente quiere sábado
+                        </label>
+                        <label class="sales-labor-sync-toggle">
+                          <input type="checkbox" id="ownerClientWantsSunday" />
+                          El cliente quiere domingo
+                        </label>
+                        <p class="owner-labor-guide__text sales-labor-guide__text">Se suman cada semana. Tiempo y medio después de 40 horas de esa persona. El overhead sigue igual por hora.</p>
+                      </div>
                     </div>
 
                     <div id="ownerLaborAreasHost"></div>
@@ -1506,6 +1517,7 @@
 <script src="/js/voice-operational-plan.js"></script>
 <script src="/js/owner-multi-area-entry.js"></script>
 <script src="/js/project-location.js?v=split-addr-1"></script>
+<script src="/js/overtime-week.js?v=ot-week-1"></script>
 <script src="/js/app.js"></script>
 <script src="/js/quote-proposal-pdfs.js?v=pdf12mb-1"></script>
 <script src="/js/quote-draft-from-email.js?v=mat-v1"></script>

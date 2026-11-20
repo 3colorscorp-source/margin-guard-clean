@@ -740,6 +740,8 @@ exports.handler = async (event) => {
           _sliderTouched: pricingIn._sliderTouched,
           pricing_stage: pricingIn.pricing_stage,
           material_lines: pricingIn.material_lines,
+          client_wants_saturday: body.client_wants_saturday === true || body.clientWantsSaturday === true,
+          client_wants_sunday: body.client_wants_sunday === true || body.clientWantsSunday === true,
           operational_plan: body.operational_plan ?? body.operationalPlan,
           operational_estimated_days_override:
             body.operational_estimated_days_override ?? body.operationalEstimatedDaysOverride,
@@ -814,6 +816,10 @@ exports.handler = async (event) => {
       workers: workersSanitized,
       tenantSettings,
       total,
+      weekend: {
+        client_wants_saturday: body.client_wants_saturday === true || body.clientWantsSaturday === true,
+        client_wants_sunday: body.client_wants_sunday === true || body.clientWantsSunday === true,
+      },
     });
     if (!laborAreaResult.ok) {
       return json(400, { error: laborAreaResult.error, code: laborAreaResult.code });

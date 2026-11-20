@@ -399,6 +399,31 @@ Thank you.`
     return { overhead: perHour * hours, perHour, totalHours: hours };
   }
 
+  function weekendFromState(state) {
+    return {
+      saturday: Boolean(state && state.clientWantsSaturday === true),
+      sunday: Boolean(state && state.clientWantsSunday === true)
+    };
+  }
+
+  function pricedWorkerLabor(days, hoursPerDay, rate, weekend) {
+    const api = typeof window !== "undefined" ? window.MgOvertimeWeek : null;
+    const safeDays = Math.max(0, Number(days) || 0);
+    const hpd = Math.max(Number(hoursPerDay) || 8, 0.25);
+    const pay = Number(rate) || 0;
+    if (!api || typeof api.pricedLabor !== "function") {
+      const hours = safeDays * hpd;
+      return {
+        regularHours: hours,
+        overtimeHours: 0,
+        totalHours: hours,
+        weekendDays: 0,
+        cost: hours * pay
+      };
+    }
+    return api.pricedLabor(safeDays, hpd, pay, weekend);
+  }
+
   function ownerOverheadMeta(settings, metrics) {
     const monthly = Number(settings.overheadMonthly || 0);
     if (!(monthly > 0)) return "Set monthly overhead in Business Settings";
@@ -982,6 +1007,8 @@ Thank you.`
     merged.operational_estimated_hours_override =
       saved.operational_estimated_hours_override != null ? saved.operational_estimated_hours_override : "";
     merged.labor_manual_override = Boolean(saved.labor_manual_override);
+    merged.clientWantsSaturday = saved.clientWantsSaturday === true;
+    merged.clientWantsSunday = saved.clientWantsSunday === true;
     merged.labor_auto_sync_from_plan = saved.labor_auto_sync_from_plan !== false;
     merged.laborAreas = window.MgLaborAreas
       ? window.MgLaborAreas.sanitizeClientAreas(saved.laborAreas)
@@ -1058,7 +1085,9 @@ Thank you.`
       operational_estimated_days_override: "",
       operational_estimated_hours_override: "",
       labor_auto_sync_from_plan: true,
-      labor_manual_override: false
+      labor_manual_override: false,
+      clientWantsSaturday: false,
+      clientWantsSunday: false
     };
     const tid = prev.tenant_id;
     if (tid !== undefined && tid !== null && String(tid).trim() !== "") fresh.tenant_id = tid;
@@ -8359,20 +8388,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const rate = worker.rate === "" || worker.rate == null
         ? fallbackRate
         : Number(worker.rate || 0);
-      const hours = days * hoursPerDay;
-      const cost = hours * rate;
+      const priced = pricedWorkerLabor(days, hoursPerDay, rate, weekendFromState(input));
       return {
         name: worker.name || "Worker",
         type: worker.type || "installer",
         days,
         rate,
-        hours,
-        cost
+        hours: priced.totalHours,
+        regularHours: priced.regularHours,
+        overtimeHours: priced.overtimeHours,
+        cost: priced.cost
       };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
     const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+    const overtimeHours = laborByWorker.reduce((sum, row) => sum + row.overtimeHours, 0);
     const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
     const taxPct = (
       Number(settings.wcPct || 0) +
@@ -8399,6 +8430,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       laborPerDay: totalWorkerDays > 0 ? labor / totalWorkerDays : 0,
       labor,
       totalHours,
+      overtimeHours,
       totalWorkerDays,
       taxes,
       overhead,
@@ -8413,16 +8445,26 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
   }
   function calcOwner(state, settings) {
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const weekend = weekendFromState(state);
     const laborByWorker = state.workers.map((worker) => {
-      const hours = Number(worker.hours || 0);
+      const enteredHours = Number(worker.hours || 0);
+      const days = hoursPerDay > 0 ? enteredHours / hoursPerDay : 0;
       const rate = workerRateFromSettings(worker, settings);
-      return { hours, rate, cost: hours * rate };
+      const priced = pricedWorkerLabor(days, hoursPerDay, rate, weekend);
+      return {
+        hours: priced.totalHours,
+        regularHours: priced.regularHours,
+        overtimeHours: priced.overtimeHours,
+        rate,
+        cost: priced.cost
+      };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
     const taxes = labor * ((Number(settings.wcPct || 0) + Number(settings.ficaPct || 0) + Number(settings.futaPct || 0) + Number(settings.casuiPct || 0)) / 100);
-    const totalHours = state.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0);
-    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+    const overtimeHours = laborByWorker.reduce((sum, row) => sum + row.overtimeHours, 0);
     const overheadCharge = overheadForLaborHours(settings, totalHours);
     const overhead = overheadCharge.overhead;
     const beforeProfit = labor + taxes + overhead;
@@ -8440,6 +8482,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       taxes,
       overhead,
       overheadPerHour: overheadCharge.perHour,
+      overtimeHours,
       beforeProfit,
       profit,
       reserve,
@@ -9944,6 +9987,30 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
 
+  function syncOwnerWeekendChecks(state) {
+    const sat = $("ownerClientWantsSaturday");
+    const sun = $("ownerClientWantsSunday");
+    if (sat) sat.checked = state?.clientWantsSaturday === true;
+    if (sun) sun.checked = state?.clientWantsSunday === true;
+  }
+
+  function bindOwnerWeekendOnce() {
+    const sat = $("ownerClientWantsSaturday");
+    const sun = $("ownerClientWantsSunday");
+    if (!sat || !sun || sat.dataset.bound === "1") return;
+    sat.dataset.bound = "1";
+    const commit = () => {
+      const state = loadOwner();
+      const settings = loadOwnerPricingSettings();
+      state.clientWantsSaturday = sat.checked === true;
+      state.clientWantsSunday = sun.checked === true;
+      saveOwner(state, calcOwner(state, settings));
+      renderOwner();
+    };
+    sat.addEventListener("change", commit);
+    sun.addEventListener("change", commit);
+  }
+
   function bindOwnerLaborSyncOnce() {
     const autoSyncToggle = $("ownerLaborAutoSync");
     if (!autoSyncToggle || autoSyncToggle.dataset.bound === "1") return;
@@ -10133,7 +10200,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   function buildOwnerKpis(state, settings, metrics) {
     return [
-      ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
+      ["Direct Labor", money(metrics.labor, settings.currency), Number(metrics.overtimeHours) > 0 ? `${state.workers.length} workers · ${Number(metrics.overtimeHours).toFixed(2)} overtime hrs at 1.5x` : `${state.workers.length} workers modeled`],
       ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
       ["Overhead Allocation", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)],
       ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
@@ -10165,6 +10232,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
               : [],
             operational_plan: state.operational_plan || [],
             operational_estimated_days_override: state.operational_estimated_days_override || "",
+            client_wants_saturday: state.clientWantsSaturday === true,
+            client_wants_sunday: state.clientWantsSunday === true,
             pricing_stage: 2
           })
         });
@@ -10462,6 +10531,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
     }
     let metrics = calcOwner(state, settings);
+    syncOwnerWeekendChecks(state);
 
     const projectNameEl = $("projectName");
     if (projectNameEl && document.activeElement === projectNameEl) {
@@ -10589,7 +10659,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Overhead", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)]
     ];
     const detailCards = [
-      ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
+      ["Direct Labor", money(metrics.labor, settings.currency), Number(metrics.overtimeHours) > 0 ? `${state.workers.length} workers · ${Number(metrics.overtimeHours).toFixed(2)} overtime hrs at 1.5x` : `${state.workers.length} workers modeled`],
       ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
       ["Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% fixed reserve`]
@@ -10712,6 +10782,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     updateOwnerLaborSyncChrome(state, settings);
     renderOwnerOperationalPlan();
     bindOwnerLaborSyncOnce();
+    bindOwnerWeekendOnce();
     bindOwnerOperationalPlanOnce();
     bindOwnerCapacityOnce();
     bindOwnerSupervisorReportsRefreshOnce();
@@ -11330,6 +11401,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
               : [],
             operational_plan: ownerForPdf.operational_plan || [],
             operational_estimated_days_override: ownerForPdf.operational_estimated_days_override || "",
+            client_wants_saturday: ownerForPdf.clientWantsSaturday === true,
+            client_wants_sunday: ownerForPdf.clientWantsSunday === true,
             pricing_stage: 2
           })
         });
@@ -11545,6 +11618,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           job_site: projectAddress,
           address: projectAddress,
           workers: Array.isArray(state.workers) ? state.workers : [],
+          client_wants_saturday: state.clientWantsSaturday === true,
+          client_wants_sunday: state.clientWantsSunday === true,
           labor_areas: window.MgLaborAreas ? window.MgLaborAreas.payloadAreas(state.laborAreas) : [],
           material_lines: window.MgQuoteMaterials
             ? window.MgQuoteMaterials.sanitizeMaterialLines(state.material_lines)
@@ -12259,16 +12334,24 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       Number(settings.futaPct || 0) +
       Number(settings.casuiPct || 0)
     ) / 100;
+    const weekend = weekendFromState(state);
     const laborByWorker = (Array.isArray(state.workers) ? state.workers : []).map((worker) => {
       const days = Math.max(0, Number(worker.days || 0));
       const rate = workerRateFromSettings(worker, settings);
-      const hours = days * hoursPerDay;
-      const cost = hours * rate;
-      return { days, rate, hours, cost };
+      const priced = pricedWorkerLabor(days, hoursPerDay, rate, weekend);
+      return {
+        days,
+        rate,
+        hours: priced.totalHours,
+        regularHours: priced.regularHours,
+        overtimeHours: priced.overtimeHours,
+        cost: priced.cost
+      };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
     const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+    const overtimeHours = laborByWorker.reduce((sum, row) => sum + row.overtimeHours, 0);
     const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
     const taxes = labor * taxPct;
     const overheadCharge = overheadForLaborHours(settings, totalHours);
@@ -12291,6 +12374,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       laborByWorker,
       labor,
       totalHours,
+      overtimeHours,
       totalWorkerDays,
       taxes,
       overhead,
