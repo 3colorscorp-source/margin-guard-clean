@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -360,12 +360,12 @@
         color: rgba(232, 238, 252, 0.68);
         line-height: 1.3;
       }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(1)::before { content: "Trabajador"; }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(2)::before { content: "Tipo"; }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(3)::before { content: "Horas"; }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(4)::before { content: "Costo base"; }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(5)::before { content: "Costo labor"; }
-      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(6)::before { content: "Acciones"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(1)::before { content: "Worker"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(2)::before { content: "Type"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(3)::before { content: "Hours"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(4)::before { content: "Base cost"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(5)::before { content: "Labor cost"; }
+      body[data-role="owner"] .owner-operational table.owner-labor-table tbody td:nth-child(6)::before { content: "Actions"; }
       body[data-role="owner"] .owner-operational table.owner-labor-table td input,
       body[data-role="owner"] .owner-operational table.owner-labor-table td select,
       body[data-role="owner"] .owner-operational table.owner-labor-table input[data-key="name"],
@@ -946,37 +946,37 @@
     }
   </style>
 </head>
-<body data-role="owner" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dueno">
+<body data-role="owner" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Owner">
   <div class="container">
     <div class="owner-upper">
-      <div class="account-pill" id="accountEmail">Cuenta activa</div>
+      <div class="account-pill" id="accountEmail">Active account</div>
       <section class="card owner-hero">
         <div class="card-inner">
           <div class="owner-hero-inner">
             <div class="owner-hero-copy">
               <span class="eyebrow">Quote Workspace</span>
-              <h2 class="hero-title">Cotiza el proyecto actual sin mover las reglas del negocio.</h2>
-              <p class="sub owner-hero-lead">Dueno se enfoca en la cotizacion viva. Las reglas permanentes del negocio viven en Business Settings.</p>
+              <h2 class="hero-title">Quote the current project without changing the business rules.</h2>
+              <p class="sub owner-hero-lead">Owner focuses on the live quote. Permanent business rules live in Business Settings.</p>
             </div>
             <div class="hero-score">
-              <div class="hero-score-label">Estado actual</div>
+              <div class="hero-score-label">Current status</div>
               <div class="hero-score-value">Quote</div>
-              <div class="hero-score-meta">Proyecto, mano de obra, precio recomendado, PDF y envio al cliente.</div>
+              <div class="hero-score-meta">Project, labor, recommended price, PDF, and send to the client.</div>
             </div>
           </div>
         </div>
       </section>
     </div>
-    <div class="owner-workspace-grid" role="region" aria-label="Cotizacion y resumen de precios">
+    <div class="owner-workspace-grid" role="region" aria-label="Quote and price summary">
       <div class="owner-workspace-main">
         <div class="card">
           <div class="card-inner">
             <div class="section-head">
               <div>
                 <h2>Project Quote</h2>
-                <div class="sub">Estos datos cambian por proyecto. No alteran la configuracion permanente del negocio.</div>
+                <div class="sub">These details change per project. They do not change the permanent business settings.</div>
               </div>
-              <div class="badge amber">Quote actual</div>
+              <div class="badge amber">Current quote</div>
             </div>
 
             <div class="owner-quote-header">
@@ -988,68 +988,68 @@
               <h3 class="sales-quote-section-title">Project Info</h3>
               <div class="form">
               <div class="field owner-field-project-name">
-                <label for="projectName" class="owner-field-project-name__label">Nombre del proyecto</label>
+                <label for="projectName" class="owner-field-project-name__label">Project name</label>
                 <input class="owner-input-project-name" id="projectName" maxlength="60" placeholder="" />
                 <div class="hint owner-field-project-name__foot">
-                  <span class="owner-field-project-name__tip">Aparece en el PDF y en el seguimiento del trabajo.</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="projectNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                  <span class="owner-field-project-name__tip">Shown on the PDF and on the job follow-up.</span>
+                  <span class="owner-char-pill" title="Characters used"><span id="projectNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
                 </div>
               </div>
               <div class="field owner-field-client-gc">
-                <label for="clientName" class="owner-field-client-gc__label">Cliente / GC</label>
+                <label for="clientName" class="owner-field-client-gc__label">Client / GC</label>
                 <input class="owner-input-client-gc" id="clientName" maxlength="60" placeholder="" />
                 <div class="hint owner-field-client-gc__foot">
-                  <span class="owner-field-client-gc__tip">Quien firma o coordina en obra (homeowner, GC o contacto principal).</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                  <span class="owner-field-client-gc__tip">Who signs or coordinates on site (homeowner, GC, or main contact).</span>
+                  <span class="owner-char-pill" title="Characters used"><span id="clientNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
                 </div>
               </div>
               <div class="field owner-field-client-email">
-                <label for="clientEmail" class="owner-field-client-email__label">Email del cliente</label>
+                <label for="clientEmail" class="owner-field-client-email__label">Client email</label>
                 <input class="owner-input-client-email" id="clientEmail" type="email" maxlength="80" placeholder="" autocomplete="email" />
                 <div class="hint owner-field-client-email__foot">
-                  <span class="owner-field-client-email__tip">Se usa como destino sugerido al abrir Enviar cotización.</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
+                  <span class="owner-field-client-email__tip">Used as the suggested address when you open Send quote.</span>
+                  <span class="owner-char-pill" title="Characters used"><span id="clientEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
                 </div>
               </div>
               <div class="field owner-field-client-phone">
-                <label for="clientPhone" class="owner-field-client-phone__label">Teléfono</label>
+                <label for="clientPhone" class="owner-field-client-phone__label">Phone</label>
                 <input class="owner-input-client-phone" id="clientPhone" type="tel" maxlength="40" placeholder="" autocomplete="tel" />
                 <div class="hint owner-field-client-phone__foot">
-                  <span class="owner-field-client-phone__tip">Contacto directo del cliente o GC.</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientPhoneCount">0</span><span class="owner-char-pill__max">/40</span></span>
+                  <span class="owner-field-client-phone__tip">Direct contact for the client or GC.</span>
+                  <span class="owner-char-pill" title="Characters used"><span id="clientPhoneCount">0</span><span class="owner-char-pill__max">/40</span></span>
                 </div>
               </div>
               <div class="field owner-field-location" style="grid-column:1 / -1;">
-                <span class="owner-field-location__label">Ubicación</span>
+                <span class="owner-field-location__label">Location</span>
                 <input id="location" type="hidden" maxlength="255" />
                 <div class="owner-location-grid">
                   <div>
-                    <label for="locationStreet">Calle</label>
+                    <label for="locationStreet">Street</label>
                     <input class="owner-input-location" id="locationStreet" maxlength="160" autocomplete="street-address" placeholder="" />
                   </div>
                   <div>
-                    <label for="locationCity">Ciudad</label>
+                    <label for="locationCity">City</label>
                     <input class="owner-input-location" id="locationCity" maxlength="80" autocomplete="address-level2" placeholder="" />
                   </div>
                   <div>
-                    <label for="locationState">Estado</label>
+                    <label for="locationState">State</label>
                     <input class="owner-input-location" id="locationState" maxlength="2" autocomplete="address-level1" placeholder="CA" />
                   </div>
                   <div>
-                    <label for="locationZip">Código postal</label>
+                    <label for="locationZip">ZIP code</label>
                     <input class="owner-input-location" id="locationZip" maxlength="10" autocomplete="postal-code" placeholder="" />
                   </div>
                 </div>
                 <div class="hint owner-field-location__foot">
-                  <span class="owner-field-location__tip">Calle, ciudad, estado y código postal. El contrato los usa en su lugar.</span>
+                  <span class="owner-field-location__tip">Street, city, state, and ZIP code. The contract uses them in place.</span>
                 </div>
               </div>
               <div class="field owner-field-biz-pdf">
-                <label for="bizNameOwner" class="owner-field-biz-pdf__label">Nombre del negocio (en PDF)</label>
+                <label for="bizNameOwner" class="owner-field-biz-pdf__label">Business name (on PDF)</label>
                 <input class="owner-input-biz-pdf" id="bizNameOwner" maxlength="60" placeholder="" />
                 <div class="hint owner-field-biz-pdf__foot">
-                  <span class="owner-field-biz-pdf__tip"><span class="owner-field-biz-pdf__tip-kick">PDF</span><span class="owner-field-biz-pdf__tip-sep"> — </span>Este texto es el que muestra Margin Guard como tu marca en encabezados y bloques de identidad de los PDF que ve el cliente (cotización, etc.). Pon aquí el nombre comercial o legal con el que quieres presentarte.</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="bizNameOwnerCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                  <span class="owner-field-biz-pdf__tip"><span class="owner-field-biz-pdf__tip-kick">PDF</span><span class="owner-field-biz-pdf__tip-sep"> — </span>This is the name Margin Guard shows as your brand on PDF headers and identity blocks the client sees. Put the trade or legal name you want to present.</span>
+                  <span class="owner-char-pill" title="Characters used"><span id="bizNameOwnerCount">0</span><span class="owner-char-pill__max">/60</span></span>
                 </div>
               </div>
               </div>
@@ -1090,8 +1090,8 @@
                     <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
                     <button type="button" class="btn" id="btnOwnerReviewConfirmOperationalPlan">Review &amp; confirm plan</button>
                     <div class="owner-op-dash__action-bar-labor">
-                      <button class="btn primary" type="button" id="btnAddWorker">+ Agregar trabajador</button>
-                      <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
+                      <button class="btn primary" type="button" id="btnAddWorker">+ Add worker</button>
+                      <button class="btn danger" type="button" id="btnClearOwnerLabor">Clear labor</button>
                     </div>
                   </div>
                   <section class="owner-op-scope-work" aria-labelledby="ownerScopeWorkHeading">
@@ -1120,7 +1120,7 @@
                       ></textarea>
                       <div class="hint owner-field-quote-notes__foot owner-op-scope-work__foot">
                         <span class="owner-field-quote-notes__tip">This text is sent with the quote PDF and client email.</span>
-                        <span class="owner-char-pill" title="Caracteres usados"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
+                        <span class="owner-char-pill" title="Characters used"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
                       </div>
                     </div>
                   </section>
@@ -1129,13 +1129,13 @@
                     <header class="owner-labor__head">
                       <div class="owner-labor__intro">
                         <h2 id="ownerLaborHeading" class="owner-labor__title">Labor</h2>
-                        <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
+                        <p class="sub owner-labor__lead">If cost per hour is left blank, the base cost from Business Settings is used for that worker type.</p>
                       </div>
                     </header>
 
                     <div class="owner-labor-guide sales-labor-guide" role="note">
                       <div class="owner-labor-guide__head sales-labor-guide__head">
-                        <span class="owner-labor-guide__kicker sales-labor-guide__kicker">Guía rápida</span>
+                        <span class="owner-labor-guide__kicker sales-labor-guide__kicker">Quick guide</span>
                       </div>
                       <label class="sales-labor-sync-toggle owner-labor-sync-toggle" id="ownerLaborAutoSyncWrap">
                         <input type="checkbox" id="ownerLaborAutoSync" checked />
@@ -1165,12 +1165,12 @@
                       <thead>
                         <tr>
                           <th class="owner-labor-th owner-labor-th--area" id="ownerLaborAreaHead" hidden scope="col">Area</th>
-                          <th class="owner-labor-th owner-labor-th--worker" scope="col" title="Nombre en la cuadrilla">Trabajador</th>
-                          <th class="owner-labor-th owner-labor-th--type" scope="col" title="Pro o Assistant (define costo base)">Tipo</th>
-                          <th class="owner-labor-th owner-labor-th--units" scope="col" id="workerUnitsHead" title="Horas o días según el modo de cotización">Horas</th>
-                          <th class="owner-labor-th owner-labor-th--rate" scope="col" id="workerRateHead" title="Costo base por unidad según Business Settings (día u hora)">Costo base</th>
-                          <th class="owner-labor-th owner-labor-th--labor" scope="col" title="Importe de labor para esta fila">Costo labor</th>
-                          <th class="owner-labor-th owner-labor-th--actions" scope="col" title="Copiar o eliminar fila">Acciones</th>
+                          <th class="owner-labor-th owner-labor-th--worker" scope="col" title="Name on the crew">Worker</th>
+                          <th class="owner-labor-th owner-labor-th--type" scope="col" title="Pro or Assistant (sets the base cost)">Type</th>
+                          <th class="owner-labor-th owner-labor-th--units" scope="col" id="workerUnitsHead" title="Hours or days, depending on the quote mode">Hours</th>
+                          <th class="owner-labor-th owner-labor-th--rate" scope="col" id="workerRateHead" title="Base cost per unit from Business Settings (day or hour)">Base cost</th>
+                          <th class="owner-labor-th owner-labor-th--labor" scope="col" title="Labor amount for this row">Labor cost</th>
+                          <th class="owner-labor-th owner-labor-th--actions" scope="col" title="Copy or delete the row">Actions</th>
                         </tr>
                       </thead>
                       <tbody id="workersBody"></tbody>
@@ -1230,8 +1230,8 @@
                     </div>
                   </section>
                   <section class="sales-op-actions-card owner-op-dash__actions" aria-label="Quote actions">
-                    <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
-                    <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
+                    <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Send quote</button>
+                    <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Export PDF</button>
                   </section>
                 </div>
               </div>
@@ -1241,26 +1241,26 @@
 
         <div class="card owner-invoices-hub-cta">
           <div class="card-inner owner-invoices-hub-cta__inner">
-            <span class="eyebrow owner-invoices-hub-cta__eyebrow">Facturación</span>
-            <h2 class="owner-invoices-hub-cta__title">Invoices en Invoices Hub</h2>
-            <p class="owner-invoices-hub-cta__copy">Las facturas, cobros y documentos de invoice viven en <strong class="owner-invoices-hub-cta__strong">Invoices Hub</strong>. Esta pantalla se enfoca en cotización, precios recomendados y mano de obra del proyecto actual.</p>
-            <a class="btn primary owner-invoices-hub-cta__btn" href="/estimates-invoices">Abrir Invoices Hub</a>
+            <span class="eyebrow owner-invoices-hub-cta__eyebrow">Billing</span>
+            <h2 class="owner-invoices-hub-cta__title">Invoices in Invoices Hub</h2>
+            <p class="owner-invoices-hub-cta__copy">Invoices, payments, and invoice documents live in <strong class="owner-invoices-hub-cta__strong">Invoices Hub</strong>. This screen is for the quote, the recommended price, and labor on the current project.</p>
+            <a class="btn primary owner-invoices-hub-cta__btn" href="/estimates-invoices">Open Invoices Hub</a>
           </div>
         </div>
 
         <section class="owner-biz-rules" aria-labelledby="ownerBizRulesHeading">
           <div class="owner-biz-rules__head">
             <div class="owner-biz-rules__intro">
-              <span class="eyebrow owner-biz-rules__eyebrow">Referencia</span>
+              <span class="eyebrow owner-biz-rules__eyebrow">Reference</span>
               <h2 id="ownerBizRulesHeading" class="owner-biz-rules__title">Business Rules</h2>
-              <p class="sub owner-biz-rules__lead">Overhead, comisiones y modo de cobro se configuran en Business Settings. Aquí solo tienes contexto para cotizar con el mismo criterio: <strong class="owner-biz-rules__strong">no se editan reglas permanentes en Owner.</strong></p>
+              <p class="sub owner-biz-rules__lead">Overhead, commissions, and how you charge are set in Business Settings. This screen only keeps the same rules in view: <strong class="owner-biz-rules__strong">permanent rules are not edited in Owner.</strong></p>
             </div>
-            <a class="btn primary owner-biz-rules__cta" href="/business-settings">Abrir Business Settings</a>
+            <a class="btn primary owner-biz-rules__cta" href="/business-settings">Open Business Settings</a>
           </div>
 
           <div class="dashboard-note owner-biz-rules__note">
-            <div class="dashboard-note-title owner-biz-rules__note-title">Configuración permanente = Business Settings</div>
-            <div class="dashboard-note-copy owner-biz-rules__note-copy">Owner sirve para vender y calcular el <strong class="owner-biz-rules__strong">proyecto actual</strong>. Si necesitas cambiar modo de cotización, overhead, horas estándar, comisión o bonus, hazlo allí y vuelve aquí: esta pantalla no duplica ni guarda esos ajustes.</div>
+            <div class="dashboard-note-title owner-biz-rules__note-title">Permanent setup = Business Settings</div>
+            <div class="dashboard-note-copy owner-biz-rules__note-copy">Owner is for selling and pricing the <strong class="owner-biz-rules__strong">current project</strong>. Change quote mode, overhead, standard hours, commission, or bonus in Business Settings, then come back. This screen does not copy or save those settings.</div>
           </div>
         </section>
       </div>
@@ -1269,9 +1269,9 @@
         <div class="card owner-quote-snapshot">
           <div class="card-inner owner-quote-snapshot__inner">
             <header class="owner-quote-snapshot__head">
-              <span class="eyebrow owner-quote-snapshot__eyebrow">Quote actual</span>
+              <span class="eyebrow owner-quote-snapshot__eyebrow">Current quote</span>
               <h2 class="owner-quote-snapshot__title">Quote Snapshot</h2>
-              <p class="sub owner-quote-snapshot__lead">Números del proyecto que estás armando a la izquierda: recomendado, pisos y cargas, siempre visibles mientras ajustas mano de obra y datos del quote.</p>
+              <p class="sub owner-quote-snapshot__lead">Numbers for the project you are building on the left: recommended price, floors, and loads, visible while you adjust labor and quote details.</p>
             </header>
             <div class="owner-quote-snapshot__surface">
               <div class="kpi owner-quote-snapshot__kpis" id="ownerKpis"></div>
@@ -1279,8 +1279,8 @@
             <div class="owner-quote-snapshot__footer">
               <div class="sep owner-quote-snapshot__sep"></div>
               <div class="owner-quote-snapshot__status">
-                <span class="owner-quote-snapshot__status-label">Estado del cálculo</span>
-                <div class="badge green" id="statusBadge">Listo</div>
+                <span class="owner-quote-snapshot__status-label">Calculation status</span>
+                <div class="badge green" id="statusBadge">Ready</div>
               </div>
             </div>
           </div>
@@ -1305,85 +1305,85 @@
     <div class="modal-card owner-send-modal__card">
       <div class="modal-header owner-send-modal__header">
         <div class="owner-send-modal__header-main">
-          <span class="eyebrow owner-send-modal__eyebrow">Envío</span>
-          <div class="modal-title owner-send-modal__title">Enviar cotización</div>
-          <div class="modal-subtitle owner-send-modal__subtitle">Integración Netlify Functions + Zapier para el envío al cliente.</div>
+          <span class="eyebrow owner-send-modal__eyebrow">Send</span>
+          <div class="modal-title owner-send-modal__title">Send quote</div>
+          <div class="modal-subtitle owner-send-modal__subtitle">Netlify Functions and Zapier send the quote to the client.</div>
         </div>
-        <button type="button" class="icon-btn owner-send-modal__close" id="btnSendClose" aria-label="Cerrar">×</button>
+        <button type="button" class="icon-btn owner-send-modal__close" id="btnSendClose" aria-label="Close">×</button>
       </div>
       <div class="modal-body owner-send-modal__body">
-        <section class="owner-send-modal__section" aria-label="Destinatario">
+        <section class="owner-send-modal__section" aria-label="Recipient">
           <div class="owner-send-modal__section-head">
-            <span class="owner-send-modal__section-kicker">Destinatario</span>
+            <span class="owner-send-modal__section-kicker">Recipient</span>
           </div>
           <div class="form owner-send-modal__grid owner-send-modal__grid--dest">
             <div class="field owner-send-modal__field owner-send-modal__field--email">
-              <label for="toEmail" class="owner-send-modal__field-label">Email del cliente <span class="owner-send-modal__label-pill">Principal</span></label>
+              <label for="toEmail" class="owner-send-modal__field-label">Client email <span class="owner-send-modal__label-pill">Primary</span></label>
               <input class="owner-send-modal__input owner-send-modal__input--dest" id="toEmail" type="email" maxlength="80" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Destino del envío: aquí llega la cotización al cliente.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="toEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
+                <span class="owner-send-modal__field-tip">Send destination: the quote goes to the client here.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="toEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
               </div>
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--name">
-              <label for="toName" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Nombre del cliente (opcional)</label>
+              <label for="toName" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Client name (optional)</label>
               <input class="owner-send-modal__input owner-send-modal__input--dest" id="toName" maxlength="60" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Opcional; úsalo para personalizar el saludo en el correo.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="toNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                <span class="owner-send-modal__field-tip">Optional. Use it to personalize the greeting in the email.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="toNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
               </div>
             </div>
           </div>
         </section>
-        <section class="owner-send-modal__section" aria-label="Asunto y depósito">
+        <section class="owner-send-modal__section" aria-label="Subject and deposit">
           <div class="owner-send-modal__section-head">
-            <span class="owner-send-modal__section-kicker">Asunto y depósito</span>
+            <span class="owner-send-modal__section-kicker">Subject and deposit</span>
           </div>
           <div class="form owner-send-modal__grid owner-send-modal__grid--meta">
             <div class="field owner-send-modal__field owner-send-modal__field--initials">
-              <label for="salesInitials" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Iniciales (vendedor)</label>
+              <label for="salesInitials" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Initials (seller)</label>
               <input class="owner-send-modal__input owner-send-modal__input--dest owner-send-modal__input--initials" id="salesInitials" maxlength="6" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Compacto; se usan en la pieza de envío cuando aplica.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="salesInitialsCount">0</span><span class="owner-char-pill__max">/6</span></span>
+                <span class="owner-send-modal__field-tip">Short. Used on the send when it applies.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="salesInitialsCount">0</span><span class="owner-char-pill__max">/6</span></span>
               </div>
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--deposit">
-              <label for="deposit" class="owner-send-modal__field-label">Depósito requerido (fijo) <span class="owner-send-modal__label-pill owner-send-modal__label-pill--money">Monto</span></label>
+              <label for="deposit" class="owner-send-modal__field-label">Required deposit (fixed) <span class="owner-send-modal__label-pill owner-send-modal__label-pill--money">Amount</span></label>
               <input class="owner-send-modal__input owner-send-modal__input--dest" id="deposit" type="number" step="0.01" placeholder="" />
               <div class="hint owner-send-modal__field-foot owner-send-modal__field-foot--solo">
-                <span class="owner-send-modal__field-tip">Cifra fija del depósito asociado a este envío (revisa antes de enviar).</span>
+                <span class="owner-send-modal__field-tip">Fixed deposit amount for this send. Review it before sending.</span>
               </div>
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--subject">
-              <label for="subject" class="owner-send-modal__field-label">Asunto del correo <span class="owner-send-modal__label-pill">Línea principal</span></label>
+              <label for="subject" class="owner-send-modal__field-label">Email subject <span class="owner-send-modal__label-pill">Main line</span></label>
               <input class="owner-send-modal__input owner-send-modal__input--dest" id="subject" maxlength="90" placeholder="" />
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Primera línea que ve el cliente en su bandeja; debe resumir el trato.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="subjectCount">0</span><span class="owner-char-pill__max">/90</span></span>
+                <span class="owner-send-modal__field-tip">First line the client sees in the inbox. It should summarize the job.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="subjectCount">0</span><span class="owner-char-pill__max">/90</span></span>
               </div>
             </div>
           </div>
         </section>
-        <section class="owner-send-modal__section owner-send-modal__section--wide owner-send-modal__section--compose" aria-label="Contenido del correo">
+        <section class="owner-send-modal__section owner-send-modal__section--wide owner-send-modal__section--compose" aria-label="Email content">
           <div class="owner-send-modal__section-head">
-            <span class="owner-send-modal__section-kicker">Contenido del correo</span>
+            <span class="owner-send-modal__section-kicker">Email content</span>
           </div>
           <div class="owner-send-modal__content-stack">
             <div class="field owner-send-modal__field owner-send-modal__field--scope">
-              <label for="scope" class="owner-send-modal__field-label">Scope / Notas <span class="owner-send-modal__label-pill owner-send-modal__label-pill--soft">Contexto</span></label>
+              <label for="scope" class="owner-send-modal__field-label">Scope / notes <span class="owner-send-modal__label-pill owner-send-modal__label-pill--soft">Context</span></label>
               <textarea class="owner-send-modal__textarea" id="scope" rows="5" maxlength="1200" placeholder=""></textarea>
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Define alcance y límites; va en el cuerpo del envío según tu plantilla.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="scopeCount">0</span><span class="owner-char-pill__max">/1200</span></span>
+                <span class="owner-send-modal__field-tip">Sets the scope and limits. It goes in the email body from your template.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="scopeCount">0</span><span class="owner-char-pill__max">/1200</span></span>
               </div>
             </div>
             <div class="field owner-send-modal__field owner-send-modal__field--message">
-              <label for="message" class="owner-send-modal__field-label">Mensaje al cliente <span class="owner-send-modal__label-pill">Cuerpo principal</span></label>
+              <label for="message" class="owner-send-modal__field-label">Message to the client <span class="owner-send-modal__label-pill">Main body</span></label>
               <textarea class="owner-send-modal__textarea" id="message" rows="6" maxlength="1200" placeholder=""></textarea>
               <div class="hint owner-send-modal__field-foot">
-                <span class="owner-send-modal__field-tip">Texto principal del correo; revisa tono y datos antes de enviar.</span>
-                <span class="owner-char-pill" title="Caracteres usados"><span id="messageCount">0</span><span class="owner-char-pill__max">/1200</span></span>
+                <span class="owner-send-modal__field-tip">Main email text. Review the tone and the details before sending.</span>
+                <span class="owner-char-pill" title="Characters used"><span id="messageCount">0</span><span class="owner-char-pill__max">/1200</span></span>
               </div>
             </div>
           </div>
@@ -1391,8 +1391,8 @@
         </section>
       </div>
       <div class="modal-footer owner-send-modal__footer">
-        <button type="button" class="btn ghost owner-send-modal__btn-cancel" id="btnSendCancel">Cancelar</button>
-        <button type="button" class="btn primary owner-send-modal__btn-send" id="btnSendNow">Enviar</button>
+        <button type="button" class="btn ghost owner-send-modal__btn-cancel" id="btnSendCancel">Cancel</button>
+        <button type="button" class="btn primary owner-send-modal__btn-send" id="btnSendNow">Send</button>
       </div>
     </div>
   </div>
@@ -1445,14 +1445,14 @@
             <strong id="ownerVoicePlanCaptureTitle">Voice dictation</strong>
             <label for="ownerVoicePlanLanguage">Dictation language
               <select id="ownerVoicePlanLanguage">
-                <option value="es-US">Español</option>
-                <option value="en-US">English</option>
+                <option value="en-US" selected>English</option>
+                <option value="es-US">Spanish</option>
               </select>
             </label>
             <label for="ownerVoicePlanClientLanguage">Client document
               <select id="ownerVoicePlanClientLanguage">
                 <option value="en" selected>English</option>
-                <option value="es">Español</option>
+                <option value="es">Spanish</option>
               </select>
             </label>
           </div>

@@ -979,7 +979,7 @@
       generation = capture.start(String(field.value || "").trim());
       field.readOnly = true;
       if (typeof field.blur === "function") field.blur();
-      instance.lang = String((opts.languageSelect && opts.languageSelect.value) || "es-US");
+      instance.lang = String((opts.languageSelect && opts.languageSelect.value) || "en-US");
       instance.continuous = true;
       instance.interimResults = prefersInterimSpeechResults(opts.userAgent);
       const activeButton = append ? opts.continueButton : opts.newButton;

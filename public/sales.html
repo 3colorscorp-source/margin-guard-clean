@@ -2382,14 +2382,14 @@
             <strong id="voicePlanCaptureTitle">Voice dictation</strong>
             <label>Dictation language
               <select id="voicePlanLanguage">
-                <option value="es-US">Español</option>
-                <option value="en-US">English</option>
+                <option value="en-US" selected>English</option>
+                <option value="es-US">Spanish</option>
               </select>
             </label>
             <label>Client document
               <select id="voicePlanClientLanguage">
                 <option value="en" selected>English</option>
-                <option value="es">Español</option>
+                <option value="es">Spanish</option>
               </select>
             </label>
           </div>
@@ -7590,7 +7590,7 @@
         const capture = getVoicePlanDictationCapture();
         voicePlanDictationGeneration = capture ? capture.start(voicePlanRecognitionBase) : 0;
         lockVoicePlanTranscriptForCapture(true);
-        recognition.lang = String((language && language.value) || 'es-US');
+        recognition.lang = String((language && language.value) || 'en-US');
         recognition.continuous = true;
         const voiceApi = getVoicePlanApi();
         recognition.interimResults = voiceApi && typeof voiceApi.prefersInterimSpeechResults === 'function'

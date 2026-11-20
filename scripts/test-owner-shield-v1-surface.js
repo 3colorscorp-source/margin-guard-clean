@@ -105,14 +105,14 @@ ok("6. portrait labor rows are flex column cards", /table\.owner-labor-table tbo
 ok("6. portrait labor rows have card radius", /table\.owner-labor-table tbody tr[\s\S]*border-radius:\s*14px/.test(laborPortrait));
 ok("6. portrait labor wrap does not scroll sideways", /owner-labor-table-wrap\.supervisor-table-wrap[\s\S]*overflow-x:\s*visible/.test(laborPortrait));
 ok("6. portrait labor table is display block / min-width 0", /table\.owner-labor-table \{\s*display:\s*block[\s\S]*min-width:\s*0/.test(laborPortrait));
-ok("7. Acciones stay visible as a labeled card row", /tbody td:nth-child\(6\)::before \{ content: "Acciones"; \}/.test(laborPortrait));
+ok("7. Actions stay visible as a labeled card row", /tbody td:nth-child\(6\)::before \{ content: "Actions"; \}/.test(laborPortrait));
 ok("7. row-actions are a visible flex row", /\.row-actions \{\s*display:\s*flex[\s\S]*overflow:[\s\S]*visible/.test(laborPortrait) || /\.row-actions \{[\s\S]*display:\s*flex[\s\S]*width:\s*100%/.test(laborPortrait));
 ok("7. action buttons overflow visible", /\.row-actions \.btn \{[\s\S]*overflow:\s*visible/.test(laborPortrait));
 ok("7. action buttons have a 44px target", /\.row-actions \.btn \{[\s\S]*min-height:\s*44px/.test(laborPortrait));
 
-ok("8. Dueño keeps Costo base column", /<th[\s\S]*owner-labor-th--rate[\s\S]*>Costo base</.test(html));
-ok("8. Dueño keeps Costo labor column", /<th[\s\S]*owner-labor-th--labor[\s\S]*>Costo labor</.test(html));
-ok("8. portrait still labels Costo base and Costo labor", /content: "Costo base"/.test(laborPortrait) && /content: "Costo labor"/.test(laborPortrait));
+ok("8. Owner keeps Base cost column", /<th[\s\S]*owner-labor-th--rate[\s\S]*>Base cost</.test(html));
+ok("8. Owner keeps Labor cost column", /<th[\s\S]*owner-labor-th--labor[\s\S]*>Labor cost</.test(html));
+ok("8. portrait still labels Base cost and Labor cost", /content: "Base cost"/.test(laborPortrait) && /content: "Labor cost"/.test(laborPortrait));
 ok("8. portrait labor cost cell is not display:none", /td\[data-cell="labor"\] \{[\s\S]*display:\s*flex/.test(laborPortrait) && !/td\[data-cell="labor"\][\s\S]{0,80}display:\s*none/.test(laborPortrait));
 ok("8. this is Owner cost visibility, not Seller hiding", /owner-labor-table/.test(laborPortrait) && !/sales-labor-table/.test(laborPortrait));
 

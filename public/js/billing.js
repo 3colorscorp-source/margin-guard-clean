@@ -59,7 +59,7 @@
     const url = String(data.supabaseUrl || "").trim();
     const anon = String(data.supabaseAnonKey || "").trim();
     if (!response.ok || data.ok !== true || !url || !anon) {
-      throw new Error("No se pudo cargar el acceso.");
+      throw new Error("Could not load access.");
     }
     return { url, anon };
   }
@@ -76,13 +76,13 @@
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.");
+      throw new Error("Could not sign in. Check your account and try again.");
     }
   }
 
   async function createAuthClient() {
     if (typeof window.supabase?.createClient !== "function") {
-      throw new Error("No se pudo cargar el acceso.");
+      throw new Error("Could not load access.");
     }
     const { url, anon } = await loadPublicConfig();
     return window.supabase.createClient(url, anon);
@@ -95,30 +95,30 @@
     const btn = $("btnOwnerLogin");
 
     if (!email || !email.includes("@") || !password) {
-      setStatus("Ingresa email y contrasena.", "err");
+      setStatus("Enter your email and password.", "err");
       return;
     }
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "Entrando...";
+      btn.textContent = "Signing in...";
     }
-    setStatus("Verificando tu cuenta...", "info");
+    setStatus("Checking your account...", "info");
 
     try {
       const client = await createAuthClient();
       const { data, error } = await client.auth.signInWithPassword({ email, password });
       const accessToken = data?.session?.access_token;
       if (error || !accessToken) {
-        throw new Error("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.");
+        throw new Error("Could not sign in. Check your account and try again.");
       }
       await mintOwnerSession(accessToken);
       window.location.href = "/dashboard.html";
     } catch (_err) {
-      setStatus("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.", "err");
+      setStatus("Could not sign in. Check your account and try again.", "err");
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "Entrar";
+        btn.textContent = "Sign in";
       }
     }
   }
@@ -175,7 +175,7 @@
       clearUrlHash();
       showPanel("login");
     } catch (_err) {
-      setStatus("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.", "err");
+      setStatus("Could not sign in. Check your account and try again.", "err");
       showPanel("login");
     }
   }

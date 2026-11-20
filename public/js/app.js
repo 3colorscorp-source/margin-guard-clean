@@ -7332,7 +7332,7 @@ Thank you.`
       modal.classList.remove("is-manual-create");
       modal.setAttribute("aria-hidden", "true");
     }
-    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = "Cancelar";
+    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = "Cancel";
     if ($("hubFormFields")) $("hubFormFields").innerHTML = "";
     setNotice("hubFormFeedback", "", "");
     clearHubFeedbackOkIfShown();
@@ -7344,10 +7344,10 @@ Thank you.`
     if (modal) {
       modal.classList.toggle("is-manual-create", config.modalClass === "is-manual-create");
     }
-    if ($("hubFormTitle")) $("hubFormTitle").textContent = config.title || "Actualizar";
-    if ($("hubFormSubtitle")) $("hubFormSubtitle").textContent = config.subtitle || "Completa los datos para continuar.";
-    if ($("hubFormSubmit")) $("hubFormSubmit").textContent = config.submitLabel || "Guardar";
-    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = config.cancelLabel || "Cancelar";
+    if ($("hubFormTitle")) $("hubFormTitle").textContent = config.title || "Update";
+    if ($("hubFormSubtitle")) $("hubFormSubtitle").textContent = config.subtitle || "Complete the details to continue.";
+    if ($("hubFormSubmit")) $("hubFormSubmit").textContent = config.submitLabel || "Save";
+    if ($("btnHubFormCancel")) $("btnHubFormCancel").textContent = config.cancelLabel || "Cancel";
     if ($("hubFormFields")) {
       $("hubFormFields").className = "hub-form-grid";
       $("hubFormFields").innerHTML = (Array.isArray(config.fields) ? config.fields : []).map((field) => {
@@ -8491,7 +8491,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       totalHours,
       quotedUnits,
       pricePerUnit,
-      pricingModeLabel: settings.pricingMode === "day" ? "dia" : "hora"
+      pricingModeLabel: settings.pricingMode === "day" ? "day" : "hour"
     };
     const materialCost = window.MgQuoteMaterials
       ? window.MgQuoteMaterials.contractorSubtotal(state.material_lines)
@@ -8574,7 +8574,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
               </div>
             </li>
           `).join("")
-        : "<li><span class=\"msg-idx\">–</span><div><strong>No urgent owner actions right now.</strong><span class=\"hub-inline-meta\">Cuando haya cobranza o proyectos pendientes, apareceran aqui.</span></div></li>";
+        : "<li><span class=\"msg-idx\">–</span><div><strong>No urgent owner actions right now.</strong><span class=\"hub-inline-meta\">Collections or pending projects will show up here.</span></div></li>";
     }
     if ($("oalOwnerDailyBrief")) {
       $("oalOwnerDailyBrief").innerHTML = buildOwnerDailyBriefPlain(rows, derived);
@@ -8752,10 +8752,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if ($("fccDateRange")) {
         try {
           const now = new Date();
-          const label = now.toLocaleString("es", { month: "long", year: "numeric" });
-          $("fccDateRange").textContent = `Vista: ${label} · hasta hoy`;
+          const label = now.toLocaleString("en", { month: "long", year: "numeric" });
+          $("fccDateRange").textContent = `View: ${label} · through today`;
         } catch (_e) {
-          $("fccDateRange").textContent = "Vista del mes · hasta hoy";
+          $("fccDateRange").textContent = "Month view · through today";
         }
       }
 
@@ -8768,7 +8768,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
       if ($("fccCfCashIn")) {
         $("fccCfCashIn").textContent = "—";
-        if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Se completa al cargar cartera en el hub.";
+        if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Fills in when the hub portfolio loads.";
       }
 
       renderFccAccountTreasury(state, settings);
@@ -8815,7 +8815,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const paidTotal = hubRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
         if ($("fccCfCashIn")) {
           $("fccCfCashIn").textContent = money(paidTotal, settings.currency);
-          if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Paid total del hub (suma de facturas pagadas).";
+          if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Paid total from the hub (sum of paid invoices).";
         }
         if ($("fccPerfTbody")) {
           const dc = "—";
@@ -8860,10 +8860,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         );
         if ($("dashboardRevenueStrip")) {
           $("dashboardRevenueStrip").innerHTML = [
-            ["Open Balance", money(openBalance, settings.currency), "Saldo vivo del hub"],
-            ["Collections Queue", String(collectionsCount), "Rows con saldo para trabajar"],
-            ["Paid Total", money(paidTotal, settings.currency), "Facturas liquidadas"],
-            ["Top Priority", topPriority ? `${topPriority.title}` : "No priority", topPriority ? `Score ${topPriority.priorityScore}` : "Sin cartera activa"]
+            ["Open Balance", money(openBalance, settings.currency), "Open balance in the hub"],
+            ["Collections Queue", String(collectionsCount), "Rows with a balance to work"],
+            ["Paid Total", money(paidTotal, settings.currency), "Invoices paid in full"],
+            ["Top Priority", topPriority ? `${topPriority.title}` : "No priority", topPriority ? `Score ${topPriority.priorityScore}` : "No active portfolio"]
           ].map(([title, big, small]) => `
             <div class="strip-card fcc-strip-card">
               <div class="title">${escapeHtml(title)}</div>
@@ -8874,19 +8874,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         }
         if ($("dashboardRevenueNote")) {
           $("dashboardRevenueNote").textContent = topPriority
-            ? `Prioridad de hoy: ${topPriority.title} con saldo ${money(topPriority.balance, settings.currency)} y accion sugerida ${topPriority.nextAction}.`
-            : "Todavia no hay cartera activa en el hub para mostrar prioridades.";
+            ? `Today's priority: ${topPriority.title} with balance ${money(topPriority.balance, settings.currency)} and suggested action ${topPriority.nextAction}.`
+            : "There is no active portfolio in the hub to show priorities yet.";
         }
         if ($("dashboardCommandStrip")) {
           const brokenPromises = hubRows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid").length;
           const readyToBill = hubRows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed").length;
           const highPressure = hubRows.filter((row) => row.priorityScore >= 80).length;
           $("dashboardCommandStrip").innerHTML = [
-            ["Broken Promises", String(brokenPromises), "Clientes que incumplieron fecha prometida"],
-            ["Ready To Bill", String(readyToBill), "Estimates listos para convertir"],
-            ["High Pressure", String(highPressure), "Rows con prioridad 80+"],
-            ["Auto Queue", String(autoReminderRows.length), "Reminders que ya conviene preparar hoy"],
-            ["Auto Stage", String(autoStageCandidates.length), "Rows donde conviene normalizar stage"]
+            ["Broken Promises", String(brokenPromises), "Clients who missed a promised date"],
+            ["Ready To Bill", String(readyToBill), "Estimates ready to convert"],
+            ["High Pressure", String(highPressure), "Rows with priority 80+"],
+            ["Auto Queue", String(autoReminderRows.length), "Reminders worth preparing today"],
+            ["Auto Stage", String(autoStageCandidates.length), "Rows that should have their stage normalized"]
           ].map(([title, big, small]) => `
             <div class="strip-card fcc-strip-card">
               <div class="title">${escapeHtml(title)}</div>
@@ -8907,7 +8907,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   </div>
                 </li>
                 `).join("")
-            : `<li><span class="msg-idx">0</span><div><strong>Sin cola operativa</strong><span class="hub-inline-meta">Todavia no hay proyectos con prioridad para el owner.</span></div></li>`;
+            : `<li><span class="msg-idx">0</span><div><strong>No working queue</strong><span class="hub-inline-meta">There are no priority projects for the owner yet.</span></div></li>`;
         }
         if ($("dashboardOwnerTasks")) {
           $("dashboardOwnerTasks").innerHTML = ownerTasks.length
@@ -8977,7 +8977,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   </div>
                 </li>
               `).join("")
-            : `<li><span class="msg-idx">0</span><div><strong>No margin ranking yet</strong><span class="hub-inline-meta">Todavia no hay proyectos suficientes para comparar rentabilidad.</span></div></li>`;
+            : `<li><span class="msg-idx">0</span><div><strong>No margin ranking yet</strong><span class="hub-inline-meta">There are not enough projects yet to compare profit.</span></div></li>`;
           $("dashboardProfitabilityRanking").querySelectorAll("[data-dashboard-project]").forEach((item) => {
             item.onclick = () => {
               const currentView = loadHubViewState();
@@ -10208,7 +10208,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Fixed Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% non-negotiable`],
       ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin rule`],
       ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"],
-      [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "dia" ? "dias" : "horas"} cotizables`]
+      [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "day" ? "days" : "hours"} quoted`]
     ];
   }
 
@@ -10265,11 +10265,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!body) return;
     const quoteSettings = resolveOwnerQuoteSettings(settings);
     const hoursPerDay = Math.max(Number(quoteSettings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
-    const unitsLabel = quoteSettings.pricingMode === "day" ? "Dias" : "Horas";
+    const unitsLabel = quoteSettings.pricingMode === "day" ? "Days" : "Hours";
     const unitsStep = quoteSettings.pricingMode === "day" ? "0.25" : "1";
     const autoSync = isOwnerLaborAutoSyncActive(state);
     if ($("workerUnitsHead")) $("workerUnitsHead").textContent = unitsLabel;
-    if ($("workerRateHead")) $("workerRateHead").textContent = "Costo base";
+    if ($("workerRateHead")) $("workerRateHead").textContent = "Base cost";
 
     const hint = $("ownerCrewHint");
     if (hint) {
@@ -10649,12 +10649,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
     const ownerReport = ownerProject?.id ? loadSupervisorReport(ownerProject) : buildDefaultSupervisorReport(null);
 
-    const pricingModeCopy = settings.pricingMode === "day" ? "per dia laboral" : "por hora";
+    const pricingModeCopy = settings.pricingMode === "day" ? "per work day" : "per hour";
     const laborSummary = computeOwnerLaborSummary(state, settings);
     const primaryCards = [
       ["Recommended", money(metrics.recommended, settings.currency), `${money(metrics.pricePerUnit, settings.currency)} ${pricingModeCopy}`],
-      ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin · no vender por debajo`],
-      ["Labor + Burden", money(metrics.labor + metrics.taxes, settings.currency), "Labor directa + employer burden"],
+      ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin · do not sell below this`],
+      ["Labor + Burden", money(metrics.labor + metrics.taxes, settings.currency), "Direct labor + employer burden"],
       ["Materials", money(metrics.materialCost || 0, settings.currency), "Contractor-supplied pass-through · client items stay $0"],
       ["Overhead", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)]
     ];
@@ -10665,16 +10665,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% fixed reserve`]
     ];
     const quoteUnitsMeta = settings.pricingMode === "day"
-      ? `${metrics.quotedUnits.toFixed(2)} dias cotizables · ${laborSummary.workerHours.toFixed(2)} labor hrs`
-      : `${metrics.quotedUnits.toFixed(2)} horas cotizables`;
+      ? `${metrics.quotedUnits.toFixed(2)} quoted days · ${laborSummary.workerHours.toFixed(2)} labor hrs`
+      : `${metrics.quotedUnits.toFixed(2)} quoted hours`;
     const pricingSource = ownerPricingSettingsSourceLabel();
 
     $("ownerKpis").innerHTML = `
       <div class="owner-kpi-shell">
         <div class="owner-quote-hero">
-          <div class="owner-quote-kicker">Precio recomendado</div>
+          <div class="owner-quote-kicker">Recommended price</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}${Number(metrics.materialCost) > 0 ? " · " + escapeHtml(money(metrics.materialCost, settings.currency)) + " materiales" : ""}</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}${Number(metrics.materialCost) > 0 ? " · " + escapeHtml(money(metrics.materialCost, settings.currency)) + " materials" : ""}</div>
           <p class="small owner-quote-pricing-source" role="note">${escapeHtml(pricingSource.detail)}</p>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
@@ -10790,10 +10790,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const ownerInvoiceState = getProjectInvoiceState(ownerProject);
 
     if ($("ownerInvoiceProject")) {
-      $("ownerInvoiceProject").textContent = ownerProject?.projectName || state.projectName || "Sin proyecto";
+      $("ownerInvoiceProject").textContent = ownerProject?.projectName || state.projectName || "No project";
     }
     if ($("ownerInvoiceClient")) {
-      $("ownerInvoiceClient").textContent = ownerProject?.clientName || state.clientName || "Sin cliente";
+      $("ownerInvoiceClient").textContent = ownerProject?.clientName || state.clientName || "No client";
     }
     if ($("ownerInvoiceNo")) setVal("ownerInvoiceNo", ownerInvoiceState.invoiceNo || "");
     if ($("ownerInvoiceDate")) setVal("ownerInvoiceDate", ownerInvoiceState.invoiceDate || "");
@@ -11522,7 +11522,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if (sendStatus) {
         sendStatus.style.display = "block";
         sendStatus.className = "notice error";
-        sendStatus.textContent = "Agrega email del cliente e iniciales del vendedor antes de enviar.";
+        sendStatus.textContent = "Add the client email and the seller initials before sending.";
       }
       return;
     }
@@ -11581,7 +11581,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
         }
         sendStatus.style.display = "block";
-        sendStatus.textContent = "Creando enlace público...";
+        sendStatus.textContent = "Creating the public link...";
       }
 
       const branding = await resolveOwnerPublishBranding(freshSettings);
@@ -11722,12 +11722,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const jspdfOk = Boolean(typeof window !== "undefined" && window.jspdf?.jsPDF);
       if (!H || typeof H.buildEstimatePdfPayload !== "function" || typeof H.buildEstimateTenantPayload !== "function") {
         throw new Error(
-          "PDF: no cargaron los helpers (window.__MG_ESTIMATE_SEND_HELPERS__). Confirma que /js/estimate-send-helpers.js exista en el deploy y se cargue antes de app.js."
+          "PDF: the helpers did not load (window.__MG_ESTIMATE_SEND_HELPERS__). Confirm /js/estimate-send-helpers.js is in the deploy and loads before app.js."
         );
       }
       if (!jspdfOk) {
         throw new Error(
-          "PDF: jsPDF no está disponible (window.jspdf.jsPDF). El script de jsPDF debe ir antes de estimate-send-helpers.js en owner.html."
+          "PDF: jsPDF is not available (window.jspdf.jsPDF). The jsPDF script must load before estimate-send-helpers.js in owner.html."
         );
       }
 
@@ -11756,7 +11756,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const pdfB64 = rebuiltPdf?.contentBase64 ? String(rebuiltPdf.contentBase64).trim() : "";
       if (!pdfB64) {
         throw new Error(
-          "PDF: buildEstimatePdfPayload no devolvió contentBase64. Revisa consola por errores de jsPDF y que el payload de Owner tenga datos mínimos."
+          "PDF: buildEstimatePdfPayload did not return contentBase64. Check the console for jsPDF errors and confirm the Owner payload has the minimum data."
         );
       }
 
@@ -11929,7 +11929,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const sb = document.getElementById("btnSendNow");
         if (sb) {
           sb.disabled = false;
-          sb.textContent = "Enviar";
+          sb.textContent = "Send";
         }
       }, closeDelayMs);
     } catch (err) {
@@ -11948,7 +11948,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if (!successCloseScheduled) {
         if (sendButton) {
           sendButton.disabled = false;
-          sendButton.textContent = "Enviar";
+          sendButton.textContent = "Send";
         }
       }
     }
@@ -12302,17 +12302,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   function salesPricingRuleCopy(state, metrics, isReady) {
-    if (!isReady) return "Completa la mano de obra para calcular el precio.";
+    if (!isReady) return "Add labor to calculate the price.";
     if (metrics.marginBlocked && Boolean(state?._sliderTouched)) {
-      return "Margen por debajo del minimo objetivo: revisa antes de enviar.";
+      return "Margin is below the target minimum. Review it before sending.";
     }
     if (metrics.needsApproval && Boolean(state?._sliderTouched)) {
-      return "Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.";
+      return "Margin is under the target. There is no block, only a commercial decision.";
     }
     if (Boolean(state?._sliderTouched)) {
-      return "Precio dentro del rango permitido del negocio.";
+      return "Price is inside the range the business allows.";
     }
-    return "Precio listo segun las reglas del negocio.";
+    return "Price is ready under the business rules.";
   }
   /** Price-position copy must compare the displayed offer with the recommendation. */
   function isSalesPriceBelowRecommendation(metrics) {
@@ -12837,8 +12837,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText(
     "salesPricingGuidance",
     belowRecommendation
-      ? "Precio bajo la recomendacion: puedes seguir, pero hazlo con criterio y alinea expectativas con el dueno."
-      : "Precio alineado con el rango recomendado o superior."
+      ? "Price is below the recommendation. You can continue, but do it with judgment and align expectations with the owner."
+      : "Price is at or above the recommended range."
   );
   setText("salesRule", salesPricingRuleCopy(state, metrics, isReady));
   const salesRuleEl = document.getElementById("salesRule");
@@ -13063,7 +13063,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         (row) => String(row?.id ?? "") === String(orderId || "") || String(row?.title ?? "") === String(orderId || "")
       );
       if (!project) {
-        window.alert("Selecciona un proyecto firmado en el selector Portfolio.");
+        window.alert("Select a signed project in the Portfolio selector.");
         return;
       }
       if (!co) {
@@ -13403,8 +13403,8 @@ function renderSupervisor() {
         syncSupervisorConsoleSidebar();
         supervisorDebugLog("[supervisor-filter] kpi count", 0);
         $("supervisorKpis").innerHTML = [
-          ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
-          ["Dias estimados", "0.00", "Esperando proyecto firmado"],
+          ["Signed projects", "0", "Sign or approve projects to start reporting"],
+          ["Estimated days", "0.00", "Waiting for a signed project"],
           ["Target finish", "No target finish date set", "Set in Sales when signing the project"]
         ].map(([label, value, meta]) => `
           <div class="kpi-box">
@@ -14124,7 +14124,7 @@ window.renderSupervisor = renderSupervisor;
         dueDateRaw: normalizeDateInput(effectiveDueDate),
         promisedDate: formatDisplayDate(invoice.promisedDate),
         promisedDateRaw: normalizeDateInput(invoice.promisedDate),
-        customer: project.clientName || "Sin cliente",
+        customer: project.clientName || "No client",
         title: project.projectName || "Project",
         hubInvoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(invoice.invoiceLabel)),
         status: rawStatus,
@@ -15379,7 +15379,7 @@ window.renderSupervisor = renderSupervisor;
     const primaryRaw = norm.invoiceDate || norm.createdAt || "";
     const effectiveDue = norm.dueDate || "";
     const invoiceNoDisplay = nonEmptyString(norm.invoiceNo, "No invoice");
-    const customer = norm.clientName || "Sin cliente";
+    const customer = norm.clientName || "No client";
     const title = norm.projectName || "Invoice";
     const stubReport = { changeOrders: [], extras: [], laborBudget: 0, projectedEndDate: "" };
     const stubProject = {
@@ -15939,7 +15939,7 @@ window.renderSupervisor = renderSupervisor;
 
   function buildClientCollectionsScore(rows, settings) {
     const grouped = rows.reduce((acc, row) => {
-      const key = nonEmptyString(row.customer, "Sin cliente");
+      const key = nonEmptyString(row.customer, "No client");
       if (!acc[key]) {
         acc[key] = {
           customer: key,
@@ -16008,11 +16008,11 @@ window.renderSupervisor = renderSupervisor;
       close_out: rows.filter((row) => row.projectStatus === "completed" && finiteNumber(row.balance, 0) <= 0)
     };
     return [
-      ["Bill Now", String(groups.bill_now.length), "Estimates listos para invoice", "ready", "estimates"],
-      ["Send Now", String(groups.send_now.length), "Invoices en draft listas para envio", "", "invoices"],
-      ["Follow Up", String(groups.follow_up.length), "Sent y partial con saldo", "action", "collections"],
+      ["Bill Now", String(groups.bill_now.length), "Estimates ready to invoice", "ready", "estimates"],
+      ["Send Now", String(groups.send_now.length), "Draft invoices ready to send", "", "invoices"],
+      ["Follow Up", String(groups.follow_up.length), "Sent and partial with a balance", "action", "collections"],
       ["Escalate", String(groups.escalate_now.length), "Overdue o promesas rotas", "promises", "collections"],
-      ["Close Out", String(groups.close_out.length), "Proyectos cobrados y terminados", "", "closeout"]
+      ["Close Out", String(groups.close_out.length), "Projects collected and finished", "", "closeout"]
     ];
   }
 
@@ -16022,10 +16022,10 @@ window.renderSupervisor = renderSupervisor;
     const brokenPromises = rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0);
     const readyToBill = rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed");
     const weakHealth = rows.filter((row) => row.projectHealthScore < 55);
-    if (!rows.length) return "Todavia no hay cartera suficiente para generar digest.";
+    if (!rows.length) return "There is not enough portfolio yet to build a digest.";
     return topPriority
-      ? `Hoy hay ${money(openBalance, settings.currency)} abiertos. Prioridad principal: ${topPriority.title} con accion ${topPriority.nextAction}. ${brokenPromises.length} promesas rotas, ${readyToBill.length} estimates listos para invoice y ${weakHealth.length} proyectos en salud roja.`
-      : `La cartera existe pero no muestra una prioridad dominante hoy.`;
+      ? `Today there is ${money(openBalance, settings.currency)} open. Top priority: ${topPriority.title} with action ${topPriority.nextAction}. ${brokenPromises.length} broken promises, ${readyToBill.length} estimates ready to invoice, and ${weakHealth.length} projects in poor health.`
+      : `The portfolio exists, but it does not show one dominant priority today.`;
   }
 
   function buildCashInForecast(rows, settings) {
@@ -16054,12 +16054,12 @@ window.renderSupervisor = renderSupervisor;
     const overdue = rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0)
       .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
     return [
-      ["This Week", money(thisWeek, settings.currency), "Cobro por due date en la semana"],
-      ["Next 7", money(next7, settings.currency), "Ventana posterior inmediata"],
-      ["Next 14", money(next14, settings.currency), "Pipeline de cash-in cercano"],
-      ["Promised", money(promised, settings.currency), "Clientes con promesa vigente"],
-      ["Partial Balance", money(partial, settings.currency), "Saldo vivo ya encaminado"],
-      ["At Risk", money(overdue, settings.currency), "Dinero atrasado que exige presion"]
+      ["This Week", money(thisWeek, settings.currency), "Collections due this week"],
+      ["Next 7", money(next7, settings.currency), "The next window right after"],
+      ["Next 14", money(next14, settings.currency), "Near-term cash-in pipeline"],
+      ["Promised", money(promised, settings.currency), "Clients with a current promise"],
+      ["Partial Balance", money(partial, settings.currency), "Open balance already in progress"],
+      ["At Risk", money(overdue, settings.currency), "Late money that needs attention"]
     ];
   }
 
@@ -16102,25 +16102,25 @@ window.renderSupervisor = renderSupervisor;
       ? rows.reduce((sum, row) => sum + finiteNumber(row.projectHealthScore, 0), 0) / rows.length
       : 0;
     return [
-      `Esta semana hay ${paid} proyectos pagados, ${partial} parciales y ${overdue} cuentas vencidas.`,
-      `${ready} estimates siguen listos para convertirse a invoice.`,
-      `La salud promedio del portafolio esta en ${avgHealth.toFixed(0)}%.`,
-      `La prioridad del review es bajar overdue, cerrar promesas rotas y proteger margen en proyectos debiles.`
+      `This week there are ${paid} paid projects, ${partial} partials, and ${overdue} overdue accounts.`,
+      `${ready} estimates are still ready to become invoices.`,
+      `Average portfolio health is ${avgHealth.toFixed(0)}%.`,
+      `The review priority is to reduce overdue, close broken promises, and protect margin on weak projects.`
     ];
   }
 
   function getHubSuggestedPlaybook(row) {
-    if (row.status === "draft") return "Convertir a invoice y mandar hoy mismo.";
+    if (row.status === "draft") return "Convert to an invoice and send it today.";
     if (row.status === "sent" && !row.promisedDateRaw) return "Confirm due date and expected payment timing with the client.";
     if (row.collectionStage === "promised" && row.promisedDateRaw) {
       return row.promisedDateRaw < new Date().toISOString().slice(0, 10)
-        ? "Promesa rota: escalar y documentar siguiente compromiso."
-        : `Esperar promesa al ${row.promisedDate}.`;
+        ? "Broken promise: escalate and write down the next commitment."
+        : `Wait for the promise on ${row.promisedDate}.`;
     }
-    if (["overdue", "expired"].includes(row.status)) return "Escalar seguimiento y definir siguiente accion hoy.";
+    if (["overdue", "expired"].includes(row.status)) return "Escalate follow-up and set the next action today.";
     if (row.status === "partial") return "Confirm remaining project balance and expected payment date.";
-    if (row.status === "paid") return "Cerrar seguimiento comercial y dejar historial limpio.";
-    return "Mantener seguimiento y documentar siguiente paso.";
+    if (row.status === "paid") return "Close the commercial follow-up and leave a clean history.";
+    return "Keep following up and write down the next step.";
   }
 
   function exportPortfolioCsv(rows, settings) {
@@ -16908,7 +16908,7 @@ window.renderSupervisor = renderSupervisor;
     const canTryServer =
       (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8);
     if (!canTryServer) {
-      return { ok: false, message: "Este invoice no tiene id o token de servidor para enviar." };
+      return { ok: false, message: "This invoice has no server id or token to send." };
     }
     const body = {};
     if (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) {
@@ -19625,7 +19625,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function openHubClientDetail(customerName, rows, settings) {
-    const filtered = rows.filter((row) => nonEmptyString(row.customer, "Sin cliente") === customerName);
+    const filtered = rows.filter((row) => nonEmptyString(row.customer, "No client") === customerName);
     const totalOpen = filtered.reduce((sum, row) => sum + Math.max(finiteNumber(row.balance, 0), 0), 0);
     const totalSold = filtered.reduce((sum, row) => sum + Math.max(finiteNumber(row.soldAmount, 0), 0), 0);
     const brokenPromises = filtered.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0).length;
@@ -19635,13 +19635,13 @@ window.renderSupervisor = renderSupervisor;
 
     if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "false");
     if ($("hubClientTitle")) $("hubClientTitle").textContent = customerName || "Client detail";
-    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos · Open ${money(totalOpen, settings.currency)}`;
+    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} projects · Open ${money(totalOpen, settings.currency)}`;
     if ($("hubClientStats")) {
       $("hubClientStats").innerHTML = [
-        ["Open Balance", money(totalOpen, settings.currency), "Saldo vivo de este cliente"],
+        ["Open Balance", money(totalOpen, settings.currency), "Open balance for this client"],
         ["Sold", money(totalSold, settings.currency), "Venta total asociada"],
-        ["Broken Promises", String(brokenPromises), "Promesas incumplidas"],
-        ["Avg Health", `${avgHealth.toFixed(0)}%`, "Salud promedio del portafolio"]
+        ["Broken Promises", String(brokenPromises), "Broken promises"],
+        ["Avg Health", `${avgHealth.toFixed(0)}%`, "Average portfolio health"]
       ].map(([title, big, small]) => `
         <div class="supervisor-summary-card">
           <div class="title">${escapeHtml(title)}</div>
@@ -20425,7 +20425,7 @@ window.renderSupervisor = renderSupervisor;
               <div class="hub-manual-desc-voice">
                 <label class="hub-manual-desc-lang">Language
                   <select id="hubManualDescLanguage" aria-label="Dictation language">
-                    <option value="es-US">Español</option>
+                    <option value="es-US">Spanish</option>
                     <option value="en-US" selected>English</option>
                   </select>
                 </label>
@@ -21027,9 +21027,9 @@ window.renderSupervisor = renderSupervisor;
 
     const openPaymentForm = (row, existingPayment, onSubmit) => {
       showHubActionForm({
-        title: existingPayment ? "Editar pago" : "Registrar pago",
+        title: existingPayment ? "Edit payment" : "Record payment",
         subtitle: `${row.title} · ${row.customer}`,
-        submitLabel: existingPayment ? "Guardar cambios" : "Guardar pago",
+        submitLabel: existingPayment ? "Save changes" : "Save payment",
         fields: [
           { id: "hubFormAmount", label: "Amount", type: "number", step: "0.01", value: existingPayment?.amount ?? "", placeholder: "0.00" },
           {
@@ -21040,7 +21040,7 @@ window.renderSupervisor = renderSupervisor;
             options: ["check", "cash", "zelle", "wire", "card", "manual"].map((value) => ({ value, label: value }))
           },
           { id: "hubFormDate", label: "Date", type: "date", value: existingPayment?.date || new Date().toISOString().slice(0, 10) },
-          { id: "hubFormNote", label: "Note", type: "textarea", value: existingPayment?.note || "", placeholder: "Referencia, memo o detalle del pago", rows: 4 }
+          { id: "hubFormNote", label: "Note", type: "textarea", value: existingPayment?.note || "", placeholder: "Reference, memo, or payment detail", rows: 4 }
         ],
         onSubmit: () => {
           const amount = Number(val("hubFormAmount"));
@@ -21048,11 +21048,11 @@ window.renderSupervisor = renderSupervisor;
           const date = val("hubFormDate");
           const note = val("hubFormNote");
           if (!Number.isFinite(amount) || amount <= 0) {
-            setNotice("hubFormFeedback", "Ingresa un monto valido mayor a cero.", "err");
+            setNotice("hubFormFeedback", "Enter an amount greater than zero.", "err");
             return false;
           }
           if (!normalizeDateInput(date)) {
-            setNotice("hubFormFeedback", "La fecha del pago es obligatoria.", "err");
+            setNotice("hubFormFeedback", "The payment date is required.", "err");
             return false;
           }
           onSubmit({ amount, method, date, note });
@@ -21064,9 +21064,9 @@ window.renderSupervisor = renderSupervisor;
     const openFollowUpForm = (row) => {
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
-        title: "Registrar follow-up",
+        title: "Record follow-up",
         subtitle: `${row.title} · ${row.customer}`,
-        submitLabel: "Guardar seguimiento",
+        submitLabel: "Save follow-up",
         fields: [
           {
             id: "hubFormFollowUpStage",
@@ -21076,18 +21076,18 @@ window.renderSupervisor = renderSupervisor;
             options: ["new", "contacted", "promised", "escalated", "resolved"].map((value) => ({ value, label: value }))
           },
           { id: "hubFormFollowUpPromiseDate", label: "Promised Payment Date", type: "date", value: invoice.promisedDate || "" },
-          { id: "hubFormFollowUpNote", label: "Note", type: "textarea", value: "", placeholder: "Llamada, correo, promesa de pago o siguiente paso", rows: 5 }
+          { id: "hubFormFollowUpNote", label: "Note", type: "textarea", value: "", placeholder: "Call, email, payment promise, or next step", rows: 5 }
         ],
         onSubmit: () => {
           const note = val("hubFormFollowUpNote");
           const stage = val("hubFormFollowUpStage") || "new";
           const promisedDate = val("hubFormFollowUpPromiseDate");
           if (!note.trim()) {
-            setNotice("hubFormFeedback", "Escribe una nota corta del seguimiento.", "err");
+            setNotice("hubFormFeedback", "Write a short follow-up note.", "err");
             return false;
           }
           if (promisedDate && !normalizeDateInput(promisedDate)) {
-            setNotice("hubFormFeedback", "Promised payment date no tiene formato valido.", "err");
+            setNotice("hubFormFeedback", "Promised payment date is not a valid date.", "err");
             return false;
           }
           const project = getProjectById(row.projectId);
@@ -21112,16 +21112,16 @@ window.renderSupervisor = renderSupervisor;
     const openPaymentLinkForm = (row) => {
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
-        title: "Guardar payment link",
+        title: "Save payment link",
         subtitle: `${row.title} · ${row.invoiceNo || "No invoice"}`,
-        submitLabel: "Guardar link",
+        submitLabel: "Save link",
         fields: [
           { id: "hubFormPaymentLink", label: "Payment link URL", type: "text", value: invoice.paymentLink || "", placeholder: "https://..." }
         ],
         onSubmit: () => {
           const paymentLink = val("hubFormPaymentLink");
           if (paymentLink && !/^https?:\/\//i.test(paymentLink)) {
-            setNotice("hubFormFeedback", "El link debe empezar con http:// o https://", "err");
+            setNotice("hubFormFeedback", "The link must start with http:// or https://", "err");
             return false;
           }
           setHubPaymentLink(row.projectId, paymentLink);
@@ -21134,12 +21134,12 @@ window.renderSupervisor = renderSupervisor;
       showHubActionForm({
         title: "Customer setup",
         subtitle: `${row.title} · ${row.customer}`,
-        submitLabel: "Guardar cliente",
+        submitLabel: "Save client",
         fields: [
-          { id: "hubFormCustomerName", label: "Customer Name", type: "text", value: row.project?.clientName || "", placeholder: "Nombre del cliente" },
-          { id: "hubFormCustomerEmail", label: "Customer Email", type: "text", value: row.project?.clientEmail || "", placeholder: "cliente@correo.com" },
+          { id: "hubFormCustomerName", label: "Customer Name", type: "text", value: row.project?.clientName || "", placeholder: "Client name" },
+          { id: "hubFormCustomerEmail", label: "Customer Email", type: "text", value: row.project?.clientEmail || "", placeholder: "client@email.com" },
           { id: "hubFormCustomerPhone", label: "Customer Phone", type: "text", value: row.project?.clientPhone || "", placeholder: "(555) 000-0000" },
-          { id: "hubFormCustomerLocation", label: "Location", type: "text", value: row.project?.location || "", placeholder: "Ciudad, direccion o job site" }
+          { id: "hubFormCustomerLocation", label: "Location", type: "text", value: row.project?.location || "", placeholder: "City, address, or job site" }
         ],
         onSubmit: () => {
           const clientName = val("hubFormCustomerName");
@@ -21147,11 +21147,11 @@ window.renderSupervisor = renderSupervisor;
           const clientPhone = val("hubFormCustomerPhone");
           const location = val("hubFormCustomerLocation");
           if (!clientName.trim()) {
-            setNotice("hubFormFeedback", "Customer name es obligatorio.", "err");
+            setNotice("hubFormFeedback", "Customer name is required.", "err");
             return false;
           }
           if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
-            setNotice("hubFormFeedback", "Customer email no tiene formato valido.", "err");
+            setNotice("hubFormFeedback", "Customer email is not a valid email.", "err");
             return false;
           }
           updateProjectById(row.projectId, {
@@ -21175,10 +21175,10 @@ window.renderSupervisor = renderSupervisor;
         MG_HUB_INVOICE_LABEL_PRESETS.map((p) => ({ value: p, label: p }))
       );
       showHubActionForm({
-        title: "Configurar invoice",
+        title: "Set up invoice",
         subtitle: `${row.title} · ${row.customer}`,
-        submitLabel: "Guardar invoice",
-        successMessage: "Invoice guardado (incl. payment label).",
+        submitLabel: "Save invoice",
+        successMessage: "Invoice saved (including the payment label).",
         afterRender: () => {
           const updateInvoiceSetupLabelPreview = () => {
             const el = $("hubFormInvoiceLabelPreview");
@@ -21285,22 +21285,22 @@ window.renderSupervisor = renderSupervisor;
           const baseAmount = Number(val("hubFormInvoiceBase"));
           const invoiceLabel = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
           if (!normalizeDateInput(invoiceDate)) {
-            setNotice("hubFormFeedback", "Invoice date es obligatoria.", "err");
+            setNotice("hubFormFeedback", "Invoice date is required.", "err");
             return false;
           }
           if (dueDate && !normalizeDateInput(dueDate)) {
-            setNotice("hubFormFeedback", "Due date no tiene formato valido.", "err");
+            setNotice("hubFormFeedback", "Due date is not a valid date.", "err");
             return false;
           }
           if (!Number.isFinite(baseAmount) || baseAmount < 0) {
-            setNotice("hubFormFeedback", "Base amount debe ser un numero valido.", "err");
+            setNotice("hubFormFeedback", "Base amount must be a valid number.", "err");
             return false;
           }
           const isServerOnly = row.hubRowSource === "server_invoice";
           const sid = String(row.serverInvoiceId || "").trim();
           if (isServerOnly) {
             if (!MG_SERVER_INVOICE_UUID_RE.test(sid)) {
-              setNotice("hubFormFeedback", "Este invoice de servidor no tiene UUID valido.", "err");
+              setNotice("hubFormFeedback", "This server invoice does not have a valid UUID.", "err");
               return false;
             }
             return (async () => {
@@ -21315,13 +21315,13 @@ window.renderSupervisor = renderSupervisor;
               nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Invoice setup updated.", undefined, "invoice");
               const body = buildTenantInvoiceDraftBody(row.project, row.report, nextInvoice);
               if (!body) {
-                setNotice("hubFormFeedback", "No se pudo construir el payload.", "err");
+                setNotice("hubFormFeedback", "Could not build the payload.", "err");
                 return false;
               }
               body.id = sid;
               const saved = await saveTenantInvoiceDraftToServer(body);
               if (!saved?.id) {
-                setNotice("hubFormFeedback", "No se pudo guardar en el servidor.", "err");
+                setNotice("hubFormFeedback", "Could not save on the server.", "err");
                 return false;
               }
               void refreshHubServerInvoicesCacheQuietly();
@@ -21329,7 +21329,7 @@ window.renderSupervisor = renderSupervisor;
             })();
           }
           if (!getProjectById(row.projectId)) {
-            setNotice("hubFormFeedback", "Proyecto no encontrado.", "err");
+            setNotice("hubFormFeedback", "Project not found.", "err");
             return false;
           }
           const nextInvoice = buildHubInvoiceState(row.project, row.report, {
@@ -21350,8 +21350,8 @@ window.renderSupervisor = renderSupervisor;
       const templates = loadHubTemplates();
       showHubActionForm({
         title: "Communication templates",
-        subtitle: "Edita subject y body para invoice y cobranza. Usa tokens como {{customer}}, {{project}}, {{invoice_no}}, {{balance}}.",
-        submitLabel: "Guardar templates",
+        subtitle: "Edit the subject and body for the invoice and collections. Use tokens such as {{customer}}, {{project}}, {{invoice_no}}, {{balance}}.",
+        submitLabel: "Save templates",
         fields: [
           {
             id: "hubFormTemplateKey",
@@ -21371,7 +21371,7 @@ window.renderSupervisor = renderSupervisor;
           const subject = val("hubFormTemplateSubject");
           const body = val("hubFormTemplateBody");
           if (!subject.trim() || !body.trim()) {
-            setNotice("hubFormFeedback", "Subject y body son obligatorios.", "err");
+            setNotice("hubFormFeedback", "Subject and body are required.", "err");
             return false;
           }
           const nextTemplates = loadHubTemplates();
@@ -21576,43 +21576,43 @@ window.renderSupervisor = renderSupervisor;
         onSent: (row) => {
           markHubInvoiceSent(row.projectId);
           refresh();
-          setHubFeedback(`Invoice marcado como sent para ${row.title}.`, "ok");
+          setHubFeedback(`Invoice marked as sent for ${row.title}.`, "ok");
         },
         onRequest: (row) => {
           requestHubPayment(row.projectId);
           refresh();
-          setHubFeedback(`Recordatorio de pago preparado para ${row.customer}.`, "ok");
+          setHubFeedback(`Payment reminder prepared for ${row.customer}.`, "ok");
         },
         onContacted: (row) => {
           setHubCollectionStage(row.projectId, "contacted");
           refresh();
-          setHubFeedback(`Collections stage actualizado a contacted para ${row.title}.`, "ok");
+          setHubFeedback(`Collections stage updated to contacted for ${row.title}.`, "ok");
         },
         onPromise: (row) => {
           openHubFormModal({
             title: "Promised payment",
             subtitle: `${row.title} · ${row.customer}`,
-            submitLabel: "Guardar promesa",
+            submitLabel: "Save promise",
             fields: [
               { id: "hubFormQuickPromiseDate", label: "Promised Payment Date", type: "date", value: row.promisedDateRaw || "" }
             ],
             onSubmit: () => {
               const promisedDate = val("hubFormQuickPromiseDate");
               if (!normalizeDateInput(promisedDate)) {
-                setNotice("hubFormFeedback", "Promised payment date es obligatoria.", "err");
+                setNotice("hubFormFeedback", "Promised payment date is required.", "err");
                 return false;
               }
               setHubPromise(row.projectId, promisedDate);
               return true;
             },
-            successMessage: `Promesa registrada para ${row.title}.`
+            successMessage: `Promise saved for ${row.title}.`
           });
         },
         onEscalate: (row) => {
           if (row?.hubRowSource === "server_invoice") return;
           setHubCollectionStage(row.projectId, "escalated");
           refresh();
-          setHubFeedback(`Collections stage actualizado a escalated para ${row.title}.`, "warn");
+          setHubFeedback(`Collections stage updated to escalated for ${row.title}.`, "warn");
         },
         onDropColumn: (row, targetKey) => {
           if (row?.hubRowSource === "server_invoice") return;
@@ -22232,7 +22232,7 @@ window.renderSupervisor = renderSupervisor;
         const queued = queueHubAutoReminders(filteredRows);
         refresh();
         setHubFeedback(
-          queued ? `${queued} reminders quedaron en auto queue para seguimiento.` : "No habia reminders nuevos para preparar hoy.",
+          queued ? `${queued} reminders were placed in the auto queue for follow-up.` : "There were no new reminders to prepare today.",
           queued ? "ok" : "warn"
         );
       };
@@ -22252,7 +22252,7 @@ window.renderSupervisor = renderSupervisor;
         const segments = buildCampaignSegments(filteredRows, settings);
         openHubFormModal({
           title: "Collections campaigns",
-          subtitle: "Selecciona un segmento para preparar seguimiento masivo dentro del hub.",
+          subtitle: "Select a segment to prepare a bulk follow-up inside the hub.",
           submitLabel: "Queue Campaign",
           fields: [
             {
@@ -22270,7 +22270,7 @@ window.renderSupervisor = renderSupervisor;
             const segmentKey = val("hubFormCampaignSegment");
             const queued = queueCampaignSegment(filteredRows, segmentKey);
             if (!queued) {
-              setNotice("hubFormFeedback", "No habia rows validas para ese segmento.", "warn");
+              setNotice("hubFormFeedback", "There were no valid rows for that segment.", "warn");
               return false;
             }
             hubFormState.successMessage = `${queued} rows quedaron en campaign queue (${segmentKey}).`;
@@ -22282,7 +22282,7 @@ window.renderSupervisor = renderSupervisor;
     if ($("btnHubTemplates")) {
       $("btnHubTemplates").onclick = () => {
         openTemplateEditorForm();
-        hubFormState.successMessage = "Templates de comunicacion guardados.";
+        hubFormState.successMessage = "Communication templates saved.";
       };
     }
     if ($("btnHubCreateInvoice")) {
@@ -22314,7 +22314,7 @@ window.renderSupervisor = renderSupervisor;
           }
         });
         refresh();
-        setHubFeedback(updated ? `${updated} invoices marcadas como sent.` : "No habia invoices validas para marcar como sent.", updated ? "ok" : "warn");
+        setHubFeedback(updated ? `${updated} invoices marked as sent.` : "There were no valid invoices to mark as sent.", updated ? "ok" : "warn");
       };
     }
     if ($("btnHubBulkRequest")) {
@@ -22334,7 +22334,7 @@ window.renderSupervisor = renderSupervisor;
           }
         });
         refresh();
-        setHubFeedback(prepared ? `${prepared} reminders listas para seguimiento manual.` : "No habia invoices con saldo para reminder.", prepared ? "ok" : "warn");
+        setHubFeedback(prepared ? `${prepared} reminders ready for manual follow-up.` : "There were no invoices with a balance for a reminder.", prepared ? "ok" : "warn");
       };
     }
 
@@ -22697,7 +22697,7 @@ window.renderSupervisor = renderSupervisor;
         const result = hubFormState.onSubmit();
         const resolved = result && typeof result.then === "function" ? await result : result;
         if (resolved === false) return;
-        const successMessage = hubFormState.successMessage || "Cambios guardados.";
+        const successMessage = hubFormState.successMessage || "Changes saved.";
         closeHubFormModal();
         refresh();
         refreshSelectedRow();
@@ -22740,7 +22740,7 @@ window.renderSupervisor = renderSupervisor;
         const invoice = getProjectInvoiceState(selectedRow.project);
         const publicUrl = invoice.publicUrl || (invoice.publicToken ? `/invoice-public.html?token=${invoice.publicToken}` : "");
         if (!publicUrl) {
-          setHubFeedback("Primero publica el invoice para generar el link publico.", "warn");
+          setHubFeedback("Publish the invoice first to create the public link.", "warn");
           return;
         }
         window.open(publicUrl, "_blank", "noopener");
@@ -22896,7 +22896,7 @@ window.renderSupervisor = renderSupervisor;
       }
       const { ok, data } = await postHubQuoteManualStep(qid, action);
       if (!ok) {
-        setHubFeedback(data?.error || "No se pudo actualizar el quote.", "err");
+        setHubFeedback(data?.error || "Could not update the quote.", "err");
         return;
       }
       if (typeof window.__mgHubRefetchServerInvoices === "function") {
@@ -22908,17 +22908,17 @@ window.renderSupervisor = renderSupervisor;
 
     if ($("btnHubDrawerQuoteAccept")) {
       $("btnHubDrawerQuoteAccept").onclick = () => {
-        void runHubQuoteManualStep("accept", "Quote marcado como aceptado; proyecto actualizado.");
+        void runHubQuoteManualStep("accept", "Quote marked as accepted; project updated.");
       };
     }
     if ($("btnHubDrawerCheckPending")) {
       $("btnHubDrawerCheckPending").onclick = () => {
-        void runHubQuoteManualStep("check_pending", "Deposito en cheque marcado como pendiente.");
+        void runHubQuoteManualStep("check_pending", "Check deposit marked as pending.");
       };
     }
     if ($("btnHubDrawerDepositReceived")) {
       $("btnHubDrawerDepositReceived").onclick = () => {
-        void runHubQuoteManualStep("deposit_received", "Deposito registrado; proyecto listo en Supervisor.");
+        void runHubQuoteManualStep("deposit_received", "Deposit recorded; project is ready in Supervisor.");
       };
     }
 

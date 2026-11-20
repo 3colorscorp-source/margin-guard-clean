@@ -435,12 +435,12 @@ async function main() {
   eq("18. missing Speech API disables new mic", docE.els.ownerVoicePlanMicToggle.disabled, true);
   eq("18. missing Speech API disables continue mic", docE.els.ownerVoicePlanMicContinue.disabled, true);
   eq("18. interpret remains enabled", docE.els.ownerVoicePlanInterpret.disabled, false);
-  ok("18. fallback message shown", docE.els.ownerVoicePlanCaptureStatus.textContent.indexOf("escribir") >= 0);
+  ok("18. fallback message shown", docE.els.ownerVoicePlanCaptureStatus.textContent.indexOf("Type the instructions") >= 0);
   eq("18. startDictation reports unavailable", sessionE.startDictation(false), "unavailable");
 
   ok("19. permission denied is not raw not-allowed", voice.permissionErrorMessage("not-allowed").indexOf("not-allowed") < 0);
-  ok("19. permission denied is understandable", /micrófono|microfono|permiso/i.test(voice.permissionErrorMessage("not-allowed")));
-  ok("19. service-not-allowed mapped", /permiso/i.test(voice.permissionErrorMessage("service-not-allowed")));
+  ok("19. permission denied is understandable", /microphone|permission/i.test(voice.permissionErrorMessage("not-allowed")));
+  ok("19. service-not-allowed mapped", /permission/i.test(voice.permissionErrorMessage("service-not-allowed")));
   ok("19. aborted speech errors ignored", voice.shouldIgnoreSpeechError("aborted") && voice.shouldIgnoreSpeechError("no-speech"));
 
   ok("20. stale helper detects closed modal", voice.isStaleInterpret(1, 1, false) === true);

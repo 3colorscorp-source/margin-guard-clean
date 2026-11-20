@@ -230,7 +230,7 @@ ok("app.js Firmar no longer upserts a local signed project", !/upsertSignedProje
       !/Allow pop-ups/.test(appFirmar)
   );
 }
-ok("public client sees friendly 409 copy", /error_es/.test(builderSrc) && /ya no están disponibles/.test(builderSrc));
+ok("public client sees friendly 409 copy", /The proposed dates are no longer available/.test(builderSrc));
 ok("RPC file is marked do-not-apply", /do not apply to production/i.test(rpcSql));
 ok("RPC uses advisory lock and schedule_conflict", /pg_advisory_xact_lock/.test(rpcSql) && /schedule_conflict/.test(rpcSql));
 ok("RPC occupancy uses snapshot commitment_date", /commitment_date/.test(rpcSql));

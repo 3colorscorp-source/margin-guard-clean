@@ -436,7 +436,7 @@ async function main() {
   ok("seller folds SpeechRecognition from resultIndex", /createVoiceDictationCapture/.test(html) && /applyEvent\(event, voicePlanDictationGeneration\)/.test(html));
   ok("seller does not append SpeechRecognition finals", !/voicePlanRecognitionFinal\s*\+=/.test(html));
   ok("seller keeps a single recognition instance", /if \(voicePlanRecognition\) \{[\s\S]*stopVoicePlanRecognition\(\);[\s\S]*return;/.test(html));
-  ok("seller still uses es-US default language", /language && language\.value\) \|\| 'es-US'/.test(html));
+  ok("seller uses en-US as the default language", /language && language\.value\) \|\| 'en-US'/.test(html));
   ok("no audio blob is uploaded or stored", !/MediaRecorder|audio\/webm|FormData/.test(html + fnSrc));
   ok("endpoint never writes quote or project tables", !/quotes\?|tenant_projects|quote_internal_operational_plans/.test(fnSrc));
   ok("endpoint authenticates owner or seller", /resolveOwnerOrSellerContext/.test(fnSrc));

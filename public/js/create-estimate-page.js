@@ -155,13 +155,13 @@
 
     $("btnEstimateSaveDraft")?.addEventListener("click", () => {
       persistDraftPayload(collectDraft());
-      window.alert("Borrador guardado (localStorage + snapshot del tenant si esta activo).");
+      window.alert("Draft saved (localStorage, plus the tenant snapshot when it is active).");
     });
 
     $("btnEstimateDuplicate")?.addEventListener("click", () => {
       const n = $("estimateNumber");
       if (n) n.value = `${n.value || "EST"}-COPY`;
-      window.alert("Numero ajustado; revisa y usa Guardar borrador.");
+      window.alert("Number updated. Review it and use Save draft.");
     });
 
     $("btnEstimatePreview")?.addEventListener("click", previewDraft);
@@ -183,7 +183,7 @@
     });
 
     $("btnEstimateCancel")?.addEventListener("click", () => {
-      if (!window.confirm("Vaciar lineas del estimate en esta pantalla?")) return;
+      if (!window.confirm("Clear the estimate lines on this screen?")) return;
       $("estimateItemsBody").innerHTML = "";
       recalcTotals();
     });
