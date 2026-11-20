@@ -4,7 +4,8 @@
 const assert = require("assert");
 const {
   calculateQuotePublishFinancials,
-  OVERHEAD_WORKING_DAYS,
+  OVERHEAD_MONTH_DAYS,
+  overheadPerWorkerHour,
 } = require("../netlify/functions/_lib/pricing-engine");
 
 const settings = {
@@ -22,45 +23,64 @@ const settings = {
   minimumMarginPct: 0,
 };
 
-function quote(workers, extra) {
+function quote(workers, extra, tenantSettings) {
   return calculateQuotePublishFinancials(
     Object.assign({ workers, pricing_stage: 2, price: "", _manualPriceTouched: false }, extra || {}),
-    settings
+    tenantSettings || settings
   );
 }
 
-assert.strictEqual(OVERHEAD_WORKING_DAYS, 20);
+assert.strictEqual(OVERHEAD_MONTH_DAYS, 24);
+assert.strictEqual(overheadPerWorkerHour(10000, 8), 10000 / 24 / 8);
 
-const oneCrew = quote([{ type: "installer", days: 15 }]);
-assert.strictEqual(oneCrew.exclusive_days, 15);
-assert.strictEqual(oneCrew.overhead, 7500);
+const onePerson = quote([{ type: "installer", days: 15 }]);
+assert.strictEqual(onePerson.totalHours, 120);
+assert.strictEqual(onePerson.overhead, 6250);
 
-const sameCrewTwoPeople = quote([
+const twoPeople = quote([
   { type: "installer", days: 15 },
   { type: "helper", days: 15 },
 ]);
-assert.strictEqual(sameCrewTwoPeople.exclusive_days, 15);
-assert.strictEqual(sameCrewTwoPeople.overhead, 7500);
-assert.ok(sameCrewTwoPeople.labor > oneCrew.labor);
+assert.strictEqual(twoPeople.totalHours, 240);
+assert.strictEqual(twoPeople.overhead, 12500);
+assert.ok(twoPeople.labor > onePerson.labor);
 
-const secondCrew = quote([{ type: "installer", days: 22 }]);
-assert.strictEqual(secondCrew.exclusive_days, 22);
-assert.strictEqual(secondCrew.overhead, 11000);
-assert.notStrictEqual(secondCrew.overhead, oneCrew.overhead);
+const secondProject = quote([{ type: "installer", days: 22 }]);
+assert.strictEqual(secondProject.overhead, 9166.67);
+assert.notStrictEqual(secondProject.overhead, onePerson.overhead);
 
-const plan = [];
-for (let day = 1; day <= 15; day += 1) {
-  plan.push({
-    day_number: day,
-    workers: [
-      { worker_type: "installer", estimated_hours: 8 },
-      { worker_type: "installer", estimated_hours: 8 },
-    ],
-  });
-}
-const aggregated = quote([{ type: "installer", days: 30 }], { operational_plan: plan });
-assert.strictEqual(aggregated.exclusive_days, 15);
-assert.strictEqual(aggregated.overhead, 7500);
-assert.strictEqual(aggregated.totalHours, 240);
+const fullMonth = quote([{ type: "installer", days: 24 }]);
+assert.strictEqual(fullMonth.overhead, 10000);
 
-console.log("PASS overhead charges exclusive crew days, not worker hours");
+const stdHoursIgnored = quote([{ type: "installer", days: 15 }], null, Object.assign({}, settings, { stdHours: 40 }));
+assert.strictEqual(stdHoursIgnored.overhead, onePerson.overhead);
+
+const live = {
+  hoursPerDay: 8,
+  baseInstaller: 45,
+  baseHelper: 45,
+  wcPct: 8,
+  ficaPct: 7.65,
+  futaPct: 0.6,
+  casuiPct: 3.4,
+  overheadMonthly: 4281,
+  stdHours: 160,
+  profitPct: 30,
+  reservePct: 5,
+  minimumMarginPct: 15,
+};
+const sample = quote(
+  [
+    { type: "helper", days: 1 },
+    { type: "helper", days: 1 },
+  ],
+  null,
+  live
+);
+assert.strictEqual(sample.totalHours, 16);
+assert.strictEqual(sample.labor, 720);
+assert.strictEqual(sample.overhead, 356.75);
+assert.strictEqual(sample.overhead_per_hour, 22.3);
+assert.strictEqual(sample.recommended_price, 1644.61);
+
+console.log("PASS overhead is the same dollar on every worker hour");

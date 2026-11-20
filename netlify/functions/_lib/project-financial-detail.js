@@ -21,6 +21,7 @@ const { supabaseRequest } = require("./supabase-admin");
 const { notesIncludeBalanceMarker } = require("./material-balance");
 
 const DEFAULT_HOURS_PER_DAY = 8;
+const OVERHEAD_MONTH_DAYS = 24;
 const INVOICE_SELECT =
   "id,amount,paid_amount,balance_due,status,payment_status,invoice_label,notes,due_date,created_at,paid_at,project_id,quote_id,project_name";
 
@@ -293,7 +294,9 @@ function parseBusinessSettingsForOwnerProfit(mg) {
     ? round2(ficaPct + futaPct + casuiPct + wcPct)
     : null;
   const overheadPerHour =
-    overheadOk && stdHours > 0 ? round2(overheadMonthly / stdHours) : null;
+    overheadOk && hoursPerDay > 0
+      ? round2(overheadMonthly / OVERHEAD_MONTH_DAYS / hoursPerDay)
+      : null;
 
   return {
     configured: true,
@@ -809,10 +812,10 @@ function acceptedProposalProfit({
     (num(bs.fica_pct, 0) + num(bs.futa_pct, 0) + num(bs.casui_pct, 0) + num(bs.wc_pct, 0)) / 100;
   const loaded = round2(labor + round2(labor * taxPct));
   const monthly = num(bs.overhead_monthly, NaN);
-  const proposalDays = num(estimatedDays, 0);
+  const hoursPerDay = Math.max(num(bs.hours_per_day, DEFAULT_HOURS_PER_DAY), 0.25);
   const operating =
-    Number.isFinite(monthly) && monthly >= 0 && proposalDays > 0
-      ? round2((monthly / 20) * proposalDays)
+    Number.isFinite(monthly) && monthly >= 0
+      ? round2(hours * (monthly / OVERHEAD_MONTH_DAYS / hoursPerDay))
       : round2(num(bs.overhead_per_hour, 0) * hours);
   const commission = bs.commission_ok
     ? round2(labor * (num(bs.sales_commission_pct, 0) / 100))
@@ -1129,18 +1132,20 @@ function buildOwnerProfitBreakdown({
       ? round2(directLabor + employerBurden)
       : null;
 
-  const exclusiveDays = effectiveDaysForSupervisorBonus(project, operational);
-  const overheadDaily = round2(num(bs.overhead_monthly, 0) / 20);
+  const hoursPerDay = Math.max(num(bs.hours_per_day, DEFAULT_HOURS_PER_DAY), 0.25);
+  const overheadHourly =
+    num(bs.overhead_monthly, 0) / OVERHEAD_MONTH_DAYS / hoursPerDay;
+  const reportedHours = num(laborSection?.actual?.hours, 0);
+  const plannedHours = num(laborSection?.estimated?.hours, 0);
+  const laborHours = reportedHours > 0 ? reportedHours : plannedHours;
   let operatingAllocation = null;
   let operatingNote = null;
   if (bs.overhead_ok) {
-    if (exclusiveDays > 0) {
-      operatingAllocation = round2(overheadDaily * exclusiveDays);
-      operatingNote = `$${overheadDaily}/day × ${exclusiveDays} exclusive days`;
-    } else {
-      operatingAllocation = 0;
-      operatingNote = "Exclusive project days are not set yet.";
-    }
+    operatingAllocation = round2(overheadHourly * laborHours);
+    operatingNote =
+      laborHours > 0
+        ? `$${round2(overheadHourly)}/hr × ${laborHours} labor hrs`
+        : "Labor hours are not set yet.";
   }
 
   let sellerCommission = null;
