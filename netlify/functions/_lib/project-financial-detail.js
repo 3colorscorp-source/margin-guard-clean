@@ -808,7 +808,12 @@ function acceptedProposalProfit({
   const taxPct =
     (num(bs.fica_pct, 0) + num(bs.futa_pct, 0) + num(bs.casui_pct, 0) + num(bs.wc_pct, 0)) / 100;
   const loaded = round2(labor + round2(labor * taxPct));
-  const operating = round2(num(bs.overhead_per_hour, 0) * hours);
+  const monthly = num(bs.overhead_monthly, NaN);
+  const proposalDays = num(estimatedDays, 0);
+  const operating =
+    Number.isFinite(monthly) && monthly >= 0 && proposalDays > 0
+      ? round2((monthly / 20) * proposalDays)
+      : round2(num(bs.overhead_per_hour, 0) * hours);
   const commission = bs.commission_ok
     ? round2(labor * (num(bs.sales_commission_pct, 0) / 100))
     : 0;
@@ -1098,7 +1103,6 @@ function buildOwnerProfitBreakdown({
 
   const contractTotal = collection.current_contract_total;
   const unexpectedTotal = sumExpenseAmounts(expenses);
-  const reportedHours = num(laborSection.actual.hours, 0);
   const materialCost = round2(Math.max(0, num(project?.estimated_material_cost, 0)));
 
   const laborDirectMissing =
@@ -1125,9 +1129,18 @@ function buildOwnerProfitBreakdown({
       ? round2(directLabor + employerBurden)
       : null;
 
+  const exclusiveDays = effectiveDaysForSupervisorBonus(project, operational);
+  const overheadDaily = round2(num(bs.overhead_monthly, 0) / 20);
   let operatingAllocation = null;
+  let operatingNote = null;
   if (bs.overhead_ok) {
-    operatingAllocation = round2(num(bs.overhead_per_hour, 0) * reportedHours);
+    if (exclusiveDays > 0) {
+      operatingAllocation = round2(overheadDaily * exclusiveDays);
+      operatingNote = `$${overheadDaily}/day × ${exclusiveDays} exclusive days`;
+    } else {
+      operatingAllocation = 0;
+      operatingNote = "Exclusive project days are not set yet.";
+    }
   }
 
   let sellerCommission = null;
@@ -1293,9 +1306,7 @@ function buildOwnerProfitBreakdown({
         !bs.overhead_ok ? "not_configured" : "calculated",
         !bs.overhead_ok
           ? "Operating cost settings missing. Configure Business Settings."
-          : bs.overhead_per_hour != null
-            ? `$${bs.overhead_per_hour}/hr × ${reportedHours} reported hrs`
-            : null
+          : operatingNote
       ),
       ownerProfitLine(
         "Seller commission",

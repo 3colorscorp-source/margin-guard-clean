@@ -158,6 +158,9 @@ exports.handler = async (event) => {
           _sliderTouched: pricingIn._sliderTouched,
           pricing_stage: pricingIn.pricing_stage,
           material_lines: pricingIn.material_lines,
+          operational_plan: body.operational_plan ?? body.operationalPlan,
+          operational_estimated_days_override:
+            body.operational_estimated_days_override ?? body.operationalEstimatedDaysOverride,
         },
         tenantSettings
       );
