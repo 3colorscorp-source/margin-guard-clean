@@ -6020,6 +6020,8 @@
           readOperationalDaysOverride(state),
           hpd
         );
+        const prevPlan = JSON.stringify(state.operational_plan || []);
+        state.operational_plan = plan;
         const next = api.aggregateLaborWorkersFromOperationalPlan(plan, syncSettings);
         if (!next.length) return false;
         const prev = JSON.stringify(state.workers || []);
@@ -6028,7 +6030,7 @@
           state.estimateStatus = state.estimateStatus || 'pricing_ready';
           if (state.estimateStatus === 'draft') state.estimateStatus = 'pricing_ready';
         }
-        return JSON.stringify(state.workers) !== prev;
+        return JSON.stringify(plan) !== prevPlan || JSON.stringify(state.workers) !== prev;
       }
 
       function prepareSellerPublishLaborState(state, settings) {
@@ -7173,7 +7175,12 @@
 
         const mode = applyOperationalPlanUnitModeToChrome(settings);
         const hpd = api.getHoursPerDay(settings);
-        const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+        const rawPlan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+        const plan = api.normalizeOperationalPlan(rawPlan, null, hpd);
+        const quote = typeof api.quoteCrewFromPlan === 'function'
+          ? api.quoteCrewFromPlan(plan, hpd)
+          : { working_days: 0, labor_hours: 0 };
+        const workingLabel = quote.working_days === 1 ? '1 working day' : quote.working_days + ' working days';
 
         if (daysOverrideInput && document.activeElement !== daysOverrideInput) {
           daysOverrideInput.value =
@@ -7192,18 +7199,26 @@
           : { offered: Number(state.price) || 0 };
 
         if (summaryEl) {
-          summaryEl.textContent = api.planHasDays(plan)
-            ? api.formatOperationalSummary(metrics, mode)
-            : 'No schedule yet';
+          summaryEl.textContent = quote.labor_hours > 0
+            ? workingLabel + ' · ' + quote.labor_hours + ' labor hours'
+            : api.planHasDays(plan)
+              ? api.formatOperationalSummary(metrics, mode)
+              : 'No schedule yet';
         }
         if (dayCountEl) {
-          dayCountEl.textContent = metrics && metrics.estimated_days
-            ? '· ' + metrics.estimated_days + ' days'
-            : plan.length ? '· ' + plan.length + ' days' : '';
+          dayCountEl.textContent = quote.working_days
+            ? '· ' + workingLabel
+            : metrics && metrics.estimated_days
+              ? '· ' + metrics.estimated_days + ' days'
+              : plan.length ? '· ' + plan.length + ' days' : '';
         }
         if (metricsEl) {
           if (!api.planHasDays(plan)) {
             metricsEl.innerHTML = '<span>Add schedule days to build the plan.</span>';
+          } else if (quote.labor_hours > 0) {
+            metricsEl.innerHTML =
+              '<span><strong>Working days</strong> ' + quote.working_days + '</span>' +
+              '<span><strong>Labor hours</strong> ' + quote.labor_hours + '</span>';
           } else if (mode === 'day') {
             metricsEl.innerHTML =
               '<span><strong>Est. days</strong> ' + metrics.estimated_days + '</span>' +
@@ -7224,7 +7239,9 @@
               const day = entry.day;
               const dayIndex = entry.dayIndex;
               const crew = api.formatCrewShortLabel(day.workers);
-              const units = api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
+              const units = typeof api.formatWorkCrewTime === 'function'
+                ? api.formatWorkCrewTime(day, hpd)
+                : api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
               const task = day.phase || ('Day ' + (day.day_number != null ? day.day_number : dayIndex + 1));
               return (
                 '<div class="sales-op-timeline-row" data-day-index="' + dayIndex + '" role="button" tabindex="0">' +

@@ -855,7 +855,7 @@ const RESPONSE_SCHEMA = {
                     worker_type: { type: "string", enum: ["pro", "helper"] },
                     worker_role: { type: "string", enum: ["Installer", "Assistant"] },
                     worker_count: { type: "integer", minimum: 1, maximum: 12 },
-                    hours_per_worker: { type: "number", exclusiveMinimum: 0, maximum: 24 },
+                    hours_per_worker: { type: "number", exclusiveMinimum: 0, maximum: 240 },
                   },
                 },
               },

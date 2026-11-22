@@ -928,7 +928,7 @@ async function main() {
       {
         day_id: "day_bad",
         day_number: 1,
-        worker_assignments: [{ worker_count: 99, hours_per_worker: 40 }],
+        worker_assignments: [{ worker_count: 99, hours_per_worker: 400 }],
       },
     ],
   });
@@ -1588,6 +1588,73 @@ async function main() {
   ok("atomic RPC revokes authenticated execute", /revoke all on function public\.mg_confirm_quote_operational_plan[\s\S]*from authenticated/.test(sql));
   ok("atomic RPC grants only service_role execute", /grant execute on function public\.mg_confirm_quote_operational_plan[\s\S]*to service_role/.test(sql));
   ok("atomic RPC has no execute grant except service_role", !/grant execute on function public\.mg_confirm_quote_operational_plan[\s\S]*to (public|anon|authenticated)\b/.test(sql));
+
+  const bathroomRaw = {
+    days: [
+      {
+        day_id: "day_floor",
+        day_number: 1,
+        client_scope: "Bathroom floor tile installation over 3 days with 2 workers.",
+        internal_tasks: [{ task_id: "task_floor", label: "Bathroom floor tile installation over 3 days with 2 workers." }],
+        worker_assignments: [{ assignment_id: "asg_floor", worker_role: "Installer", worker_type: "pro", worker_count: 1, hours_per_worker: 16 }],
+      },
+      {
+        day_id: "day_pan",
+        day_number: 2,
+        client_scope: "Master shower pan tile installation after water test passes.",
+        worker_assignments: [{ assignment_id: "asg_pan", worker_role: "Installer", worker_type: "pro", worker_count: 1, hours_per_worker: 8 }],
+      },
+      {
+        day_id: "day_wall",
+        day_number: 3,
+        client_scope: "Shower wall tile installation over 4 days with 2 workers.",
+        worker_assignments: [{ assignment_id: "asg_wall", worker_role: "Installer", worker_type: "pro", worker_count: 1, hours_per_worker: 16 }],
+      },
+      {
+        day_id: "day_back",
+        day_number: 4,
+        client_scope: "Jacuzzi backsplash tile installation for 8 hours with 1 worker.",
+        worker_assignments: [{ assignment_id: "asg_back", worker_role: "Installer", worker_type: "pro", worker_count: 1, hours_per_worker: 8 }],
+      },
+    ],
+  };
+  const bathroomDoc = voice.normalizeDocument(bathroomRaw, { hoursPerDay: 8, settings: SETTINGS });
+  eq("pdf voice labor hours", bathroomDoc.estimated_hours, 128);
+  eq("pdf voice row span stays max day_number", bathroomDoc.estimated_days, 4);
+  eq("pdf voice floor scope", bathroomDoc.days[0].client_scope, "Bathroom floor tile installation.");
+  eq("pdf voice floor task", bathroomDoc.days[0].internal_tasks[0].label, "Bathroom floor tile installation.");
+  eq("pdf voice floor installer hours", bathroomDoc.days[0].worker_assignments[0].hours_per_worker, 24);
+  eq("pdf voice floor assistant count", bathroomDoc.days[0].worker_assignments[1].worker_count, 1);
+  eq("pdf voice floor assistant type", bathroomDoc.days[0].worker_assignments[1].worker_type, "helper");
+  eq("pdf voice wall hours", bathroomDoc.days[2].worker_assignments[0].hours_per_worker, 32);
+  eq("pdf voice pan stays one installer", bathroomDoc.days[1].worker_assignments.length, 1);
+  const clientBathroom = clientVoice.normalizeDocument(bathroomRaw, { hoursPerDay: 8, settings: SETTINGS });
+  eq("pdf client voice labor hours", clientBathroom.estimated_hours, 128);
+  const allowed32 = voice.validateIncomingDocument({
+    days: [{ day_id: "day_ok32", day_number: 1, worker_assignments: [{ assignment_id: "asg_ok32", worker_count: 1, hours_per_worker: 32 }] }],
+  });
+  eq("pdf 32 hours per worker is valid", allowed32.ok, true);
+
+  const salesPlanCtx = {};
+  salesPlanCtx.window = salesPlanCtx;
+  salesPlanCtx.globalThis = salesPlanCtx;
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, "public/js/sales-operational-plan.js"), "utf8"), salesPlanCtx);
+  const planApi = salesPlanCtx.MgSalesOperationalPlan;
+  const legacy = planApi.normalizeOperationalPlan(voice.deriveLegacyOperationalPlan(bathroomDoc), null, 8);
+  const quote = planApi.quoteCrewFromPlan(legacy, 8);
+  eq("pdf working days", quote.working_days, 9);
+  eq("pdf labor hours", quote.labor_hours, 128);
+  eq("pdf floor chip", planApi.formatWorkCrewTime(legacy[0], 8), "3 days · 2 workers");
+  eq("pdf wall chip", planApi.formatWorkCrewTime(legacy[2], 8), "4 days · 2 workers");
+  const spoken = planApi.normalizeOperationalPlan([
+    {
+      day_number: 4,
+      phase: "Jacuzzi backsplash tile installation for 8 hours with 1 worker.",
+      workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }],
+    },
+  ], null, 8);
+  eq("pdf spoken hours chip", planApi.formatWorkCrewTime(spoken[0], 8), "8 hours · 1 worker");
+  eq("pdf spoken title", spoken[0].phase, "Jacuzzi backsplash tile installation.");
 
   console.log("\nPassed " + passed + " assertions.");
 }

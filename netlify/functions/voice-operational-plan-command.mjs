@@ -80,7 +80,7 @@ const RESPONSE_SCHEMA = {
                     worker_role: { type: "string", enum: ["Installer", "Assistant"] },
                     worker_type: { type: "string", enum: ["pro", "helper"] },
                     worker_count: { type: "integer", minimum: 1, maximum: 12 },
-                    hours_per_worker: { type: "number", exclusiveMinimum: 0, maximum: 24 },
+                    hours_per_worker: { type: "number", exclusiveMinimum: 0, maximum: 240 },
                   },
                 },
               },
@@ -114,6 +114,7 @@ const SYSTEM_INSTRUCTIONS = [
   "When insert a new day N or inserta/agrega un nuevo día N is explicit, create a new day at N with an empty day_id and renumber the prior day N and every later day forward without changing their stable IDs.",
   "Use Installer/pro and Assistant/helper. If two workers are stated without roles, use one Installer and one Assistant. If one unspecified worker is stated, use one Installer.",
   "If hours are omitted, use the supplied tenant hours_per_day for each worker. Preserve partial hours exactly.",
+  "Each dictated work item stays one row even when it lasts more than one day. '3 days with 2 workers' means hours_per_worker equals 3 times the tenant hours_per_day, with one Installer and one Assistant. '8 hours with 1 worker' means hours_per_worker equals 8 and one Installer. Do not shorten a multi-day item to one day or to 24 hours.",
   "Standard construction actions such as protect floors, demolition, preparation, waterproofing, tile installation, grout, and cleanup are not ambiguous. If a phrase truly cannot identify a day or action, preserve current data and add a short warning instead of guessing destructively.",
 ].join(" ");
 

@@ -9299,10 +9299,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!isOwnerLaborAutoSyncActive(state)) return false;
     const api = getOwnerOperationalPlanApi();
     if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== "function") return false;
-    const planWorkers = api.aggregateLaborWorkersFromOperationalPlan(
-      state.operational_plan || [],
-      settings
-    );
+    const hpdForPlan = api.getHoursPerDay(settings);
+    const plan = api.normalizeOperationalPlan(state.operational_plan || [], null, hpdForPlan);
+    state.operational_plan = plan;
+    const planWorkers = api.aggregateLaborWorkersFromOperationalPlan(plan, settings);
     if (!planWorkers.length) return false;
     const hpd = api.getHoursPerDay(settings);
     const prev = JSON.stringify(state.workers || []);
@@ -9896,7 +9896,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     const mode = applyOwnerOperationalPlanUnitModeToChrome(settings);
     const hpd = api.getHoursPerDay(settings);
-    const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+    const rawPlan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+    const plan = api.normalizeOperationalPlan(rawPlan, null, hpd);
+    const quote =
+      typeof api.quoteCrewFromPlan === "function"
+        ? api.quoteCrewFromPlan(plan, hpd)
+        : { working_days: 0, labor_hours: 0 };
+    const workingLabel = quote.working_days === 1 ? "1 working day" : quote.working_days + " working days";
 
     if (daysOverrideInput && document.activeElement !== daysOverrideInput) {
       daysOverrideInput.value =
@@ -9914,13 +9920,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const metrics = getOwnerOperationalMetrics(state, settings);
 
     if (summaryEl) {
-      summaryEl.textContent = api.planHasDays(plan)
-        ? api.formatOperationalSummary(metrics, mode)
-        : "No schedule yet";
+      summaryEl.textContent =
+        quote.labor_hours > 0
+          ? workingLabel + " · " + quote.labor_hours + " labor hours"
+          : api.planHasDays(plan)
+            ? api.formatOperationalSummary(metrics, mode)
+            : "No schedule yet";
     }
     if (dayCountEl) {
-      dayCountEl.textContent =
-        metrics && metrics.estimated_days
+      dayCountEl.textContent = quote.working_days
+        ? "· " + workingLabel
+        : metrics && metrics.estimated_days
           ? "· " + metrics.estimated_days + " days"
           : plan.length
             ? "· " + plan.length + " days"
@@ -9929,6 +9939,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (metricsEl) {
       if (!api.planHasDays(plan)) {
         metricsEl.innerHTML = "<span>Add schedule days to build the plan.</span>";
+      } else if (quote.labor_hours > 0) {
+        metricsEl.innerHTML =
+          `<span><strong>Working days</strong> ${quote.working_days}</span>` +
+          `<span><strong>Labor hours</strong> ${quote.labor_hours}</span>`;
       } else if (mode === "day") {
         metricsEl.innerHTML =
           `<span><strong>Est. days</strong> ${metrics.estimated_days}</span>` +
@@ -9952,7 +9966,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
               const day = entry.day;
               const dayIndex = entry.dayIndex;
               const crew = formatOwnerOpPlanCrewLabel(day.workers, api);
-              const units = api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
+              const units =
+                typeof api.formatWorkCrewTime === "function"
+                  ? api.formatWorkCrewTime(day, hpd)
+                  : api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
               const task = day.phase || "Day " + (day.day_number != null ? day.day_number : dayIndex + 1);
               return (
                 `<div class="sales-op-timeline-row" data-day-index="${dayIndex}" role="button" tabindex="0">` +
@@ -12818,7 +12835,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesHeroState", tone === "green" ? "Green" : tone === "amber" ? "Amber" : "Red");
   setText("salesHeroMeta", heroMeta);
   setText("salesPrimaryPrice", formatSellerWorkspaceMoney(metrics.recommended));
-  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatSellerWorkspaceMoney(offered)}`);
+  const salesPlanQuote = (function () {
+    const planApi = window.MgSalesOperationalPlan;
+    if (!planApi || typeof planApi.quoteCrewFromPlan !== "function" || !planApi.planHasDays(state.operational_plan)) return "";
+    const planHours = planApi.getHoursPerDay(settings);
+    const pricedPlan = planApi.normalizeOperationalPlan(state.operational_plan, null, planHours);
+    const priced = planApi.quoteCrewFromPlan(pricedPlan, planHours);
+    if (!(priced.labor_hours > 0)) return "";
+    const dayLabel = priced.working_days === 1 ? "1 working day" : priced.working_days + " working days";
+    return dayLabel + " | " + priced.labor_hours.toFixed(2) + " labor hours";
+  })();
+  setText(
+    "salesPrimaryMeta",
+    salesPlanQuote
+      ? salesPlanQuote + " | Current " + formatSellerWorkspaceMoney(offered)
+      : `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatSellerWorkspaceMoney(offered)}`
+  );
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
   setText("salesPrimaryCommissionMeta", `${formatSellerWorkspaceMoney(metrics.commissionDisplay)} estimated · ${formatSellerWorkspaceMoney(metrics.commissionLaborBase ?? metrics.labor)} labor cost`);
   setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : belowRecommendation ? "Below recommendation" : "Ready to send");
@@ -12833,7 +12865,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesStageMin", formatSellerWorkspaceMoney(metrics.minimum));
   setText("salesStageNegotiation", formatSellerWorkspaceMoney(metrics.negotiation));
   setText("salesStageRecommended", formatSellerWorkspaceMoney(metrics.recommended));
-  setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
+  setText(
+    "salesCrewHint",
+    salesPlanQuote
+      ? salesPlanQuote.replace(" | ", " · ") + "."
+      : `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`
+  );
   setText(
     "salesPricingGuidance",
     belowRecommendation
