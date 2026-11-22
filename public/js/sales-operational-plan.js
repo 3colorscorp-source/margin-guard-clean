@@ -79,6 +79,105 @@
     };
   }
 
+  const CREW_TIME_FORWARD =
+    /(?:\b(?:over|for|durante|por)\s+)?(\d+(?:\.\d+)?)\s*(days|day|dias|días|dia|día|hours|hour|hrs|hr|horas|hora)\s*(?:with|con|·|•|,|and|y)\s*(\d+)\s*(workers|worker|trabajadores|trabajador|personas|persona)\b/i;
+  const CREW_TIME_REVERSE =
+    /\b(\d+)\s*(workers|worker|trabajadores|trabajador|personas|persona)\s*(?:for|por|durante|over|with|con)?\s*(\d+(?:\.\d+)?)\s*(days|day|dias|días|dia|día|hours|hour|hrs|hr|horas|hora)\b/i;
+  const MAX_CREW_HOURS = 240;
+
+  function crewTimeUnit(word) {
+    return /hour|hr|hora/i.test(String(word || "")) ? "hours" : "days";
+  }
+
+  function parseCrewTimePhrase(text) {
+    const s = String(text || "");
+    const forward = s.match(CREW_TIME_FORWARD);
+    if (forward) {
+      const amount = Number(forward[1]);
+      const workers = Math.floor(Number(forward[3]));
+      if (!(amount > 0) || !(workers > 0)) return null;
+      return { amount: amount, unit: crewTimeUnit(forward[2]), workers: workers };
+    }
+    const reverse = s.match(CREW_TIME_REVERSE);
+    if (!reverse) return null;
+    const amount = Number(reverse[3]);
+    const workers = Math.floor(Number(reverse[1]));
+    if (!(amount > 0) || !(workers > 0)) return null;
+    return { amount: amount, unit: crewTimeUnit(reverse[4]), workers: workers };
+  }
+
+  function stripCrewTimePhrase(text) {
+    let s = String(text || "");
+    if (!parseCrewTimePhrase(s)) return s.trim();
+    s = s.replace(CREW_TIME_FORWARD, " ").replace(CREW_TIME_REVERSE, " ");
+    s = s.replace(/\s{2,}/g, " ").replace(/\s+\./g, ".").trim();
+    s = s.replace(/^[\s,;:·•-]+|[\s,;:·•-]+$/g, "").trim();
+    return s;
+  }
+
+  function workersFromCrewTime(count, hoursEach) {
+    const n = Math.max(1, Math.min(12, Math.floor(num(count, 1))));
+    const hours = round2(hoursEach);
+    const workers = [{ role: "Installer", worker_type: "pro", estimated_hours: hours }];
+    for (let i = 1; i < n; i += 1) {
+      workers.push({ role: "Assistant", worker_type: "helper", estimated_hours: hours });
+    }
+    return workers;
+  }
+
+  function applyCrewTimeToLegacyDay(day, hoursPerDay) {
+    if (!day) return day;
+    const parsed = parseCrewTimePhrase(day.phase);
+    if (!parsed) return day;
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const hoursEach = parsed.unit === "hours" ? parsed.amount : round2(parsed.amount * hpd);
+    if (!(hoursEach > 0) || hoursEach > MAX_CREW_HOURS) return day;
+    const title = stripCrewTimePhrase(day.phase);
+    return {
+      day_number: day.day_number,
+      phase: title || day.phase,
+      workers: workersFromCrewTime(parsed.workers, hoursEach),
+      crew_time_unit: parsed.unit,
+    };
+  }
+
+  function lineDurationHours(workers) {
+    let hours = 0;
+    (Array.isArray(workers) ? workers : []).forEach(function (w) {
+      hours = Math.max(hours, num(w && w.estimated_hours, 0));
+    });
+    return hours;
+  }
+
+  function quoteCrewFromPlan(plan, hoursPerDay) {
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    let working = 0;
+    let labor = 0;
+    (Array.isArray(plan) ? plan : []).forEach(function (day) {
+      const hours = lineDurationHours(day && day.workers);
+      working += hours / hpd;
+      (day && day.workers ? day.workers : []).forEach(function (w) {
+        labor += num(w && w.estimated_hours, 0);
+      });
+    });
+    return { working_days: round2(working), labor_hours: round2(labor) };
+  }
+
+  function formatWorkCrewTime(day, hoursPerDay) {
+    const workers = day && Array.isArray(day.workers) ? day.workers : [];
+    if (!workers.length) return "—";
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const hours = lineDurationHours(workers);
+    const people = workers.length === 1 ? "1 worker" : workers.length + " workers";
+    if (day && day.crew_time_unit === "hours") {
+      const h = round2(hours);
+      return h + (h === 1 ? " hour" : " hours") + " · " + people;
+    }
+    const days = round2(hours / hpd);
+    const shown = Math.abs(days - Math.round(days)) < 0.05 ? Math.round(days) : days;
+    return shown + (shown === 1 ? " day" : " days") + " · " + people;
+  }
+
   function normalizeDay(row, fallbackDayNumber, hoursPerDay) {
     if (!row || typeof row !== "object") return null;
     const day_number = Math.max(1, Math.floor(num(row.day_number, fallbackDayNumber)));
@@ -89,7 +188,11 @@
       })
       .filter(Boolean);
     if (!workers.length) return null;
-    return { day_number, phase, workers };
+    const next = { day_number, phase, workers };
+    if (row.crew_time_unit === "hours" || row.crew_time_unit === "days") {
+      next.crew_time_unit = row.crew_time_unit;
+    }
+    return applyCrewTimeToLegacyDay(next, hoursPerDay);
   }
 
   function normalizeOperationalPlan(input, estimatedDaysOverride, hoursPerDay) {
@@ -488,6 +591,8 @@
     sumDayDisplayUnits: sumDayDisplayUnits,
     buildSalesPlanCalendarPreview: buildSalesPlanCalendarPreview,
     formatDayUnitsLabel: formatDayUnitsLabel,
+    quoteCrewFromPlan: quoteCrewFromPlan,
+    formatWorkCrewTime: formatWorkCrewTime,
     crewRowWorkerDays: crewRowWorkerDays,
     aggregateLaborWorkersFromOperationalPlan: aggregateLaborWorkersFromOperationalPlan,
     laborCostFromOperationalPlan: laborCostFromOperationalPlan,

@@ -21,7 +21,7 @@ const DOCUMENT_LIMITS = {
   MAX_TASKS_PER_DAY: 20,
   MAX_ASSIGNMENTS_PER_DAY: 8,
   MAX_WORKER_COUNT: 12,
-  MAX_HOURS_PER_WORKER: 24,
+  MAX_HOURS_PER_WORKER: 240,
   MAX_JSON_BYTES: 100000,
   MAX_CLIENT_SCOPE: 2000,
   MAX_INTERNAL_NOTES: 4000,
@@ -350,6 +350,90 @@ function normalizeStringList(raw, maxItem = 400, maxItems = 24) {
   return out;
 }
 
+const CREW_TIME_FORWARD =
+  /(?:\b(?:over|for|durante|por)\s+)?(\d+(?:\.\d+)?)\s*(days|day|dias|días|dia|día|hours|hour|hrs|hr|horas|hora)\s*(?:with|con|·|•|,|and|y)\s*(\d+)\s*(workers|worker|trabajadores|trabajador|personas|persona)\b/i;
+const CREW_TIME_REVERSE =
+  /\b(\d+)\s*(workers|worker|trabajadores|trabajador|personas|persona)\s*(?:for|por|durante|over|with|con)?\s*(\d+(?:\.\d+)?)\s*(days|day|dias|días|dia|día|hours|hour|hrs|hr|horas|hora)\b/i;
+
+function crewTimeUnit(word) {
+  return /hour|hr|hora/i.test(String(word || "")) ? "hours" : "days";
+}
+
+function parseCrewTimePhrase(text) {
+  const s = String(text || "");
+  const forward = s.match(CREW_TIME_FORWARD);
+  if (forward) {
+    const amount = Number(forward[1]);
+    const workers = Math.floor(Number(forward[3]));
+    if (!(amount > 0) || !(workers > 0)) return null;
+    return { amount, unit: crewTimeUnit(forward[2]), workers };
+  }
+  const reverse = s.match(CREW_TIME_REVERSE);
+  if (!reverse) return null;
+  const amount = Number(reverse[3]);
+  const workers = Math.floor(Number(reverse[1]));
+  if (!(amount > 0) || !(workers > 0)) return null;
+  return { amount, unit: crewTimeUnit(reverse[4]), workers };
+}
+
+function stripCrewTimePhrase(text) {
+  let s = String(text || "");
+  if (!parseCrewTimePhrase(s)) return s.trim();
+  s = s.replace(CREW_TIME_FORWARD, " ").replace(CREW_TIME_REVERSE, " ");
+  s = s.replace(/\s{2,}/g, " ").replace(/\s+\./g, ".").trim();
+  s = s.replace(/^[\s,;:·•-]+|[\s,;:·•-]+$/g, "").trim();
+  return s;
+}
+
+function assignmentsFromCrewTime(count, hoursEach, existing) {
+  const n = Math.max(1, Math.min(DOCUMENT_LIMITS.MAX_WORKER_COUNT, Math.floor(num(count, 1))));
+  const hours = round2(hoursEach);
+  const prior = Array.isArray(existing) ? existing : [];
+  const out = [
+    {
+      assignment_id: (prior[0] && prior[0].assignment_id) || newStableId("asg"),
+      worker_role: "Installer",
+      worker_type: "pro",
+      worker_count: 1,
+      hours_per_worker: hours,
+    },
+  ];
+  if (n > 1) {
+    out.push({
+      assignment_id: (prior[1] && prior[1].assignment_id) || newStableId("asg"),
+      worker_role: "Assistant",
+      worker_type: "helper",
+      worker_count: n - 1,
+      hours_per_worker: hours,
+    });
+  }
+  return out;
+}
+
+function applyDictatedCrewTime(day, hoursPerDay) {
+  if (!day) return day;
+  const texts = [day.client_scope].concat((day.internal_tasks || []).map((task) => task && task.label));
+  let parsed = null;
+  for (const text of texts) {
+    parsed = parseCrewTimePhrase(text);
+    if (parsed) break;
+  }
+  if (!parsed) return day;
+  const hpd = Math.max(0.25, num(hoursPerDay, DEFAULT_HOURS_PER_DAY));
+  const hoursEach = parsed.unit === "hours" ? parsed.amount : round2(parsed.amount * hpd);
+  if (!(hoursEach > 0) || hoursEach > DOCUMENT_LIMITS.MAX_HOURS_PER_WORKER) return day;
+  const scope = stripCrewTimePhrase(day.client_scope);
+  day.client_scope = scope || day.client_scope;
+  day.internal_tasks = (day.internal_tasks || [])
+    .map((task) => {
+      const label = stripCrewTimePhrase(task && task.label);
+      return Object.assign({}, task, { label: label || (task && task.label) || "" });
+    })
+    .filter((task) => str(task && task.label, 500));
+  day.worker_assignments = assignmentsFromCrewTime(parsed.workers, hoursEach, day.worker_assignments);
+  return day;
+}
+
 function normalizeDay(row, fallbackNumber, keepAreaId, options) {
   if (!row || typeof row !== "object") return null;
   const day_number = Math.max(1, Math.floor(num(row.day_number, fallbackNumber)));
@@ -404,7 +488,7 @@ function normalizeDay(row, fallbackNumber, keepAreaId, options) {
     const areaId = str(row.area_id, 80);
     if (AREA_UUID_RE.test(areaId)) normalized.area_id = areaId;
   }
-  return normalized;
+  return applyDictatedCrewTime(normalized, options && options.hoursPerDay);
 }
 
 function createEmptyDay(dayNumber, hoursPerDay) {
@@ -753,6 +837,7 @@ function normalizeDocumentWithoutAreas(raw, options = {}) {
   let days = (Array.isArray(stripped.days) ? stripped.days : [])
     .map((d, i) => normalizeDay(d, i + 1, options.keepAreaId === true, {
       preserveEmptyCrew: options.preserveEmptyCrew === true,
+      hoursPerDay: hpd,
     }))
     .filter(Boolean);
   days = renumberDays(sortDaysByNumber(days));
