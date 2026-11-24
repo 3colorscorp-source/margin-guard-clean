@@ -15,6 +15,7 @@ const {
   materialsReadyForInvoice,
   materialsOnBalance,
   balanceWithMaterials,
+  recordPaymentAmountWithExpenses,
   clientMaterialsNote,
   notesWithMaterials,
   notesWithBilledOn,
@@ -96,5 +97,13 @@ const publicNote = clientMaterialsNote(stillOnBalance);
 assert.ok(publicNote.indexOf("Unexpected expenses:") === 0);
 assert.ok(publicNote.indexOf("Unexpected expenses total: $557.00") > 0);
 assert.ok(publicNote.indexOf("[included_in_contract_balance]") < 0);
+
+const payment = recordPaymentAmountWithExpenses(9114.61, 1000, 557, 8671.61);
+assert.strictEqual(payment.useBalanceInvoice, true);
+assert.strictEqual(payment.remaining, 8671.61);
+assert.strictEqual(payment.unexpectedExpenses, 557);
+const contractOnly = recordPaymentAmountWithExpenses(9114.61, 1000, 0, 8671.61);
+assert.strictEqual(contractOnly.useBalanceInvoice, false);
+assert.strictEqual(contractOnly.remaining, 8114.61);
 
 console.log("PASS materials can join the balance without changing the contract");
