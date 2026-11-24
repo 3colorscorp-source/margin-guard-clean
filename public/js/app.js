@@ -2542,6 +2542,7 @@ Thank you.`
         : "";
       renderSupervisorCalendarChrome(execPlan.length, o.calendarCtx);
       body.innerHTML = snapshotWarn + migratedBanner + calendarHtml;
+      const lockedDay = supervisorFieldModalDayLock();
       supervisorActiveDayContext = {
         plan: execPlan,
         startIso: o.calendarCtx?.startIso || "",
@@ -2551,6 +2552,7 @@ Thank you.`
         currentPlanDayIndex: finiteNumber(o.calendarCtx?.currentPlanDayIndex, 1),
         projectId: o.projectId || "",
         showMigrated: Boolean(o.showMigrated),
+        ...(lockedDay || {}),
       };
       bindSupExecutionCalendarOnce();
     } else {
@@ -2576,6 +2578,40 @@ Thank you.`
     return 0;
   }
 
+  function supervisorFieldModalDayLock() {
+    const laborOpen = $("supLaborReportModal")?.getAttribute("aria-hidden") === "false";
+    const expenseOpen = $("supExpenseReportModal")?.getAttribute("aria-hidden") === "false";
+    if (!laborOpen && !expenseOpen) return null;
+    const ctx =
+      supervisorActiveDayContext && typeof supervisorActiveDayContext === "object"
+        ? supervisorActiveDayContext
+        : null;
+    const dayNum = Math.floor(finiteNumber(ctx?.day_number, 0));
+    if (dayNum < 1) return null;
+    return {
+      day_number: dayNum,
+      phase: String(ctx.phase || "").trim(),
+      plannedDate: normalizeDateInput(ctx.plannedDate || ""),
+    };
+  }
+
+  function supervisorDayNumberFromNote(note, maxDay) {
+    const lines = String(note || "").split(/\n/);
+    for (const line of lines) {
+      const match = line.trim().match(/^Day\s+(\d+)(?:\s*[—–-]\s*.*)?$/i);
+      if (!match) continue;
+      const n = Math.floor(Number(match[1]));
+      if (n >= 1 && (maxDay < 1 || n <= maxDay)) return n;
+    }
+    return 0;
+  }
+
+  function supervisorCardDayNumber(row, startIso, maxDay) {
+    const fromNote = supervisorDayNumberFromNote(row?.note, maxDay);
+    if (fromNote >= 1) return fromNote;
+    return supervisorInferDayNumberFromRow(row, startIso, maxDay);
+  }
+
   function supervisorReportDayFields(entryDate) {
     const ctx =
       supervisorActiveDayContext && typeof supervisorActiveDayContext === "object"
@@ -2585,16 +2621,19 @@ Thank you.`
     const maxDay = plan.reduce((max, day) => {
       return Math.max(max, Math.floor(finiteNumber(day?.day_number, 0)));
     }, 0);
-    let dayNum = supervisorInferDayNumberFromRow(
-      { entry_date: entryDate },
-      ctx.startIso || "",
-      maxDay
-    );
-    if (dayNum < 1) dayNum = Math.floor(finiteNumber(ctx.day_number, 0));
+    const selectedDay = Math.floor(finiteNumber(ctx.day_number, 0));
+    let dayNum = selectedDay >= 1 && (maxDay < 1 || selectedDay <= maxDay) ? selectedDay : 0;
+    if (dayNum < 1) {
+      dayNum = supervisorInferDayNumberFromRow(
+        { entry_date: entryDate },
+        ctx.startIso || "",
+        maxDay
+      );
+    }
     const planDay =
       plan.find((day) => Math.floor(finiteNumber(day?.day_number, 0)) === dayNum) || {};
     let phase = String(planDay.phase || "").trim();
-    if (!phase && dayNum > 0 && dayNum === Math.floor(finiteNumber(ctx.day_number, 0))) {
+    if (!phase && dayNum > 0 && dayNum === selectedDay) {
       phase = String(ctx.phase || "").trim();
     }
     return {
@@ -2639,7 +2678,7 @@ Thank you.`
             }))
           : [];
     for (const row of reports) {
-      const dayNum = supervisorInferDayNumberFromRow(row, startIso, maxDay);
+      const dayNum = supervisorCardDayNumber(row, startIso, maxDay);
       if (dayNum < 1) continue;
       const bucket = ensure(dayNum);
       bucket.laborCount += 1;
@@ -2654,7 +2693,7 @@ Thank you.`
         ? expCache.expenses
         : [];
     for (const row of expenses) {
-      const dayNum = supervisorInferDayNumberFromRow(row, startIso, maxDay);
+      const dayNum = supervisorCardDayNumber(row, startIso, maxDay);
       if (dayNum < 1) continue;
       const bucket = ensure(dayNum);
       bucket.expenseCount += 1;
@@ -5236,6 +5275,10 @@ Thank you.`
       days: Number(row.days) || 0,
       note: supervisorPresentCrew(row).note,
       crew: supervisorPresentCrew(row).crew,
+      day_number:
+        row.day_number == null || row.day_number === ""
+          ? null
+          : Math.max(1, Math.floor(finiteNumber(row.day_number, 0))) || null,
     };
   }
 
