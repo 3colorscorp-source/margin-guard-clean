@@ -126,5 +126,12 @@ ok(
     app.includes("supervisorReportDayFields(entry.date)") &&
     app.includes("supervisorReportDayFields(extra.date)")
 );
+ok(
+  "a report opened on day 3 stays on day 3 when the date is another day",
+  /function supervisorReportDayFields[\s\S]{0,900}selectedDay >= 1[\s\S]{0,500}supervisorInferDayNumberFromRow/.test(app) &&
+    app.includes("function supervisorFieldModalDayLock") &&
+    app.includes("function supervisorDayNumberFromNote") &&
+    app.includes("supervisorCardDayNumber(row, startIso, maxDay)")
+);
 
 console.log("\n" + passed + " passed");
