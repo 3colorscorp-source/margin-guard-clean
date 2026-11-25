@@ -15442,7 +15442,66 @@ window.renderSupervisor = renderSupervisor;
       if (sno) seenNo.add(sno);
       out.push(buildPortfolioRowFromServerInvoiceNorm(norm));
     });
+    reconcileHubSettledProjectPayments(out);
     return out;
+  }
+
+  function hubRowSettledPaymentSnapshot(row) {
+    const ids = hubLedgerTargetIds(row);
+    return {
+      id: String(row?.serverInvoiceId || row?.id || ""),
+      status: row?.status,
+      rawStatus: row?.hubInvoiceRawStatus,
+      balance: row?.balance,
+      amount: row?.amount,
+      title: row?.title,
+      customer: row?.customer,
+      customerEmail: row?.customerEmail,
+      invoiceLabel: hubRowInvoiceLabelNormalized(row),
+      projectId: ids.projectId,
+      quoteId: ids.quoteId,
+      sourceInvoiceId: hubRowSourceInvoiceIdFromNotes(row)
+    };
+  }
+
+  function hubApplySettledProjectPaymentRow(row) {
+    if (!row) return;
+    row.hubProjectSettled = true;
+    row.balance = 0;
+    const st = String(row.status || "").toLowerCase();
+    const raw = String(row.hubInvoiceRawStatus || "").toLowerCase();
+    if (
+      ["sent", "overdue", "partial", "expired", "issued"].includes(st) ||
+      ["sent", "overdue", "partial", "expired", "issued"].includes(raw)
+    ) {
+      row.status = "paid";
+      row.invoiceStatus = "paid";
+    }
+    row.nextAction = getHubRowCollectNextActionLabel(row);
+    const pr = getHubPriority(row);
+    row.priorityScore = pr.score;
+    row.priorityTone = pr.tone;
+    row.daysPastDue = pr.daysPastDue;
+    const health = getProjectHealth(row);
+    row.projectHealthScore = health.score;
+    row.projectHealthTone = health.tone;
+    row.projectHealthLabel = health.label;
+  }
+
+  function reconcileHubSettledProjectPayments(rows) {
+    const api =
+      typeof globalThis !== "undefined" ? globalThis.MGHubSettledProjectPayments : null;
+    if (!api || typeof api.idsToSettle !== "function" || !Array.isArray(rows)) return rows;
+    const settle = api.idsToSettle(rows.map(hubRowSettledPaymentSnapshot));
+    rows.forEach((row) => {
+      const id = String(row?.serverInvoiceId || row?.id || "");
+      if (!id || !settle.has(id)) return;
+      const alreadyPaid =
+        String(row.status || "").toLowerCase() === "paid" && finiteNumber(row.balance, 0) <= 0.005;
+      if (alreadyPaid && !row.hubProjectSettled) return;
+      hubApplySettledProjectPaymentRow(row);
+    });
+    return rows;
   }
 
   function buildPortfolioRowFromServerInvoiceNorm(norm) {
@@ -15595,12 +15654,13 @@ window.renderSupervisor = renderSupervisor;
   const MG_HUB_INVOICE_VIEW_MODES = new Set(["all", "ready_to_bill", "sent", "paid", "needs_action"]);
 
   function hubRowMatchesReadyToBillView(row) {
-    const na = String(row?.nextAction || "").toLowerCase();
-    if (na.includes("send invoice")) return true;
-    return row?.rowType === "estimate" && finiteNumber(row?.amount, 0) > 0 && row?.projectStatus !== "completed";
+    if (row?.hubProjectSettled) return false;
+    const na = getHubRowCollectNextActionLabel(row);
+    return na === "Send Invoice" || na === "Send material cost invoice";
   }
 
   function hubRowMatchesWaitingPaymentKpi(row) {
+    if (row?.hubProjectSettled) return false;
     const bal = finiteNumber(row?.balance, 0);
     if (bal <= 0) return false;
     return ["sent", "partial", "overdue", "expired"].includes(String(row?.status || "").toLowerCase());
@@ -15695,6 +15755,7 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function getHubRowCollectNextActionLabel(row) {
+    if (row?.hubProjectSettled) return "Completed";
     if (hubRowIsMaterialCostInvoice(row)) {
       return getHubMaterialCostCollectNextActionLabel(row);
     }
@@ -15726,11 +15787,22 @@ window.renderSupervisor = renderSupervisor;
 
   /** Hub table display only: rows that should float to the top (same cases as "Send Invoice" next-action). */
   function hubRowIsSendNowCollectPriority(row) {
+    if (row?.hubProjectSettled) return false;
     return getHubRowCollectNextActionLabel(row) === "Send Invoice";
   }
 
+  function hubRowNeedsCollectAction(row) {
+    const na = getHubRowCollectNextActionLabel(row);
+    return na !== "Completed" && na !== "Material cost paid" && na !== "Material cost archived";
+  }
+
+  function hubFirstCollectActionRow(rows) {
+    if (!Array.isArray(rows)) return null;
+    return rows.find((row) => hubRowNeedsCollectAction(row)) || null;
+  }
+
   /**
-   * Visual order for Invoice Hub table: send-now rows first, then higher balance, then active column sort.
+   * Visual order for Invoice Hub table: send-now rows first, then open balances, then completed.
    * Does not change underlying merge/filter logic.
    */
   function sortHubRowsForCollectDisplay(rows, sortKey, sortDir) {
@@ -15738,6 +15810,9 @@ window.renderSupervisor = renderSupervisor;
       const pa = hubRowIsSendNowCollectPriority(a) ? 1 : 0;
       const pb = hubRowIsSendNowCollectPriority(b) ? 1 : 0;
       if (pa !== pb) return pb - pa;
+      const aa = hubRowNeedsCollectAction(a) ? 1 : 0;
+      const ab = hubRowNeedsCollectAction(b) ? 1 : 0;
+      if (aa !== ab) return ab - aa;
       const balA = finiteNumber(a?.balance, 0);
       const balB = finiteNumber(b?.balance, 0);
       if (balA !== balB) return balB - balA;
@@ -15748,16 +15823,16 @@ window.renderSupervisor = renderSupervisor;
 
   /** One-line “Project — $balance” for KPI action card (no suffix). */
   function hubKpiStartWithValueLine(rows, settings) {
-    if (!Array.isArray(rows) || !rows.length) return "";
-    const row = rows[0];
+    const row = hubFirstCollectActionRow(rows);
+    if (!row) return "";
     const name = nonEmptyString(row.title, row.customer) || "This job";
     const balStr = money(finiteNumber(row.balance, 0), settings.currency);
     return `${name} — ${balStr}`;
   }
 
   function hubHeroStartWithLine(rows, settings) {
-    if (!rows.length) return "No invoices need action right now.";
-    const row = rows[0];
+    const row = hubFirstCollectActionRow(rows);
+    if (!row) return "No invoices need action right now.";
     const name = nonEmptyString(row.title, row.customer) || "This job";
     const balStr = money(finiteNumber(row.balance, 0), settings.currency);
     if (hubRowIsMaterialCostInvoice(row)) {
@@ -21592,18 +21667,17 @@ window.renderSupervisor = renderSupervisor;
         $("hubKpiTotalCollectMeta").textContent = `${openJobCount} jobs with an outstanding invoice balance`;
       }
       if ($("hubKpiStartWithValue")) {
-        $("hubKpiStartWithValue").textContent = hubTableDisplayRows.length
-          ? hubKpiStartWithValueLine(hubTableDisplayRows, settings)
-          : "—";
+        const startLine = hubKpiStartWithValueLine(hubTableDisplayRows, settings);
+        $("hubKpiStartWithValue").textContent = startLine || "—";
       }
       if ($("hubKpiStartWithLabel")) {
-        const topRow = hubTableDisplayRows[0];
+        const topRow = hubFirstCollectActionRow(hubTableDisplayRows);
         $("hubKpiStartWithLabel").textContent =
           topRow && hubRowIsMaterialCostInvoice(topRow) ? "Material cost due" : "Start with";
       }
       if ($("hubKpiStartWithMeta")) {
-        const topRow = hubTableDisplayRows[0];
-        $("hubKpiStartWithMeta").textContent = hubTableDisplayRows.length
+        const topRow = hubFirstCollectActionRow(hubTableDisplayRows);
+        $("hubKpiStartWithMeta").textContent = topRow
           ? topRow && hubRowIsMaterialCostInvoice(topRow)
             ? "Material invoice pending"
             : `${readySendCount} invoice${readySendCount === 1 ? "" : "s"} ready to send`
